@@ -35,6 +35,11 @@ service cloud.firestore {
         && request.resource.data.entries.size() <= 500;
     }
 
+    match /settings/exercises {
+      allow read: if isStaff();
+      allow write: if isAdmin() && request.resource.data.phases is map;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

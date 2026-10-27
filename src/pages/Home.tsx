@@ -59,7 +59,7 @@ export default function Home() {
                   <td className="p-2">
                     <Link to={`/drivers/${r.driverId}`} className="text-blue-700 hover:underline">{r.driver}</Link>
                   </td>
-                  <td className="p-2">{r.exercises}</td>
+                  <td className="p-2">{r.exercises}/{r.expected}</td>
                   <td className="p-2">{r.errors}</td>
                   <td className="p-2">{r.criticalErrors > 0 ? <b className="text-red-700">{r.criticalErrors}</b> : 0}</td>
                   <td className="p-2 font-semibold">{r.avgScore}</td>

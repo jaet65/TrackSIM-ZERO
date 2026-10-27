@@ -48,7 +48,7 @@ export default function Driver() {
           {phases.map((p) => (
             <li key={p.phase} className="rounded border bg-white p-3 text-sm">
               <b>Fase {p.phase}: {phaseName(p.phase)}</b>
-              <div>{p.exercises} ejercicio(s) · {p.errors} errores · promedio {p.avgScore}</div>
+              <div>{p.exercises}/{p.expected} ejercicio(s) · {p.errors} errores · promedio {p.avgScore}</div>
               <span className={`rounded px-2 py-0.5 text-xs font-semibold ${p.color}`}>{p.verdict}</span>
             </li>
           ))}

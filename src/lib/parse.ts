@@ -77,7 +77,9 @@ export function parseReport(text: string): ParsedReport {
   const headerIdx = find(/^FECHA;CONDUCTOR/i);
   if (lessonIdx < 0 || headerIdx < 0) throw new Error("Formato de CSV no reconocido");
 
-  const [lesson = "", unit = "", exercise = ""] = cells(lessonIdx + 1);
+  const [lesson = "", unit = ""] = cells(lessonIdx + 1);
+  // La Unidad del CSV identifica el ejercicio.
+  const exercise = unit;
   // El simulador entrega las columnas invertidas: la columna INSTRUCTOR trae al conductor.
   // El instructor real es quien carga el archivo (sesión de Google), no lo que diga el CSV.
   const [date = "", , driver = "", duration = ""] = cells(headerIdx + 1);

@@ -26,6 +26,7 @@ export default function ProtectedLayout() {
         <div className="mx-auto flex max-w-5xl items-center justify-between p-3 text-sm">
           <Link to="/" className="font-semibold">TrackSIM</Link>
           <div className="flex items-center gap-3">
+            <Link to="/ejercicios" className="text-blue-700 hover:underline">Ejercicios</Link>
             <Link to="/catalogo" className="text-blue-700 hover:underline">Catálogo de errores</Link>
             <span className="text-gray-600">{user.email}</span>
             <button onClick={logout} className="rounded border px-2 py-1 hover:bg-gray-50">Salir</button>

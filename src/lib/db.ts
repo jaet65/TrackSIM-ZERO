@@ -5,6 +5,7 @@ import { evaluateMarks } from "./parse";
 import { classify } from "./catalog";
 import { loadCatalog } from "./catalogStore";
 import { CRITICAL_LIMIT, verdictFor } from "./config";
+import { exerciseKey, getExercises, loadExercises } from "./exercises";
 
 export type EvaluationDoc = {
   phase: number;
@@ -79,6 +80,7 @@ export type PhaseSummary = {
   driver: string;
   phase: number;
   exercises: number;
+  expected: number;
   errors: number;
   criticalErrors: number;
   avgScore: number;
@@ -96,7 +98,7 @@ export type EvaluationView = EvaluationDoc & { criticalCount: number };
 
 function withCurrentScore(d: EvaluationDoc): EvaluationView {
   const ev = evaluateMarks(d.marks, d.durationSec);
-  return { ...d, errorCount: ev.errorCount, criticalCount: ev.criticalCount, score: ev.score };
+  return { ...d, exercise: d.unit || d.exercise, errorCount: ev.errorCount, criticalCount: ev.criticalCount, score: ev.score };
 }
 
 function summarize(docs: EvaluationView[]): PhaseSummary[] {
@@ -107,15 +109,30 @@ function summarize(docs: EvaluationView[]): PhaseSummary[] {
   }
   return [...groups.values()]
     .map((g) => {
-      const avgScore = Math.round((g.reduce((a, e) => a + e.score, 0) / g.length) * 10) / 10;
-      const criticalErrors = g.reduce((a, e) => a + e.criticalCount, 0);
+      // Con catálogo de ejercicios, cada ejercicio esperado aporta su última evaluación y los faltantes valen 0.
+      const expectedList = getExercises()[String(g[0].phase)] ?? [];
+      let counted = g;
+      let expected = g.length;
+      let total = g.reduce((a, e) => a + e.score, 0);
+      if (expectedList.length) {
+        const latest = [...g].sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
+        counted = expectedList.flatMap((name) => {
+          const m = latest.filter((e) => exerciseKey(e.exercise) === exerciseKey(name)).pop();
+          return m ? [m] : [];
+        });
+        expected = expectedList.length;
+        total = counted.reduce((a, e) => a + e.score, 0);
+      }
+      const avgScore = Math.round((total / expected) * 10) / 10;
+      const criticalErrors = counted.reduce((a, e) => a + e.criticalCount, 0);
       const v = dictamen(avgScore, criticalErrors);
       return {
         driverId: g[0].driverId,
         driver: g[0].driverName,
         phase: g[0].phase,
-        exercises: g.length,
-        errors: g.reduce((a, e) => a + e.errorCount, 0),
+        exercises: counted.length,
+        expected,
+        errors: counted.reduce((a, e) => a + e.errorCount, 0),
         criticalErrors,
         avgScore,
         verdict: v.label,
