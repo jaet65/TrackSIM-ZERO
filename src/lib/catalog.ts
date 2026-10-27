@@ -1,11 +1,31 @@
 export type Severity = "CRITICO" | "GRAVE" | "MODERADO" | "LEVE";
 
-// Metadatos visuales fijos. Los puntos de cada nivel viven en CatalogConfig.weights (editables).
-export const SEVERITIES: Record<Severity, { label: string; badge: string; eliminatory: boolean }> = {
-  CRITICO: { label: "Crítico", badge: "bg-red-100 text-red-800", eliminatory: true },
-  GRAVE: { label: "Grave", badge: "bg-orange-100 text-orange-800", eliminatory: false },
-  MODERADO: { label: "Moderado", badge: "bg-yellow-100 text-yellow-800", eliminatory: false },
-  LEVE: { label: "Leve", badge: "bg-gray-100 text-gray-700", eliminatory: false },
+// Metadatos visuales fijos para tema claro.
+export const SEVERITIES: Record<Severity, { label: string; badge: string; dot: string; eliminatory: boolean }> = {
+  CRITICO: {
+    label: "Crítico",
+    badge: "bg-rose-50 text-rose-700 border border-rose-200",
+    dot: "bg-rose-500",
+    eliminatory: true,
+  },
+  GRAVE: {
+    label: "Grave",
+    badge: "bg-orange-50 text-orange-700 border border-orange-200",
+    dot: "bg-orange-500",
+    eliminatory: false,
+  },
+  MODERADO: {
+    label: "Moderado",
+    badge: "bg-amber-50 text-amber-800 border border-amber-200",
+    dot: "bg-amber-500",
+    eliminatory: false,
+  },
+  LEVE: {
+    label: "Leve",
+    badge: "bg-slate-100 text-slate-700 border border-slate-200",
+    dot: "bg-slate-400",
+    eliminatory: false,
+  },
 };
 
 export const SEVERITY_ORDER: Severity[] = ["CRITICO", "GRAVE", "MODERADO", "LEVE"];

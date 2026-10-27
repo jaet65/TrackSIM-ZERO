@@ -28,9 +28,24 @@ export const PENALTY_PER_ERROR_RATE = 4;
 export const CRITICAL_LIMIT = 2;
 
 export const VERDICTS = [
-  { min: 80, label: "APTO", color: "bg-green-100 text-green-800" },
-  { min: 60, label: "APTO CON OBSERVACIONES", color: "bg-yellow-100 text-yellow-800" },
-  { min: 0, label: "NO APTO", color: "bg-red-100 text-red-800" },
+  {
+    min: 80,
+    label: "APTO",
+    color: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+    badgeColor: "bg-emerald-500",
+  },
+  {
+    min: 60,
+    label: "APTO CON OBSERVACIONES",
+    color: "bg-amber-50 text-amber-800 border border-amber-200",
+    badgeColor: "bg-amber-500",
+  },
+  {
+    min: 0,
+    label: "NO APTO",
+    color: "bg-rose-50 text-rose-700 border border-rose-200",
+    badgeColor: "bg-rose-500",
+  },
 ] as const;
 
 export function verdictFor(score: number) {
