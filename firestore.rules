@@ -22,6 +22,19 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Solo administradores configuran el catálogo y los pesos de calificación.
+    function isAdmin() {
+      return isStaff() && request.auth.token.email in ['magraz@corporativomaf.com'];
+    }
+
+    match /settings/catalog {
+      allow read: if isStaff();
+      allow write: if isAdmin()
+        && request.resource.data.weights is map
+        && request.resource.data.entries is list
+        && request.resource.data.entries.size() <= 500;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

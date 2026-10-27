@@ -3,7 +3,8 @@ import { firestore } from "./firebase";
 import type { Mark, ParsedReport } from "./parse";
 import { evaluateMarks } from "./parse";
 import { classify } from "./catalog";
-import { verdictFor } from "./config";
+import { loadCatalog } from "./catalogStore";
+import { CRITICAL_LIMIT, verdictFor } from "./config";
 
 export type EvaluationDoc = {
   phase: number;
@@ -85,9 +86,9 @@ export type PhaseSummary = {
   color: string;
 };
 
-// Un error crítico es eliminatorio: el dictamen es NO APTO sin importar el promedio.
+// Con CRITICAL_LIMIT o más errores críticos el dictamen es NO APTO; con menos solo pesan en la calificación.
 export function dictamen(score: number, criticalErrors: number) {
-  return criticalErrors > 0 ? verdictFor(0) : verdictFor(score);
+  return criticalErrors >= CRITICAL_LIMIT ? verdictFor(0) : verdictFor(score);
 }
 
 // Calificación recalculada desde las marcas para que un cambio en el catálogo aplique a evaluaciones ya cargadas.
@@ -125,6 +126,7 @@ function summarize(docs: EvaluationView[]): PhaseSummary[] {
 }
 
 async function fetchEvaluations(field: "phase" | "driverId", value: number | string) {
+  await loadCatalog();
   const q = query(evaluations(), where(field, "==", value));
   return (await getDocs(q)).docs.map((d) => withCurrentScore(d.data() as EvaluationDoc));
 }

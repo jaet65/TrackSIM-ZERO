@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { phaseName } from "../lib/config";
+import { phaseName, CRITICAL_LIMIT } from "../lib/config";
 import { SEVERITIES } from "../lib/catalog";
 import { driverData } from "../lib/db";
 
@@ -35,7 +35,11 @@ export default function Driver() {
           <div className="text-3xl font-bold">{overall}</div>
         </div>
         <span className={`rounded px-3 py-1 text-sm font-semibold ${color}`}>{verdict}</span>
-        {criticalErrors > 0 && <span className="text-sm text-red-700">{criticalErrors} error(es) cr�tico(s): dictamen eliminatorio</span>}
+        {criticalErrors > 0 && (
+          <span className="text-sm text-red-700">
+            {criticalErrors} error(es) crítico(s){criticalErrors >= CRITICAL_LIMIT ? ": dictamen eliminatorio" : ""}
+          </span>
+        )}
       </div>
 
       <section>

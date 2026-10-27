@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PHASES } from "../lib/config";
 import { decodeCsv, parseReport } from "../lib/parse";
 import { saveEvaluation } from "../lib/db";
+import { loadCatalog } from "../lib/catalogStore";
 import { useAuth } from "./AuthProvider";
 
 type Result = { file: string; status: string; driver?: string; errors?: number; score?: number; message?: string; uncataloged?: string[] };
@@ -19,6 +20,7 @@ export default function UploadForm({ phase, onDone }: { phase: number; onDone: (
     const out: Result[] = [];
     for (const f of files) {
       try {
+        await loadCatalog();
         const report = parseReport(decodeCsv(await f.arrayBuffer()));
         const status = await saveEvaluation(phase, f.name, report, {
           name: user?.displayName || user?.email || "",

@@ -1,19 +1,26 @@
 export type Severity = "CRITICO" | "GRAVE" | "MODERADO" | "LEVE";
 
-// Puntos que resta cada error. Se pueden ajustar sin tocar el resto del código.
-export const SEVERITIES: Record<Severity, { label: string; weight: number; badge: string; eliminatory: boolean }> = {
-  CRITICO: { label: "Crítico", weight: 15, badge: "bg-red-100 text-red-800", eliminatory: true },
-  GRAVE: { label: "Grave", weight: 5, badge: "bg-orange-100 text-orange-800", eliminatory: false },
-  MODERADO: { label: "Moderado", weight: 2, badge: "bg-yellow-100 text-yellow-800", eliminatory: false },
-  LEVE: { label: "Leve", weight: 1, badge: "bg-gray-100 text-gray-700", eliminatory: false },
+// Metadatos visuales fijos. Los puntos de cada nivel viven en CatalogConfig.weights (editables).
+export const SEVERITIES: Record<Severity, { label: string; badge: string; eliminatory: boolean }> = {
+  CRITICO: { label: "Crítico", badge: "bg-red-100 text-red-800", eliminatory: true },
+  GRAVE: { label: "Grave", badge: "bg-orange-100 text-orange-800", eliminatory: false },
+  MODERADO: { label: "Moderado", badge: "bg-yellow-100 text-yellow-800", eliminatory: false },
+  LEVE: { label: "Leve", badge: "bg-gray-100 text-gray-700", eliminatory: false },
 };
+
+export const SEVERITY_ORDER: Severity[] = ["CRITICO", "GRAVE", "MODERADO", "LEVE"];
+
+export const DEFAULT_WEIGHTS: Record<Severity, number> = { CRITICO: 8, GRAVE: 3, MODERADO: 1, LEVE: 0.5 };
 
 // Severidad asignada a los errores no catalogados hasta que se clasifiquen.
 export const UNCATALOGED_SEVERITY: Severity = "MODERADO";
 
-type Entry = { name: string; severity: Severity; aliases?: string[] };
+// `points` es opcional: si existe reemplaza los puntos del nivel de gravedad solo para ese error.
+export type Entry = { name: string; severity: Severity; points?: number; aliases?: string[] };
 
-export const CATALOG: Entry[] = [
+export type CatalogConfig = { weights: Record<Severity, number>; entries: Entry[] };
+
+const DEFAULT_ENTRIES: Entry[] = [
   // Críticos: daño a personas, vuelco, colisión con otros vehículos o semáforo en rojo
   { name: "Atropello de un peatón", severity: "CRITICO" },
   { name: "Atropello de un perro", severity: "CRITICO" },
@@ -98,11 +105,31 @@ export function normalize(s: string): string {
     .trim();
 }
 
-const INDEX = new Map<string, Entry>();
-for (const e of CATALOG) for (const n of [e.name, ...(e.aliases ?? [])]) INDEX.set(normalize(n), e);
+export const DEFAULT_CONFIG: CatalogConfig = { weights: DEFAULT_WEIGHTS, entries: DEFAULT_ENTRIES };
+
+let active: CatalogConfig = DEFAULT_CONFIG;
+let index = new Map<string, Entry>();
+
+function buildIndex(cfg: CatalogConfig) {
+  const m = new Map<string, Entry>();
+  for (const e of cfg.entries) for (const n of [e.name, ...(e.aliases ?? [])]) m.set(normalize(n), e);
+  return m;
+}
+
+// Catálogo vigente en memoria; lo carga catalogStore desde Firestore antes de calcular calificaciones.
+export function setCatalog(cfg: CatalogConfig) {
+  active = cfg;
+  index = buildIndex(cfg);
+}
+
+export function getCatalog(): CatalogConfig {
+  return active;
+}
+
+setCatalog(DEFAULT_CONFIG);
 
 export function classify(description: string): { severity: Severity; weight: number; cataloged: boolean } {
-  const entry = INDEX.get(normalize(description));
+  const entry = index.get(normalize(description));
   const severity = entry?.severity ?? UNCATALOGED_SEVERITY;
-  return { severity, weight: SEVERITIES[severity].weight, cataloged: !!entry };
+  return { severity, weight: entry?.points ?? active.weights[severity], cataloged: !!entry };
 }

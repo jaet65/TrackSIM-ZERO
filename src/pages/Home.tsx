@@ -48,7 +48,7 @@ export default function Home() {
                 <th className="p-2">Conductor</th>
                 <th className="p-2">Ejercicios</th>
                 <th className="p-2">Errores</th>
-                <th className="p-2">Cr�ticos</th>
+                <th className="p-2">Críticos</th>
                 <th className="p-2">Calificación promedio</th>
                 <th className="p-2">Dictamen</th>
               </tr>
