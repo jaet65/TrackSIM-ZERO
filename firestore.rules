@@ -8,7 +8,12 @@ service cloud.firestore {
         && request.auth.token.email.matches('.*@corporativomaf[.]com');
     }
 
-    // Las evaluaciones solo se crean (con ID fase_archivo), nunca se editan ni se borran desde el cliente.
+    // Solo administradores configuran el catálogo, pesos y pueden vaciar evaluaciones.
+    function isAdmin() {
+      return isStaff() && request.auth.token.email in ['magraz@corporativomaf.com'];
+    }
+
+    // Las evaluaciones se crean por instructores y solo un administrador puede eliminarlas.
     match /evaluations/{id} {
       allow read: if isStaff();
       allow create: if isStaff()
@@ -19,12 +24,8 @@ service cloud.firestore {
         && request.resource.data.score >= 0 && request.resource.data.score <= 100
         && request.resource.data.instructorEmail == request.auth.token.email
         && request.resource.data.marks is list;
-      allow update, delete: if false;
-    }
-
-    // Solo administradores configuran el catálogo y los pesos de calificación.
-    function isAdmin() {
-      return isStaff() && request.auth.token.email in ['magraz@corporativomaf.com'];
+      allow update: if false;
+      allow delete: if isAdmin();
     }
 
     match /settings/catalog {

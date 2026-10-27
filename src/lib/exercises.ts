@@ -21,6 +21,13 @@ let loading: Promise<ExerciseConfig> | null = null;
 
 export const getExercises = () => current;
 
+// Fase a la que pertenece un ejercicio según el catálogo (null si no está definido).
+export function phaseForExercise(name: string): number | null {
+  const key = exerciseKey(name);
+  for (const [phase, list] of Object.entries(current)) if (list.some((n) => exerciseKey(n) === key)) return Number(phase);
+  return null;
+}
+
 function sanitize(raw: unknown): ExerciseConfig {
   const out: ExerciseConfig = {};
   const r = (raw as { phases?: Record<string, unknown> } | undefined)?.phases ?? {};

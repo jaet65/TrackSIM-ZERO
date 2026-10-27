@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, setDoc, where, writeBatch } from "firebase/firestore";
 import { firestore } from "./firebase";
 import type { Mark, ParsedReport } from "./parse";
 import { evaluateMarks } from "./parse";
@@ -172,4 +172,26 @@ export async function driverData(driverId: string) {
   const v = dictamen(overall, criticalErrors);
 
   return { name: evals[0].driverName, evals, phases, breakdown, overall, criticalErrors, verdict: v.label, color: v.color };
+}
+
+// Elimina todas las evaluaciones en lotes de hasta 400 documentos por batch.
+export async function deleteAllEvaluations(): Promise<number> {
+  const snap = await getDocs(evaluations());
+  if (snap.empty) return 0;
+
+  let totalDeleted = 0;
+  const docs = snap.docs;
+  const chunkSize = 400;
+
+  for (let i = 0; i < docs.length; i += chunkSize) {
+    const chunk = docs.slice(i, i + chunkSize);
+    const batch = writeBatch(firestore);
+    for (const d of chunk) {
+      batch.delete(d.ref);
+    }
+    await batch.commit();
+    totalDeleted += chunk.length;
+  }
+
+  return totalDeleted;
 }
