@@ -195,7 +195,7 @@ export default function Driver() {
               <span className="text-sm text-slate-500">/ 100 pts</span>
             </div>
             <p className="mt-2 text-xs text-slate-600">
-              Calculada sobre {phases.length} fase(s) registradas y ponderada según la gravedad de errores cometidos.
+              Calculada sobre {phases.length} fase(s) registradas con ponderación compuesta (70% seguridad y errores + 30% eficiencia y telemetría).
             </p>
           </div>
 
@@ -270,7 +270,7 @@ export default function Driver() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-slate-900">Desglose de Ejercicios Evaluados</h2>
-            <p className="text-xs text-slate-500">Haz clic en el nombre de cualquier ejercicio para ver su reporte de errores detallado.</p>
+            <p className="text-xs text-slate-500">Haz clic en el nombre de cualquier ejercicio para ver su reporte de errores y telemetría.</p>
           </div>
         </div>
 
@@ -285,7 +285,7 @@ export default function Driver() {
                   <th className="px-4 py-3">Instructor</th>
                   <th className="px-4 py-3">Duración</th>
                   <th className="px-4 py-3">Errores</th>
-                  <th className="px-4 py-3 text-right">Calif.</th>
+                  <th className="px-4 py-3 text-right">Calif. Final</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -530,16 +530,67 @@ export default function Driver() {
 
             {/* Modal Body */}
             <div className="overflow-y-auto p-6 space-y-6">
-              {/* Tarjetas informativas principales del ejercicio */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    Calificación
+              {/* Metadatos principales de la prueba */}
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 text-xs grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div>
+                  <span className="text-slate-400">Fecha:</span>{" "}
+                  <strong className="text-slate-700">{selectedEval.date || "—"}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400">Instructor:</span>{" "}
+                  <strong className="text-slate-700">{selectedEval.instructor || "—"}</strong>
+                </div>
+                {selectedEval.vehicle && (
+                  <div>
+                    <span className="text-slate-400">Vehículo:</span>{" "}
+                    <strong className="text-slate-700">{selectedEval.vehicle}</strong>
+                  </div>
+                )}
+                {selectedEval.fileName && (
+                  <div className="col-span-2 sm:col-span-3 truncate pt-1 border-t border-slate-200/50 mt-1">
+                    <span className="text-slate-400">Archivo origen:</span>{" "}
+                    <span className="font-mono text-slate-600">{selectedEval.fileName}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Tarjetas de Calificación Compuesta */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">
+                    Nota Final
                   </span>
                   <div className="mt-1 flex items-baseline gap-1">
-                    <span className="text-2xl font-bold font-mono text-indigo-600">{selectedEval.score}</span>
-                    <span className="text-xs text-slate-400">/ 100</span>
+                    <span className="text-2xl font-black font-mono text-indigo-600">{selectedEval.score}</span>
+                    <span className="text-xs text-indigo-400">/ 100</span>
                   </div>
+                  <span className="block text-[10px] text-indigo-600/80 mt-0.5">
+                    {selectedEval.telemetryScore !== undefined ? "70% err + 30% eco" : "100% errores"}
+                  </span>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    Nota Errores (70%)
+                  </span>
+                  <div className="mt-1 text-2xl font-bold font-mono text-slate-900">
+                    {selectedEval.errorScore}
+                  </div>
+                  <span className="block text-[10px] text-slate-400 mt-0.5">
+                    {selectedEval.errorCount} error(es)
+                  </span>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    Eco-Drive (30%)
+                  </span>
+                  <div className="mt-1 text-2xl font-bold font-mono text-slate-900">
+                    {selectedEval.telemetryScore !== undefined ? selectedEval.telemetryScore : "—"}
+                  </div>
+                  <span className="block text-[10px] text-slate-400 mt-0.5 truncate" title="Ponderado: RPM, Freno, Inercia y Consumo">
+                    {selectedEval.telemetry?.pctGreenZone !== undefined ? `RPM verde ${selectedEval.telemetry.pctGreenZone}%` : "No disponible"}
+                  </span>
                 </div>
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
@@ -549,22 +600,105 @@ export default function Driver() {
                   <div className="mt-1 text-2xl font-bold font-mono text-slate-900">
                     {fmt(selectedEval.durationSec)}
                   </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    Total Errores
+                  <span className="block text-[10px] text-slate-400 mt-0.5">
+                    {selectedEval.criticalCount > 0 ? `${selectedEval.criticalCount} crítico(s)` : "Sin críticos"}
                   </span>
-                  <div className="mt-1 text-2xl font-bold font-mono text-slate-900">
-                    {selectedEval.errorCount}
-                  </div>
                 </div>
               </div>
+
+              {/* Indicadores Genéricos de Telemetría (si están disponibles) */}
+              {selectedEval.telemetry && Object.keys(selectedEval.telemetry).length > 0 && (
+                <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Indicadores Genéricos de Telemetría y Eficiencia
+                    </h4>
+                    <span className="text-[10px] font-medium text-slate-400">
+                      Ponderación: 40% RPM · 25% Freno · 20% Inercia · 15% Consumo
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 text-xs">
+                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-400 block">% Zona Verde</span>
+                      <strong className="text-emerald-700 font-mono text-sm">
+                        {selectedEval.telemetry.pctGreenZone !== undefined ? `${selectedEval.telemetry.pctGreenZone}%` : "—"}
+                      </strong>
+                    </div>
+
+                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-400 block">% Zona Roja</span>
+                      <strong className={`font-mono text-sm ${selectedEval.telemetry.pctRedZone && selectedEval.telemetry.pctRedZone > 0 ? "text-rose-600" : "text-slate-800"}`}>
+                        {selectedEval.telemetry.pctRedZone !== undefined ? `${selectedEval.telemetry.pctRedZone}%` : "0%"}
+                      </strong>
+                    </div>
+
+                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-400 block">Consumo Medio</span>
+                      <strong className="text-slate-800 font-mono text-sm">
+                        {selectedEval.telemetry.averageConsumption !== undefined ? `${selectedEval.telemetry.averageConsumption} l/100km` : "—"}
+                      </strong>
+                    </div>
+
+                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-400 block">Freno Aux (Retarder)</span>
+                      <strong className="text-slate-800 font-mono text-sm">
+                        {selectedEval.telemetry.auxBrakeTimeSec !== undefined ? `${selectedEval.telemetry.auxBrakeTimeSec} s` : "—"}
+                      </strong>
+                    </div>
+
+                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-400 block">Freno &gt; 60%</span>
+                      <strong className={`font-mono text-sm ${selectedEval.telemetry.brakeAbove60Uses && selectedEval.telemetry.brakeAbove60Uses > 2 ? "text-amber-600" : "text-slate-800"}`}>
+                        {selectedEval.telemetry.brakeAbove60Uses !== undefined ? `${selectedEval.telemetry.brakeAbove60Uses} veces` : "—"}
+                      </strong>
+                    </div>
+
+                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-400 block">Inercia (Sin Pedales)</span>
+                      <strong className="text-slate-800 font-mono text-sm">
+                        {selectedEval.telemetry.coastDistanceMeters !== undefined ? `${Math.round(selectedEval.telemetry.coastDistanceMeters)} m` : "—"}
+                      </strong>
+                    </div>
+
+                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-400 block">Distancia Total</span>
+                      <strong className="text-slate-800 font-mono text-sm">
+                        {selectedEval.telemetry.distanceMeters !== undefined ? `${Math.round(selectedEval.telemetry.distanceMeters)} m` : "—"}
+                      </strong>
+                    </div>
+
+                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-400 block">RPM Máximas</span>
+                      <strong className="text-slate-800 font-mono text-sm">
+                        {selectedEval.telemetry.maxRpm !== undefined ? `${selectedEval.telemetry.maxRpm} rpm` : "—"}
+                      </strong>
+                    </div>
+
+                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-400 block">Velocidad Media / Max</span>
+                      <strong className="text-slate-800 font-mono text-sm">
+                        {selectedEval.telemetry.averageSpeed || "—"} / {selectedEval.telemetry.maxSpeed || "—"} km/h
+                      </strong>
+                    </div>
+
+                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-400 block">Cambios de Marcha</span>
+                      <strong className="text-slate-800 font-mono text-sm">
+                        {selectedEval.telemetry.gearChanges !== undefined ? selectedEval.telemetry.gearChanges : "—"}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Conteo detallado por Nivel de Gravedad */}
               <div className="space-y-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Desglose por Gravedad
+                  Desglose de Errores por Gravedad
                 </span>
                 <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                   {SEVERITY_ORDER.map((sev) => {
@@ -589,30 +723,6 @@ export default function Driver() {
                     );
                   })}
                 </div>
-              </div>
-
-              {/* Metadatos adicionales */}
-              <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3.5 text-xs grid grid-cols-2 gap-2 sm:grid-cols-3">
-                <div>
-                  <span className="text-slate-400">Fecha:</span>{" "}
-                  <strong className="text-slate-700">{selectedEval.date || "—"}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-400">Instructor:</span>{" "}
-                  <strong className="text-slate-700">{selectedEval.instructor || "—"}</strong>
-                </div>
-                {selectedEval.vehicle && (
-                  <div>
-                    <span className="text-slate-400">Vehículo:</span>{" "}
-                    <strong className="text-slate-700">{selectedEval.vehicle}</strong>
-                  </div>
-                )}
-                {selectedEval.fileName && (
-                  <div className="col-span-2 sm:col-span-3 truncate">
-                    <span className="text-slate-400">Archivo origen:</span>{" "}
-                    <span className="font-mono text-slate-600">{selectedEval.fileName}</span>
-                  </div>
-                )}
               </div>
 
               {/* Registro exclusivo de Errores cometidos en la prueba */}

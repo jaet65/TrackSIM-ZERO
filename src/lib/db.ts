@@ -1,6 +1,6 @@
 import { collection, doc, getDoc, getDocs, query, setDoc, where, writeBatch } from "firebase/firestore";
 import { firestore } from "./firebase";
-import type { Mark, ParsedReport } from "./parse";
+import type { Mark, ParsedReport, TelemetryMetrics } from "./parse";
 import { evaluateMarks } from "./parse";
 import { classify } from "./catalog";
 import { loadCatalog } from "./catalogStore";
@@ -23,6 +23,7 @@ export type EvaluationDoc = {
   errorCount: number;
   score: number;
   marks: Mark[];
+  telemetry?: TelemetryMetrics;
   createdAt: number;
 };
 
@@ -71,6 +72,11 @@ export async function saveEvaluation(
     marks: r.marks,
     createdAt: Date.now(),
   };
+
+  if (r.telemetry && Object.keys(r.telemetry).length > 0) {
+    data.telemetry = r.telemetry;
+  }
+
   await setDoc(ref, data);
   return "saved";
 }
@@ -105,12 +111,24 @@ export function dictamen(score: number, criticalErrors: number) {
   return criticalErrors >= CRITICAL_LIMIT ? verdictFor(0) : verdictFor(score);
 }
 
-// Calificación recalculada desde las marcas para que un cambio en el catálogo aplique a evaluaciones ya cargadas.
-export type EvaluationView = EvaluationDoc & { criticalCount: number };
+// Calificación recalculada desde las marcas y telemetría para que cambios en el catálogo o ponderación apliquen inmediatamente.
+export type EvaluationView = EvaluationDoc & {
+  criticalCount: number;
+  errorScore: number;
+  telemetryScore?: number;
+};
 
 function withCurrentScore(d: EvaluationDoc): EvaluationView {
-  const ev = evaluateMarks(d.marks, d.durationSec);
-  return { ...d, exercise: d.unit || d.exercise, errorCount: ev.errorCount, criticalCount: ev.criticalCount, score: ev.score };
+  const ev = evaluateMarks(d.marks, d.durationSec, d.telemetry);
+  return {
+    ...d,
+    exercise: d.unit || d.exercise,
+    errorCount: ev.errorCount,
+    criticalCount: ev.criticalCount,
+    errorScore: ev.errorScore,
+    telemetryScore: ev.telemetryScore,
+    score: ev.score,
+  };
 }
 
 function summarize(docs: EvaluationView[]): PhaseSummary[] {
@@ -161,7 +179,6 @@ export type DateFilter = {
 
 function matchesDateRange(dateStr: string, filter?: DateFilter): boolean {
   if (!filter || (!filter.startDate && !filter.endDate)) return true;
-  // dateStr usualmente tiene formato YYYY-MM-DD o YYYY-MM-DD HH:mm:ss
   const itemDate = dateStr.slice(0, 10);
   if (filter.startDate && itemDate < filter.startDate) return false;
   if (filter.endDate && itemDate > filter.endDate) return false;
