@@ -89,10 +89,12 @@ export default function Driver() {
       return { sortedErrorMarks: [], severityCounts: counts };
     }
 
+    const evalEnv = resolveExerciseEnvironment(selectedEval.exercise || selectedEval.unit);
+
     const errors = selectedEval.marks
       .filter((m) => m.type === "ERROR")
       .map((m) => {
-        const cls = classify(m.description);
+        const cls = classify(m.description, evalEnv);
         counts[cls.severity] = (counts[cls.severity] || 0) + 1;
         return {
           ...m,

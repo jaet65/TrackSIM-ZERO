@@ -30,7 +30,7 @@ export const SEVERITIES: Record<Severity, { label: string; badge: string; dot: s
 
 export const SEVERITY_ORDER: Severity[] = ["CRITICO", "GRAVE", "MODERADO", "LEVE"];
 
-export const DEFAULT_WEIGHTS: Record<Severity, number> = { CRITICO: 8, GRAVE: 3, MODERADO: 1, LEVE: 0.5 };
+export const DEFAULT_WEIGHTS: Record<Severity, number> = { CRITICO: 32, GRAVE: 3, MODERADO: 1, LEVE: 0.5 };
 
 // Severidad asignada a los errores no catalogados hasta que se clasifiquen.
 export const UNCATALOGED_SEVERITY: Severity = "MODERADO";
@@ -148,8 +148,24 @@ export function getCatalog(): CatalogConfig {
 
 setCatalog(DEFAULT_CONFIG);
 
-export function classify(description: string): { severity: Severity; weight: number; cataloged: boolean } {
+export function isOffRoadError(description: string): boolean {
+  const norm = normalize(description);
+  return norm.includes("salirse de la via") || norm.includes("salida de la via") || norm.includes("salirse de la calzada");
+}
+
+export function classify(
+  description: string,
+  environment?: string
+): { severity: Severity; weight: number; cataloged: boolean } {
   const entry = index.get(normalize(description));
-  const severity = entry?.severity ?? UNCATALOGED_SEVERITY;
+  let severity = entry?.severity ?? UNCATALOGED_SEVERITY;
+
+  // Regla especial de seguridad: en montaña o pendientes pronunciadas,
+  // salirse de la vía representa riesgo inminente de precipicio o despeñamiento,
+  // por lo que se eleva su severidad a CRÍTICO.
+  if (environment === "MONTANA" && isOffRoadError(description)) {
+    severity = "CRITICO";
+  }
+
   return { severity, weight: entry?.points ?? active.weights[severity], cataloged: !!entry };
 }

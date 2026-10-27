@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import UploadForm from "../components/UploadForm";
 import { isAdminEmail, PHASES } from "../lib/config";
@@ -19,12 +19,16 @@ export type DisplayRow = {
   driver: string;
   badgeText: string;
   exercisesText: string;
+  progressValue: number;
   errors: number;
   criticalErrors: number;
   avgScore: number;
   verdict: string;
   color: string;
 };
+
+export type SortField = "driver" | "progress" | "errors" | "criticalErrors" | "avgScore" | "verdict";
+export type SortDirection = "asc" | "desc";
 
 export default function Home() {
   const [params, setParams] = useSearchParams();
@@ -36,6 +40,10 @@ export default function Home() {
   // Filtro de fechas (Desde / Hasta)
   const [startDate, setStartDate] = useState(params.get("desde") || "");
   const [endDate, setEndDate] = useState(params.get("hasta") || "");
+
+  // Ordenamiento interactivo por columna
+  const [sortField, setSortField] = useState<SortField>("driver");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
   const [availablePhases, setAvailablePhases] = useState<number[]>([]);
   const [rows, setRows] = useState<DisplayRow[] | null>(null);
@@ -75,6 +83,7 @@ export default function Home() {
               driver: d.driver,
               badgeText: `${d.phasesEvaluated} de 6 fases`,
               exercisesText: `${d.totalExercises} ejercicio(s)`,
+              progressValue: d.phasesEvaluated * 1000 + d.totalExercises,
               errors: d.totalErrors,
               criticalErrors: d.criticalErrors,
               avgScore: d.avgScore,
@@ -94,6 +103,7 @@ export default function Home() {
               driver: d.driver,
               badgeText: `Fase ${d.phase}`,
               exercisesText: `${d.exercises}/${d.expected}`,
+              progressValue: d.exercises,
               errors: d.errors,
               criticalErrors: d.criticalErrors,
               avgScore: d.avgScore,
@@ -107,6 +117,53 @@ export default function Home() {
   }, [selectedPhase, startDate, endDate]);
 
   useEffect(load, [load]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      // Para métricas donde un valor más alto suele ser más crítico o llamativo, o alfabético para texto
+      if (field === "errors" || field === "criticalErrors" || field === "avgScore" || field === "progress") {
+        setSortDirection("desc");
+      } else {
+        setSortDirection("asc");
+      }
+    }
+  };
+
+  const sortedRows = useMemo(() => {
+    if (!rows) return null;
+    const sorted = [...rows];
+    sorted.sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case "driver":
+          comparison = a.driver.localeCompare(b.driver, "es", { sensitivity: "base" });
+          break;
+        case "progress":
+          comparison = a.progressValue - b.progressValue;
+          break;
+        case "errors":
+          comparison = a.errors - b.errors;
+          break;
+        case "criticalErrors":
+          comparison = a.criticalErrors - b.criticalErrors;
+          break;
+        case "avgScore":
+          comparison = a.avgScore - b.avgScore;
+          break;
+        case "verdict": {
+          // Orden por prioridad: APTO > NO APTO (o alfabético)
+          const rank = (v: string) => (v.toUpperCase().includes("NO APTO") ? 0 : 1);
+          comparison = rank(a.verdict) - rank(b.verdict) || a.verdict.localeCompare(b.verdict);
+          break;
+        }
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+    return sorted;
+  }, [rows, sortField, sortDirection]);
 
   // Actualizar URL params cuando cambian fechas o fases
   const updateUrl = (newPhase: number | null, start: string, end: string) => {
@@ -438,26 +495,94 @@ export default function Home() {
           </div>
         )}
 
-        {!!rows?.length && (
+        {!!sortedRows?.length && (
           <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                <thead className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
                   <tr>
-                    <th className="px-4 py-3.5">Conductor</th>
                     <th className="px-4 py-3.5">
-                      {selectedPhase === null ? "Avance de Fases" : "Ejercicios Evaluados"}
+                      <button
+                        type="button"
+                        onClick={() => handleSort("driver")}
+                        className="group inline-flex items-center gap-1.5 hover:text-indigo-600 transition cursor-pointer"
+                        title="Ordenar por nombre del conductor"
+                      >
+                        <span>Conductor</span>
+                        <span className={`transition ${sortField === "driver" ? "text-indigo-600 font-bold" : "text-slate-300 group-hover:text-slate-500"}`}>
+                          {sortField === "driver" ? (sortDirection === "asc" ? "▲" : "▼") : "⇅"}
+                        </span>
+                      </button>
                     </th>
-                    <th className="px-4 py-3.5">Errores Totales</th>
-                    <th className="px-4 py-3.5">Críticos</th>
                     <th className="px-4 py-3.5">
-                      {selectedPhase === null ? "Calificación Global" : "Calificación Fase"}
+                      <button
+                        type="button"
+                        onClick={() => handleSort("progress")}
+                        className="group inline-flex items-center gap-1.5 hover:text-indigo-600 transition cursor-pointer"
+                        title="Ordenar por avance / ejercicios"
+                      >
+                        <span>{selectedPhase === null ? "Avance de Fases" : "Ejercicios Evaluados"}</span>
+                        <span className={`transition ${sortField === "progress" ? "text-indigo-600 font-bold" : "text-slate-300 group-hover:text-slate-500"}`}>
+                          {sortField === "progress" ? (sortDirection === "asc" ? "▲" : "▼") : "⇅"}
+                        </span>
+                      </button>
                     </th>
-                    <th className="px-4 py-3.5 text-right">Dictamen</th>
+                    <th className="px-4 py-3.5">
+                      <button
+                        type="button"
+                        onClick={() => handleSort("errors")}
+                        className="group inline-flex items-center gap-1.5 hover:text-indigo-600 transition cursor-pointer"
+                        title="Ordenar por errores totales"
+                      >
+                        <span>Errores Totales</span>
+                        <span className={`transition ${sortField === "errors" ? "text-indigo-600 font-bold" : "text-slate-300 group-hover:text-slate-500"}`}>
+                          {sortField === "errors" ? (sortDirection === "asc" ? "▲" : "▼") : "⇅"}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="px-4 py-3.5">
+                      <button
+                        type="button"
+                        onClick={() => handleSort("criticalErrors")}
+                        className="group inline-flex items-center gap-1.5 hover:text-indigo-600 transition cursor-pointer"
+                        title="Ordenar por errores críticos"
+                      >
+                        <span>Críticos</span>
+                        <span className={`transition ${sortField === "criticalErrors" ? "text-indigo-600 font-bold" : "text-slate-300 group-hover:text-slate-500"}`}>
+                          {sortField === "criticalErrors" ? (sortDirection === "asc" ? "▲" : "▼") : "⇅"}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="px-4 py-3.5">
+                      <button
+                        type="button"
+                        onClick={() => handleSort("avgScore")}
+                        className="group inline-flex items-center gap-1.5 hover:text-indigo-600 transition cursor-pointer"
+                        title="Ordenar por calificación promedio"
+                      >
+                        <span>{selectedPhase === null ? "Calificación Global" : "Calificación Fase"}</span>
+                        <span className={`transition ${sortField === "avgScore" ? "text-indigo-600 font-bold" : "text-slate-300 group-hover:text-slate-500"}`}>
+                          {sortField === "avgScore" ? (sortDirection === "asc" ? "▲" : "▼") : "⇅"}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="px-4 py-3.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleSort("verdict")}
+                        className="group inline-flex items-center gap-1.5 hover:text-indigo-600 transition cursor-pointer ml-auto"
+                        title="Ordenar por dictamen"
+                      >
+                        <span>Dictamen</span>
+                        <span className={`transition ${sortField === "verdict" ? "text-indigo-600 font-bold" : "text-slate-300 group-hover:text-slate-500"}`}>
+                          {sortField === "verdict" ? (sortDirection === "asc" ? "▲" : "▼") : "⇅"}
+                        </span>
+                      </button>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {rows.map((r) => (
+                  {sortedRows.map((r) => (
                     <tr
                       key={r.driverId}
                       className="group hover:bg-slate-50 transition duration-150"

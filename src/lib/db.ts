@@ -5,7 +5,7 @@ import { evaluateMarks } from "./parse";
 import { classify } from "./catalog";
 import { loadCatalog } from "./catalogStore";
 import { CRITICAL_LIMIT, verdictFor } from "./config";
-import { exerciseKey, getExercises, loadExercises } from "./exercises";
+import { exerciseKey, getExercises, loadExercises, resolveExerciseEnvironment } from "./exercises";
 
 export type EvaluationDoc = {
   phase: number;
@@ -111,6 +111,14 @@ export function dictamen(score: number, criticalErrors: number) {
   return criticalErrors >= CRITICAL_LIMIT ? verdictFor(0) : verdictFor(score);
 }
 
+// Asegura coherencia entre la calificación y el dictamen: un NO APTO nunca debe tener calificación verde/aprobatoria
+export function adjustScoreForCritical(score: number, criticalErrors: number): number {
+  if (criticalErrors >= CRITICAL_LIMIT) {
+    return Math.min(score, 59.0);
+  }
+  return score;
+}
+
 // Calificación recalculada desde las marcas y telemetría para que cambios en el catálogo o ponderación apliquen inmediatamente.
 export type EvaluationView = EvaluationDoc & {
   criticalCount: number;
@@ -182,8 +190,9 @@ function summarize(docs: EvaluationView[]): PhaseSummary[] {
         expected = expectedList.length;
         total = counted.reduce((a, e) => a + e.score, 0);
       }
-      const avgScore = Math.round((total / expected) * 10) / 10;
+      const rawAvg = Math.round((total / expected) * 10) / 10;
       const criticalErrors = counted.reduce((a, e) => a + e.criticalCount, 0);
+      const avgScore = adjustScoreForCritical(rawAvg, criticalErrors);
       const v = dictamen(avgScore, criticalErrors);
       return {
         driverId: g[0].driverId,
@@ -254,8 +263,9 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
     if (!pSummaries.length) continue;
 
     const totalScore = pSummaries.reduce((acc, p) => acc + p.avgScore, 0);
-    const avgScore = Math.round((totalScore / pSummaries.length) * 10) / 10;
+    const rawAvg = Math.round((totalScore / pSummaries.length) * 10) / 10;
     const criticalErrors = pSummaries.reduce((acc, p) => acc + p.criticalErrors, 0);
+    const avgScore = adjustScoreForCritical(rawAvg, criticalErrors);
     const totalErrors = pSummaries.reduce((acc, p) => acc + p.errors, 0);
     const totalExercises = docs.length;
     const v = dictamen(avgScore, criticalErrors);
@@ -282,17 +292,50 @@ export async function driverData(driverId: string) {
   );
   if (!evals.length) return null;
 
-  const counts = new Map<string, number>();
-  for (const e of evals)
-    for (const m of e.marks) if (m.type === "ERROR") counts.set(m.description, (counts.get(m.description) ?? 0) + 1);
-  const breakdown = [...counts.entries()]
-    .map(([description, count]) => ({ description, count, ...classify(description) }))
+  // Agrupar incidencias considerando el entorno del ejercicio donde ocurrieron
+  type IncidentKey = { description: string; environment: string };
+  const incidentMap = new Map<string, { description: string; environment: string; count: number }>();
+
+  for (const e of evals) {
+    const env = resolveExerciseEnvironment(e.exercise || e.unit);
+    for (const m of e.marks) {
+      if (m.type !== "ERROR") continue;
+      const key = `${m.description}|${env}`;
+      const existing = incidentMap.get(key);
+      if (existing) {
+        existing.count++;
+      } else {
+        incidentMap.set(key, { description: m.description, environment: env, count: 1 });
+      }
+    }
+  }
+
+  const breakdown = [...incidentMap.values()]
+    .map((item) => {
+      const cls = classify(item.description, item.environment);
+      const isOffRoad = item.description.toLowerCase().includes("salirse de la via");
+      // Si es salida de vía, aclarar en el texto del desglose el contexto de peligro
+      const displayDescription = isOffRoad
+        ? item.environment === "MONTANA"
+          ? `${item.description} (en montaña / riesgo de precipicio)`
+          : `${item.description} (en carretera / ciudad)`
+        : item.description;
+
+      return {
+        description: displayDescription,
+        rawDescription: item.description,
+        count: item.count,
+        environment: item.environment,
+        ...cls,
+      };
+    })
     .sort((a, b) => b.weight * b.count - a.weight * a.count || b.count - a.count)
     .slice(0, 20);
 
   const phases = summarize(evals);
-  const overall = Math.round((phases.reduce((a, p) => a + p.avgScore, 0) / phases.length) * 10) / 10;
+  const rawOverall = Math.round((phases.reduce((a, p) => a + p.avgScore, 0) / phases.length) * 10) / 10;
   const criticalErrors = phases.reduce((a, p) => a + p.criticalErrors, 0);
+  const overall = adjustScoreForCritical(rawOverall, criticalErrors);
   const v = dictamen(overall, criticalErrors);
 
   return { name: evals[0].driverName, evals, phases, breakdown, overall, criticalErrors, verdict: v.label, color: v.color };

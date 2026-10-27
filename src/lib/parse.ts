@@ -205,9 +205,11 @@ export function evaluateMarks(
   let points = 0;
   let errorCount = 0;
 
+  const env = resolveExerciseEnvironment(exerciseName);
+
   for (const m of marks) {
     if (m.type !== "ERROR") continue;
-    const c = classify(m.description);
+    const c = classify(m.description, env);
     errorCount++;
     points += c.weight;
     bySeverity[c.severity]++;
