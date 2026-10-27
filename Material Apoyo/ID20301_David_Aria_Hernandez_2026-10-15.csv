@@ -1,0 +1,108 @@
+Informe de sesión;
+
+Lección;Unidad;Ejercicio
+03 CFull;02 - Pillones;02 - Pillones T880
+
+FECHA;CONDUCTOR;INSTRUCTOR;DURACIÓN
+2026-10-15;Mario Agraz;David Aria Hernandez;0:07:03
+
+
+Condiciones iniciales;
+
+Escenario:;Pillones
+Vehículo:;Kenworth T880 Remolque Simple
+Carga:;75%
+Lluvia:;0%
+Niebla:;0%
+Nieve:;0%
+Intensidad de viento:;100%
+Dirección del viento:;N
+Estado del pavimento:;"Terreno sin irregularidades.
+Media adherencia"
+Iluminación:;Día
+
+Comentarios;
+""
+
+Palabras clave del ejercicio;
+""
+
+Notas del instructor;
+""
+
+
+Marcas;
+
+0:00:00;START EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:00:40;ERROR;No poner la luz direccional izquierdo para el cambio de carril
+0:00:57;ERROR;No poner la luz direccional derecha para el cambio de carril
+0:01:15;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:01:56;END EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:02:34;WEATHER;Alterar clima: nivel de lluvia: 25%
+0:02:35;WEATHER;Alterar clima: nivel de nieve: 25%
+0:02:36;BREAKDOWN;Freno motor estropeado
+0:02:47;ERROR;Acelerar por encima de la zona verde
+0:02:51;TRAFFIC;Alterar la densidad de vehículos en 25%
+0:02:58;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:03:26;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:03:53;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:04:10;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:04:21;WEATHER;Alterar clima: nivel de nieve: 50%
+0:04:53;START EVENT;Cruce con un vehículo largo en curva
+0:06:36;ERROR;Acelerar por encima de la zona verde
+0:06:39;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:06:43;ERROR;Acelerar por encima de la zona verde
+0:06:54;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:06:55;ERROR;Acelerar en neutral o con embrague presionado
+0:06:57;ERROR;Acelerar por encima de la zona verde
+0:06:58;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:06:59;END EVENT;Cruce con un vehículo largo en curva
+
+
+Resumen de marcas;
+
+Errores;
+Desembragar muy lentamente después de un cambio de marcha;5
+Acelerar por encima de la zona verde;4
+Cambiar de marcha sin haber presionado el embrague lo suficiente;3
+No poner la luz direccional derecha para el cambio de carril;1
+Acelerar en neutral o con embrague presionado;1
+No poner la luz direccional izquierdo para el cambio de carril;1
+
+Averias;
+Freno motor estropeado;1
+
+Incidencias;
+Cruce con un vehículo largo en curva;1
+Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria;1
+
+Eventos de clima;
+Alterar clima: nivel de lluvia: 25%;1
+Alterar clima: nivel de nieve: 25%;1
+Alterar clima: nivel de nieve: 50%;1
+
+Eventos de trafico;
+Alterar la densidad de vehículos en 25%;1
+
+
+
+Indicadores genéricos;
+
+Distancia;1402; m
+Consumo medio;4.8; l/100km
+Tiempo de uso normal del acelerador;00:05;
+Tiempo de uso del acelerador por encima del 60%;00:00;
+Número de usos del acelerador;8;
+Tiempo de uso del freno;00:41;
+Número de usos totales de freno;8;
+Número de usos del freno por encima del 60%;2;
+Número de usos del embrague;13;
+Número de cambios de marcha;14;
+Velocidad media;11.9;km/h
+Revoluciones máximas;1939;rpm
+% en zona verde;70;%
+% en zona amarilla;1;%
+% en zona roja;0;%
+Velocidad máxima;19.3;km/h
+Distancia recorrida sin freno ni acelerador;1264.7;m
+Tiempo de uso de freno aux (motor/retarder);0;s

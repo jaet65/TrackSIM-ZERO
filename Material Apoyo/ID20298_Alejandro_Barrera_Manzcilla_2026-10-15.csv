@@ -1,0 +1,147 @@
+Informe de sesión;
+
+Lección;Unidad;Ejercicio
+03 CFull;02 - Montaña;02 - Montaña T800 Sencillo
+
+FECHA;CONDUCTOR;INSTRUCTOR;DURACIÓN
+2026-10-15;Mario Agraz;Alejandro Barrera Manzcilla;0:05:33
+
+
+Condiciones iniciales;
+
+Escenario:;Pista de montaña
+Vehículo:;Kenworth T800 Remolque Simple
+Carga:;75%
+Lluvia:;0%
+Niebla:;0%
+Nieve:;0%
+Intensidad de viento:;0%
+Dirección del viento:;N
+Estado del pavimento:;"Terreno sin irregularidades.
+Media adherencia"
+Iluminación:;Día
+
+Comentarios;
+""
+
+Palabras clave del ejercicio;
+""
+
+Notas del instructor;
+""
+
+
+Marcas;
+
+0:00:00;START EVENT;Desprendimientos sobre la carretera
+0:00:48;ERROR;Acelerar tras un cambio de marcha que nos haya dejado por debajo de la zona verde
+0:00:55;ERROR;Pisar una línea continua
+0:01:10;END EVENT;Desprendimientos sobre la carretera
+0:01:21;ERROR;Pisar una línea continua
+0:01:23;ERROR;Invadir un carril de sentido contrario rebasando una línea continua
+0:01:41;ERROR;Pisar el acotamiento derecho
+0:02:12;ERROR;Pisar una línea continua
+0:02:24;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:02:28;ERROR;Pisar el acotamiento derecho
+0:02:33;ERROR;Acelerar tras un cambio de marcha que nos haya dejado por debajo de la zona verde
+0:02:43;TRAFFIC;Alterar la densidad de vehículos en 50%
+0:02:48;ERROR;Pisar el acotamiento derecho
+0:03:03;START EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:03:05;ERROR;Pisar una línea continua
+0:03:16;ERROR;Pisar el acotamiento derecho
+0:03:22;ERROR;Acelerar por encima de la zona verde
+0:03:27;ERROR;Pisar el acotamiento derecho
+0:03:29;ERROR;Abusar del acelerador en la aproximación a un vehículo parado
+0:03:40;ERROR;Pisar el acotamiento derecho
+0:03:44;ERROR;Superar la zona roja de las rpm
+0:03:45;ERROR;Acelerar por encima de la zona verde
+0:03:47;START EVENT;Cruce con un vehículo largo en curva
+0:03:51;ILLUMINATION;Alterar iluminación: Noche
+0:03:51;ERROR;Pisar el acotamiento derecho
+0:03:54;ERROR;Superar la zona roja de las rpm
+0:04:02;ERROR;No emplear el freno de embrague para engranar la marcha de arranque
+0:04:05;ERROR;Pisar una línea continua
+0:04:05;ERROR;No conectar el alumbrado de cruce en situaciones de baja visibilidad
+0:04:15;ERROR;No poner la luz direccional derecha para el cambio de carril
+0:04:17;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:04:23;END EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:04:24;ERROR;Pisar el acotamiento derecho
+0:04:25;TRAFFIC;Alterar la densidad de vehículos en 25%
+0:04:26;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:04:29;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:04:35;ERROR;Colisión con un vehículo de incidencia
+0:04:36;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:04:37;ERROR;Invadir el acotamiento
+0:04:38;ERROR;Salirse de la vía
+0:04:46;END EVENT;Cruce con un vehículo largo en curva
+0:04:54;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:04:57;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:05:00;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:05:02;ERROR;Pisar el acotamiento derecho
+0:05:04;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:05:06;ERROR;No poner la luz direccional derecha para el cambio de carril
+0:05:12;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:05:17;ERROR;Pisar el acotamiento derecho
+0:05:18;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:05:26;ERROR;Derrape trasero
+0:05:26;ERROR;Colisión con un vehículo del tráfico
+0:05:27;ERROR;Invadir el acotamiento
+0:05:27;ERROR;Salirse de la vía
+0:05:30;ERROR;Parar el vehículo con una marcha demasiado alta engranada
+
+
+Resumen de marcas;
+
+Errores;
+Utilizar el freno de servicio antes que los frenos auxiliares;11
+Pisar el acotamiento derecho;10
+Pisar una línea continua;5
+No poner la luz direccional derecha para el cambio de carril;2
+Acelerar por encima de la zona verde;2
+Acelerar tras un cambio de marcha que nos haya dejado por debajo de la zona verde;2
+Invadir el acotamiento;2
+Salirse de la vía;2
+Superar la zona roja de las rpm;2
+No conectar el alumbrado de cruce en situaciones de baja visibilidad;1
+Derrape trasero;1
+Parar el vehículo con una marcha demasiado alta engranada;1
+Colisión con un vehículo del tráfico;1
+Colisión con un vehículo de incidencia;1
+Abusar del acelerador en la aproximación a un vehículo parado;1
+Invadir un carril de sentido contrario rebasando una línea continua;1
+No emplear el freno de embrague para engranar la marcha de arranque;1
+
+Incidencias;
+Cruce con un vehículo largo en curva;1
+Desprendimientos sobre la carretera;1
+Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria;1
+
+Eventos de iluminacion;
+Alterar iluminación: Noche;1
+
+Eventos de trafico;
+Alterar la densidad de vehículos en 25%;1
+Alterar la densidad de vehículos en 50%;1
+
+
+
+Indicadores genéricos;
+
+Distancia;2161; m
+Consumo medio;8.5; l/100km
+Tiempo de uso normal del acelerador;01:13;
+Tiempo de uso del acelerador por encima del 60%;00:00;
+Número de usos del acelerador;18;
+Tiempo de uso del freno;00:37;
+Número de usos totales de freno;14;
+Número de usos del freno por encima del 60%;5;
+Número de usos del embrague;4;
+Número de cambios de marcha;29;
+Velocidad media;23.3;km/h
+Revoluciones máximas;3461;rpm
+% en zona verde;39;%
+% en zona amarilla;6;%
+% en zona roja;0;%
+Velocidad máxima;48.6;km/h
+Distancia recorrida sin freno ni acelerador;1384.9;m
+Tiempo de uso de freno aux (motor/retarder);0;s

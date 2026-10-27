@@ -1,0 +1,164 @@
+Informe de sesión;
+
+Lección;Unidad;Ejercicio
+03 CFull;02 - Montaña;02 - Montaña T800 Sencillo
+
+FECHA;CONDUCTOR;INSTRUCTOR;DURACIÓN
+2026-10-15;Mario Agraz;David Aria Hernandez;0:07:05
+
+
+Condiciones iniciales;
+
+Escenario:;Pista de montaña
+Vehículo:;Kenworth T800 Remolque Simple
+Carga:;75%
+Lluvia:;0%
+Niebla:;0%
+Nieve:;0%
+Intensidad de viento:;0%
+Dirección del viento:;N
+Estado del pavimento:;"Terreno sin irregularidades.
+Media adherencia"
+Iluminación:;Día
+
+Comentarios;
+""
+
+Palabras clave del ejercicio;
+""
+
+Notas del instructor;
+""
+
+
+Marcas;
+
+0:00:00;START EVENT;Desprendimientos sobre la carretera
+0:00:45;ERROR;Estar parado con una marcha metida y el embrague presionado
+0:01:07;ERROR;Acelerar por encima de la zona verde
+0:01:13;ERROR;Acelerar por encima de la zona verde
+0:01:15;ERROR;Acelerar en neutral o con embrague presionado
+0:01:15;ERROR;Acelerar en neutral o con embrague presionado
+0:01:18;ERROR;Acelerar por encima de la zona verde
+0:01:25;ERROR;Pisar una línea continua
+0:01:25;ERROR;Acelerar por encima de la zona verde
+0:01:29;ERROR;Acelerar en neutral o con embrague presionado
+0:01:41;END EVENT;Desprendimientos sobre la carretera
+0:01:53;ERROR;Pisar una línea continua
+0:01:56;ERROR;Invadir un carril de sentido contrario rebasando una línea continua
+0:02:05;ERROR;Acelerar por encima de la zona verde
+0:02:10;ERROR;Acelerar por encima de la zona verde
+0:02:12;ERROR;Acelerar en neutral o con embrague presionado
+0:02:16;ERROR;Pisar el acotamiento derecho
+0:03:02;ERROR;Pisar una línea continua
+0:03:14;ERROR;Acelerar con el retárder o freno motor activo
+0:03:22;ERROR;Invadir un carril de sentido contrario rebasando una línea continua
+0:03:27;ERROR;Pisar una línea continua
+0:03:28;ERROR;Acelerar con el retárder o freno motor activo
+0:03:29;ERROR;Acelerar con el retárder o freno motor activo
+0:03:30;ERROR;Acelerar con el retárder o freno motor activo
+0:03:32;ERROR;Acelerar con el retárder o freno motor activo
+0:03:33;ERROR;Acelerar con el retárder o freno motor activo
+0:03:34;ERROR;Acelerar con el retárder o freno motor activo
+0:03:38;TRAFFIC;Alterar la densidad de vehículos en 50%
+0:03:41;ERROR;Acelerar con el retárder o freno motor activo
+0:03:47;ERROR;Pisar una línea continua
+0:03:57;ERROR;Pisar el acotamiento derecho
+0:04:01;START EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:04:08;ERROR;Pisar una línea continua
+0:04:33;ERROR;Pisar una línea continua
+0:04:44;START EVENT;Cruce con un vehículo largo en curva
+0:04:48;ILLUMINATION;Alterar iluminación: Noche
+0:04:48;ERROR;Pisar una línea continua
+0:05:03;ERROR;Acelerar con el retárder o freno motor activo
+0:05:09;END EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:05:10;ERROR;Pisar el acotamiento derecho
+0:05:11;TRAFFIC;Alterar la densidad de vehículos en 25%
+0:05:13;ERROR;Parar el vehículo con una marcha demasiado alta engranada
+0:05:24;ERROR;Estacionar sin dejar el freno de estacionamiento puesto
+0:05:29;ERROR;Acelerar con el retárder o freno motor activo
+0:05:31;ERROR;Acelerar con el retárder o freno motor activo
+0:05:32;ERROR;Acelerar por encima de la zona verde
+0:05:33;ERROR;Acelerar en neutral o con embrague presionado
+0:05:33;ERROR;Acelerar en neutral o con embrague presionado
+0:05:33;ERROR;En movimiento de avance no parar el vehículo para meter marcha atrás
+0:05:35;ERROR;Acelerar en neutral o con embrague presionado
+0:05:36;ERROR;Acelerar por encima de la zona verde
+0:05:37;ERROR;Acelerar en neutral o con embrague presionado
+0:05:37;ERROR;Acelerar en neutral o con embrague presionado
+0:05:38;ERROR;Acelerar con el retárder o freno motor activo
+0:05:40;ERROR;Acelerar por encima de la zona verde
+0:05:42;ERROR;Acelerar en neutral o con embrague presionado
+0:05:42;ERROR;Acelerar por encima de la zona verde
+0:05:44;ERROR;Acelerar con el retárder o freno motor activo
+0:05:53;ERROR;Estar parado con una marcha metida y el embrague presionado
+0:06:33;ERROR;Acelerar con el retárder o freno motor activo
+0:06:34;ERROR;Acelerar con el retárder o freno motor activo
+0:06:36;ERROR;Acelerar por encima de la zona verde
+0:06:39;ERROR;Acelerar con el retárder o freno motor activo
+0:06:41;ERROR;Acelerar con el retárder o freno motor activo
+0:06:42;ERROR;Acelerar por encima de la zona verde
+0:06:42;ERROR;Acelerar con el retárder o freno motor activo
+0:06:43;ERROR;Acelerar con el retárder o freno motor activo
+0:06:44;ERROR;Acelerar por encima de la zona verde
+0:06:45;ERROR;Acelerar con el retárder o freno motor activo
+0:06:47;ERROR;Pisar el acotamiento derecho
+0:06:50;ERROR;Acelerar en neutral o con embrague presionado
+0:06:50;ERROR;Acelerar en neutral o con embrague presionado
+0:06:51;ERROR;Acelerar por encima de la zona verde
+0:06:51;ERROR;Acelerar con el retárder o freno motor activo
+0:06:57;ERROR;Acelerar con el retárder o freno motor activo
+0:07:01;ERROR;Acelerar en neutral o con embrague presionado
+0:07:01;ERROR;Acelerar por encima de la zona verde
+0:07:03;END EVENT;Cruce con un vehículo largo en curva
+0:07:04;ERROR;Pisar el acotamiento derecho
+
+
+Resumen de marcas;
+
+Errores;
+Acelerar con el retárder o freno motor activo;22
+Acelerar por encima de la zona verde;15
+Acelerar en neutral o con embrague presionado;13
+Pisar una línea continua;8
+Pisar el acotamiento derecho;5
+Invadir un carril de sentido contrario rebasando una línea continua;2
+Estar parado con una marcha metida y el embrague presionado;2
+Parar el vehículo con una marcha demasiado alta engranada;1
+Estacionar sin dejar el freno de estacionamiento puesto;1
+En movimiento de avance no parar el vehículo para meter marcha atrás;1
+
+Incidencias;
+Cruce con un vehículo largo en curva;1
+Desprendimientos sobre la carretera;1
+Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria;1
+
+Eventos de iluminacion;
+Alterar iluminación: Noche;1
+
+Eventos de trafico;
+Alterar la densidad de vehículos en 25%;1
+Alterar la densidad de vehículos en 50%;1
+
+
+
+Indicadores genéricos;
+
+Distancia;1917; m
+Consumo medio;10.6; l/100km
+Tiempo de uso normal del acelerador;01:25;
+Tiempo de uso del acelerador por encima del 60%;00:00;
+Número de usos del acelerador;30;
+Tiempo de uso del freno;00:46;
+Número de usos totales de freno;11;
+Número de usos del freno por encima del 60%;7;
+Número de usos del embrague;2;
+Número de cambios de marcha;20;
+Velocidad media;16.2;km/h
+Revoluciones máximas;2180;rpm
+% en zona verde;43;%
+% en zona amarilla;2;%
+% en zona roja;0;%
+Velocidad máxima;42;km/h
+Distancia recorrida sin freno ni acelerador;1271.2;m
+Tiempo de uso de freno aux (motor/retarder);102;s

@@ -1,0 +1,130 @@
+Informe de sesión;
+
+Lección;Unidad;Ejercicio
+03 CFull;03C -Autopista;03C - Autopista - T800 Full
+
+FECHA;CONDUCTOR;INSTRUCTOR;DURACIÓN
+2026-10-14;Mario Agraz;Amir Saul Magaña Trejo;0:07:00
+
+
+Condiciones iniciales;
+
+Escenario:;Interurbano (Europa)
+Vehículo:;Kenworth T800 Remolque Doble
+Carga:;0%
+Lluvia:;0%
+Niebla:;0%
+Nieve:;0%
+Intensidad de viento:;0%
+Dirección del viento:;N
+Estado del pavimento:;"Terreno sin irregularidades.
+Máxima adherencia"
+Iluminación:;Día
+
+Comentarios;
+""
+
+Palabras clave del ejercicio;
+""
+
+Notas del instructor;
+""
+
+
+Marcas;
+
+0:00:24;ERROR;En movimiento de retroceso no parar el vehículo para meter marcha adelante
+0:00:27;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:00:34;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:00:44;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:00:50;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:00:56;ERROR;Pisar el acotamiento derecho
+0:01:17;WEATHER;Alterar clima: nivel de niebla: 25%
+0:01:20;START EVENT;Ciclista ocupando parte de la vía de circulación
+0:01:27;ERROR;Circular con niebla sin luces antiniebla
+0:01:37;ERROR;No respetar un ceda el paso
+0:01:48;ERROR;Pisar el acotamiento derecho
+0:02:40;ERROR;Acelerar en neutral o con embrague presionado
+0:02:42;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:02:42;START EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:02:55;ERROR;Acelerar tras un cambio de marcha que nos haya dejado por debajo de la zona verde
+0:02:57;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:03:05;START EVENT;Desprendimientos sobre la carretera
+0:03:12;WEATHER;Alterar clima: nivel de niebla: 50%
+0:03:24;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:03:42;END EVENT;Ciclista ocupando parte de la vía de circulación
+0:03:48;START EVENT;Vehículo lento y coches adelantando al alumno
+0:03:56;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:03:57;END EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:04:00;END EVENT;Desprendimientos sobre la carretera
+0:04:00;ERROR;Pisar el acotamiento derecho
+0:04:27;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:04:42;START EVENT;Ciclista ocupando parte de la vía de circulación
+0:04:42;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:04:43;START EVENT;Ciclista ocupando parte de la vía de circulación
+0:04:44;START EVENT;Ciclista ocupando parte de la vía de circulación
+0:04:44;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:04:48;WEATHER;Alterar clima: nivel de niebla: 75%
+0:04:48;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:04:48;TRAFFIC;Alterar la velocidad de vehículos en -50%
+0:04:52;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:05:34;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:05:40;ERROR;Utilizar el freno de servicio antes que los frenos auxiliares
+0:06:21;START EVENT;Frenada súbita del vehículo precedente
+0:06:21;END EVENT;Ciclista ocupando parte de la vía de circulación
+0:06:22;END EVENT;Ciclista ocupando parte de la vía de circulación
+0:06:23;END EVENT;Ciclista ocupando parte de la vía de circulación
+0:06:46;END EVENT;Vehículo lento y coches adelantando al alumno
+0:06:46;ERROR;Pisar el acotamiento derecho
+
+
+Resumen de marcas;
+
+Errores;
+Utilizar el freno de servicio antes que los frenos auxiliares;8
+Cambiar de marcha sin haber presionado el embrague lo suficiente;6
+Pisar el acotamiento derecho;4
+Circular con niebla sin luces antiniebla;1
+Desembragar muy lentamente después de un cambio de marcha;1
+En movimiento de retroceso no parar el vehículo para meter marcha adelante;1
+No respetar un ceda el paso;1
+Acelerar tras un cambio de marcha que nos haya dejado por debajo de la zona verde;1
+Acelerar en neutral o con embrague presionado;1
+
+Incidencias;
+Ciclista ocupando parte de la vía de circulación;4
+Desprendimientos sobre la carretera;1
+Frenada súbita del vehículo precedente;1
+Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria;1
+Vehículo lento y coches adelantando al alumno;1
+
+Eventos de clima;
+Alterar clima: nivel de niebla: 25%;1
+Alterar clima: nivel de niebla: 50%;1
+Alterar clima: nivel de niebla: 75%;1
+
+Eventos de trafico;
+Alterar la velocidad de vehículos en -50%;1
+
+
+
+Indicadores genéricos;
+
+Distancia;3365; m
+Consumo medio;9.5; l/100km
+Tiempo de uso normal del acelerador;01:40;
+Tiempo de uso del acelerador por encima del 60%;00:00;
+Número de usos del acelerador;31;
+Tiempo de uso del freno;00:27;
+Número de usos totales de freno;13;
+Número de usos del freno por encima del 60%;2;
+Número de usos del embrague;23;
+Número de cambios de marcha;27;
+Velocidad media;28.7;km/h
+Revoluciones máximas;1830;rpm
+% en zona verde;50;%
+% en zona amarilla;0;%
+% en zona roja;0;%
+Velocidad máxima;51.5;km/h
+Distancia recorrida sin freno ni acelerador;2171.9;m
+Tiempo de uso de freno aux (motor/retarder);57;s

@@ -1,0 +1,119 @@
+Informe de sesión;
+
+Lección;Unidad;Ejercicio
+03 CFull;03C -Autopista;03C - Autopista - T880
+
+FECHA;CONDUCTOR;INSTRUCTOR;DURACIÓN
+2026-10-14;Mario Agraz;Raul Alexis Susano Vargas;0:07:03
+
+
+Condiciones iniciales;
+
+Escenario:;Interurbano (Europa)
+Vehículo:;Kenworth T880 Remolque Simple
+Carga:;75%
+Lluvia:;0%
+Niebla:;0%
+Nieve:;0%
+Intensidad de viento:;0%
+Dirección del viento:;N
+Estado del pavimento:;"Terreno sin irregularidades.
+Máxima adherencia"
+Iluminación:;Día
+
+Comentarios;
+""
+
+Palabras clave del ejercicio;
+""
+
+Notas del instructor;
+""
+
+
+Marcas;
+
+0:00:22;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:00:23;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:00:24;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:00:45;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:00:53;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:01:12;ERROR;Pisar el acotamiento derecho
+0:01:42;WEATHER;Alterar clima: nivel de niebla: 25%
+0:01:46;START EVENT;Ciclista ocupando parte de la vía de circulación
+0:01:52;ERROR;No conectar el alumbrado de cruce en situaciones de baja visibilidad
+0:01:52;ERROR;Circular con niebla sin luces antiniebla
+0:02:03;TRAFFIC;Alterar la velocidad de vehículos en 50%
+0:02:16;END EVENT;Ciclista ocupando parte de la vía de circulación
+0:03:05;ERROR;Acelerar por encima de la zona verde
+0:03:11;ERROR;Acelerar en neutral o con embrague presionado
+0:03:12;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:03:48;START EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:04:03;START EVENT;Desprendimientos sobre la carretera
+0:04:08;WEATHER;Alterar clima: nivel de niebla: 50%
+0:04:26;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:05:26;ERROR;No emplear el freno de embrague para engranar la marcha de arranque
+0:05:34;ERROR;Acelerar por encima de la zona verde
+0:05:59;START EVENT;Vehículo lento y coches adelantando al alumno
+0:06:03;ERROR;Acelerar por encima de la zona verde
+0:06:05;ERROR;Acelerar en neutral o con embrague presionado
+0:06:06;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:06:07;ERROR;Acelerar por encima de la zona verde
+0:06:11;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:06:14;ERROR;Acelerar por encima de la zona verde
+0:06:17;ERROR;Acelerar por encima de la zona verde
+0:06:19;END EVENT;Vehículo lento y coches adelantando al alumno
+0:06:34;END EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:06:42;END EVENT;Desprendimientos sobre la carretera
+0:06:45;ERROR;Acelerar por encima de la zona verde
+0:06:50;ERROR;Acelerar en neutral o con embrague presionado
+0:06:51;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+
+
+Resumen de marcas;
+
+Errores;
+Acelerar por encima de la zona verde;7
+Cambiar de marcha sin haber presionado el embrague lo suficiente;6
+Desembragar muy lentamente después de un cambio de marcha;4
+Acelerar en neutral o con embrague presionado;3
+No conectar el alumbrado de cruce en situaciones de baja visibilidad;1
+Circular con niebla sin luces antiniebla;1
+No emplear el freno de embrague para engranar la marcha de arranque;1
+Pisar el acotamiento derecho;1
+
+Incidencias;
+Ciclista ocupando parte de la vía de circulación;1
+Desprendimientos sobre la carretera;1
+Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria;1
+Vehículo lento y coches adelantando al alumno;1
+
+Eventos de clima;
+Alterar clima: nivel de niebla: 25%;1
+Alterar clima: nivel de niebla: 50%;1
+
+Eventos de trafico;
+Alterar la velocidad de vehículos en 50%;1
+
+
+
+Indicadores genéricos;
+
+Distancia;1709; m
+Consumo medio;18.5; l/100km
+Tiempo de uso normal del acelerador;03:04;
+Tiempo de uso del acelerador por encima del 60%;00:00;
+Número de usos del acelerador;37;
+Tiempo de uso del freno;00:41;
+Número de usos totales de freno;8;
+Número de usos del freno por encima del 60%;15;
+Número de usos del embrague;21;
+Número de cambios de marcha;23;
+Velocidad media;14.5;km/h
+Revoluciones máximas;1971;rpm
+% en zona verde;73;%
+% en zona amarilla;0;%
+% en zona roja;0;%
+Velocidad máxima;25.1;km/h
+Distancia recorrida sin freno ni acelerador;628.3;m
+Tiempo de uso de freno aux (motor/retarder);0;s

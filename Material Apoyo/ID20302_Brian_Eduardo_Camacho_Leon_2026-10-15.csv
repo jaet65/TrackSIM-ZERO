@@ -1,0 +1,90 @@
+Informe de sesión;
+
+Lección;Unidad;Ejercicio
+03 CFull;02 - Pillones;02 - Pillones T880
+
+FECHA;CONDUCTOR;INSTRUCTOR;DURACIÓN
+2026-10-15;Mario Agraz;Brian Eduardo Camacho Leon;0:07:03
+
+
+Condiciones iniciales;
+
+Escenario:;Pillones
+Vehículo:;Kenworth T880 Remolque Simple
+Carga:;75%
+Lluvia:;0%
+Niebla:;0%
+Nieve:;0%
+Intensidad de viento:;100%
+Dirección del viento:;N
+Estado del pavimento:;"Terreno sin irregularidades.
+Media adherencia"
+Iluminación:;Día
+
+Comentarios;
+""
+
+Palabras clave del ejercicio;
+""
+
+Notas del instructor;
+""
+
+
+Marcas;
+
+0:00:00;START EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:00:41;ERROR;Acelerar en neutral o con embrague presionado
+0:00:49;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:02:36;END EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:03:20;WEATHER;Alterar clima:
+0:03:20;WEATHER;Alterar clima: nivel de nieve: 25%
+0:03:22;BREAKDOWN;Freno motor estropeado
+0:03:39;TRAFFIC;Alterar la densidad de vehículos en 25%
+0:05:33;WEATHER;Alterar clima: nivel de nieve: 50%
+0:06:17;START EVENT;Cruce con un vehículo largo en curva
+
+
+Resumen de marcas;
+
+Errores;
+Acelerar en neutral o con embrague presionado;1
+Desembragar muy lentamente después de un cambio de marcha;1
+
+Averias;
+Freno motor estropeado;1
+
+Incidencias;
+Cruce con un vehículo largo en curva;1
+Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria;1
+
+Eventos de clima;
+Alterar clima:;1
+Alterar clima: nivel de nieve: 25%;1
+Alterar clima: nivel de nieve: 50%;1
+
+Eventos de trafico;
+Alterar la densidad de vehículos en 25%;1
+
+
+
+Indicadores genéricos;
+
+Distancia;1178; m
+Consumo medio;3.3; l/100km
+Tiempo de uso normal del acelerador;00:00;
+Tiempo de uso del acelerador por encima del 60%;00:00;
+Número de usos del acelerador;1;
+Tiempo de uso del freno;00:15;
+Número de usos totales de freno;2;
+Número de usos del freno por encima del 60%;2;
+Número de usos del embrague;1;
+Número de cambios de marcha;5;
+Velocidad media;10;km/h
+Revoluciones máximas;1601;rpm
+% en zona verde;81;%
+% en zona amarilla;0;%
+% en zona roja;0;%
+Velocidad máxima;14.6;km/h
+Distancia recorrida sin freno ni acelerador;1173.9;m
+Tiempo de uso de freno aux (motor/retarder);0;s

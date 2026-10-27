@@ -6,7 +6,8 @@
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
-    "public": "public",
+    "site": "tracksim-zero",
+    "public": "dist",
     "ignore": [
       "firebase.json",
       "**/.*",

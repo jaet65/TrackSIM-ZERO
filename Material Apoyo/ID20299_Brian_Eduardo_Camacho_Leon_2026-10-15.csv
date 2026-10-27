@@ -1,0 +1,193 @@
+Informe de sesión;
+
+Lección;Unidad;Ejercicio
+03 CFull;02 - Montaña;02 - Montaña T800 Sencillo
+
+FECHA;CONDUCTOR;INSTRUCTOR;DURACIÓN
+2026-10-15;Mario Agraz;Brian Eduardo Camacho Leon;0:06:34
+
+
+Condiciones iniciales;
+
+Escenario:;Pista de montaña
+Vehículo:;Kenworth T800 Remolque Simple
+Carga:;75%
+Lluvia:;0%
+Niebla:;0%
+Nieve:;0%
+Intensidad de viento:;0%
+Dirección del viento:;N
+Estado del pavimento:;"Terreno sin irregularidades.
+Media adherencia"
+Iluminación:;Día
+
+Comentarios;
+""
+
+Palabras clave del ejercicio;
+""
+
+Notas del instructor;
+""
+
+
+Marcas;
+
+0:00:00;START EVENT;Desprendimientos sobre la carretera
+0:00:35;ERROR;Estar parado con una marcha metida y el embrague presionado
+0:00:42;ERROR;Acelerar por encima de la zona verde
+0:00:44;ERROR;Acelerar en neutral o con embrague presionado
+0:00:44;ERROR;Acelerar por encima de la zona verde
+0:00:47;ERROR;Acelerar en neutral o con embrague presionado
+0:00:47;ERROR;Acelerar en neutral o con embrague presionado
+0:00:47;ERROR;Acelerar por encima de la zona verde
+0:00:49;ERROR;Acelerar en neutral o con embrague presionado
+0:00:50;ERROR;Acelerar en neutral o con embrague presionado
+0:00:53;ERROR;Acelerar en neutral o con embrague presionado
+0:00:53;ERROR;Acelerar en neutral o con embrague presionado
+0:00:56;ERROR;Acelerar en neutral o con embrague presionado
+0:00:56;ERROR;Acelerar en neutral o con embrague presionado
+0:00:59;ERROR;Acelerar en neutral o con embrague presionado
+0:01:02;ERROR;Acelerar en neutral o con embrague presionado
+0:01:07;ERROR;Acelerar en neutral o con embrague presionado
+0:01:07;ERROR;En movimiento de avance no parar el vehículo para meter marcha atrás
+0:01:07;ERROR;Acelerar por encima de la zona verde
+0:01:08;ERROR;Acelerar en neutral o con embrague presionado
+0:01:08;ERROR;Acelerar en neutral o con embrague presionado
+0:01:33;ERROR;Estar parado con una marcha metida y el embrague presionado
+0:01:39;ERROR;Acelerar en neutral o con embrague presionado
+0:01:40;ERROR;Acelerar por encima de la zona verde
+0:01:41;ERROR;Acelerar en neutral o con embrague presionado
+0:01:42;ERROR;Acelerar por encima de la zona verde
+0:01:43;ERROR;Acelerar en neutral o con embrague presionado
+0:01:44;ERROR;Acelerar en neutral o con embrague presionado
+0:01:44;ERROR;Acelerar por encima de la zona verde
+0:01:45;ERROR;Acelerar en neutral o con embrague presionado
+0:01:46;ERROR;Acelerar en neutral o con embrague presionado
+0:01:46;ERROR;Pisar el acotamiento derecho
+0:01:48;ERROR;Acelerar por encima de la zona verde
+0:01:49;ERROR;Acelerar en neutral o con embrague presionado
+0:01:49;END EVENT;Desprendimientos sobre la carretera
+0:01:50;ERROR;Acelerar por encima de la zona verde
+0:01:53;ERROR;Acelerar en neutral o con embrague presionado
+0:01:54;ERROR;Acelerar por encima de la zona verde
+0:01:54;ERROR;Acelerar en neutral o con embrague presionado
+0:01:55;ERROR;Acelerar en neutral o con embrague presionado
+0:02:01;ERROR;Acelerar con el retárder o freno motor activo
+0:02:01;ERROR;Pisar el acotamiento derecho
+0:02:06;ERROR;Invadir un carril de sentido contrario rebasando una línea continua
+0:02:14;ERROR;Acelerar por encima de la zona verde
+0:02:16;ERROR;Acelerar en neutral o con embrague presionado
+0:02:17;ERROR;Acelerar con el retárder o freno motor activo
+0:02:31;ERROR;Acelerar con el retárder o freno motor activo
+0:02:31;ERROR;Pisar el acotamiento derecho
+0:02:36;ERROR;Acelerar con el retárder o freno motor activo
+0:02:37;ERROR;Acelerar con el retárder o freno motor activo
+0:02:43;ERROR;Acelerar con el retárder o freno motor activo
+0:02:55;ERROR;Acelerar en neutral o con embrague presionado
+0:02:55;ERROR;Acelerar en neutral o con embrague presionado
+0:02:55;ERROR;Acelerar en neutral o con embrague presionado
+0:03:18;ERROR;Pisar una línea continua
+0:03:29;ERROR;Pisar una línea continua
+0:03:34;ERROR;Acelerar con el retárder o freno motor activo
+0:03:42;TRAFFIC;Alterar la densidad de vehículos en 50%
+0:03:51;ERROR;Pisar una línea continua
+0:03:59;START EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:04:03;ERROR;Pisar el acotamiento derecho
+0:04:16;ERROR;Pisar una línea continua
+0:04:38;ERROR;Pisar una línea continua
+0:04:43;ERROR;Acelerar en neutral o con embrague presionado
+0:04:43;ERROR;Acelerar en neutral o con embrague presionado
+0:04:43;START EVENT;Cruce con un vehículo largo en curva
+0:04:44;ERROR;No poner la luz direccional derecha para el cambio de carril
+0:04:49;ILLUMINATION;Alterar iluminación: Noche
+0:04:55;ERROR;Pisar una línea continua
+0:05:09;ERROR;Circular en punto muerto o con embrague presionado
+0:05:14;ERROR;No emplear el freno de embrague para engranar la marcha de arranque
+0:05:17;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:05:17;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:05:21;ERROR;Acelerar por encima de la zona verde
+0:05:22;ERROR;Acelerar en neutral o con embrague presionado
+0:05:24;ERROR;Acelerar en neutral o con embrague presionado
+0:05:24;ERROR;Acelerar por encima de la zona verde
+0:05:26;ERROR;Acelerar en neutral o con embrague presionado
+0:05:28;ERROR;Acelerar en neutral o con embrague presionado
+0:05:32;ERROR;Acelerar en neutral o con embrague presionado
+0:05:33;END EVENT;Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria
+0:05:35;ERROR;Pisar una línea continua
+0:05:36;TRAFFIC;Alterar la densidad de vehículos en 25%
+0:05:47;ERROR;Cambiar de marcha sin haber presionado el embrague lo suficiente
+0:05:50;ERROR;No emplear el freno de embrague para engranar la marcha de arranque
+0:05:56;ERROR;Desembragar muy lentamente después de un cambio de marcha
+0:05:59;ERROR;Acelerar por encima de la zona verde
+0:06:00;ERROR;Acelerar en neutral o con embrague presionado
+0:06:01;ERROR;Acelerar en neutral o con embrague presionado
+0:06:01;ERROR;Acelerar en neutral o con embrague presionado
+0:06:01;ERROR;Acelerar en neutral o con embrague presionado
+0:06:01;ERROR;Acelerar por encima de la zona verde
+0:06:01;ERROR;Pisar el acotamiento derecho
+0:06:14;ERROR;Acelerar en neutral o con embrague presionado
+0:06:14;ERROR;Acelerar por encima de la zona verde
+0:06:15;ERROR;Acelerar en neutral o con embrague presionado
+0:06:18;END EVENT;Cruce con un vehículo largo en curva
+0:06:18;ERROR;Acelerar por encima de la zona verde
+0:06:20;ERROR;Acelerar por encima de la zona verde
+0:06:22;ERROR;Acelerar en neutral o con embrague presionado
+0:06:30;ERROR;Pisar una línea continua
+0:06:32;ERROR;Colisión con un vehículo del tráfico
+0:06:34;ERROR;Parar el vehículo con una marcha demasiado alta engranada
+
+
+Resumen de marcas;
+
+Errores;
+Acelerar en neutral o con embrague presionado;42
+Acelerar por encima de la zona verde;18
+Pisar una línea continua;8
+Acelerar con el retárder o freno motor activo;7
+Pisar el acotamiento derecho;5
+Desembragar muy lentamente después de un cambio de marcha;3
+Estar parado con una marcha metida y el embrague presionado;2
+No emplear el freno de embrague para engranar la marcha de arranque;2
+Invadir un carril de sentido contrario rebasando una línea continua;1
+Cambiar de marcha sin haber presionado el embrague lo suficiente;1
+Circular en punto muerto o con embrague presionado;1
+Colisión con un vehículo del tráfico;1
+En movimiento de avance no parar el vehículo para meter marcha atrás;1
+No poner la luz direccional derecha para el cambio de carril;1
+Parar el vehículo con una marcha demasiado alta engranada;1
+
+Incidencias;
+Cruce con un vehículo largo en curva;1
+Desprendimientos sobre la carretera;1
+Vehículo averiado, ocupando parte de la vía de circulación, sin la señalización reglamentaria;1
+
+Eventos de iluminacion;
+Alterar iluminación: Noche;1
+
+Eventos de trafico;
+Alterar la densidad de vehículos en 25%;1
+Alterar la densidad de vehículos en 50%;1
+
+
+
+Indicadores genéricos;
+
+Distancia;2015; m
+Consumo medio;10.9; l/100km
+Tiempo de uso normal del acelerador;01:59;
+Tiempo de uso del acelerador por encima del 60%;00:00;
+Número de usos del acelerador;40;
+Tiempo de uso del freno;01:07;
+Número de usos totales de freno;9;
+Número de usos del freno por encima del 60%;9;
+Número de usos del embrague;4;
+Número de cambios de marcha;41;
+Velocidad media;18.4;km/h
+Revoluciones máximas;2061;rpm
+% en zona verde;62;%
+% en zona amarilla;3;%
+% en zona roja;0;%
+Velocidad máxima;36.1;km/h
+Distancia recorrida sin freno ni acelerador;1083.1;m
+Tiempo de uso de freno aux (motor/retarder);116;s

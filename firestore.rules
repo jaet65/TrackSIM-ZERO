@@ -1,18 +1,29 @@
-rules_version='2'
+rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isStaff() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.matches('.*@corporativomaf[.]com');
+    }
+
+    // Las evaluaciones solo se crean (con ID fase_archivo), nunca se editan ni se borran desde el cliente.
+    match /evaluations/{id} {
+      allow read: if isStaff();
+      allow create: if isStaff()
+        && request.resource.data.phase is int
+        && request.resource.data.phase >= 1 && request.resource.data.phase <= 6
+        && request.resource.data.driverName is string
+        && request.resource.data.score is number
+        && request.resource.data.score >= 0 && request.resource.data.score <= 100
+        && request.resource.data.instructorEmail == request.auth.token.email
+        && request.resource.data.marks is list;
+      allow update, delete: if false;
+    }
+
     match /{document=**} {
-      // This rule allows anyone with your database reference to view, edit,
-      // and delete all data in your database. It is useful for getting
-      // started, but it is configured to expire after 30 days because it
-      // leaves your app open to attackers. At that time, all client
-      // requests to your database will be denied.
-      //
-      // Make sure to write security rules for your app before that time, or
-      // else all client requests to your database will be denied until you
-      // update your rules.
-      allow read, write: if request.time < timestamp.date(2026, 11, 25);
+      allow read, write: if false;
     }
   }
 }
