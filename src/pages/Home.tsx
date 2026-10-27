@@ -2,13 +2,42 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import UploadForm from "../components/UploadForm";
 import { isAdminEmail, PHASES } from "../lib/config";
-import { deleteAllEvaluations, phaseSummaries, type PhaseSummary } from "../lib/db";
+import {
+  deleteAllEvaluations,
+  getPhasesWithEvaluations,
+  overallSummaries,
+  phaseSummaries,
+  type DateFilter,
+  type DriverOverallSummary,
+  type PhaseSummary,
+} from "../lib/db";
 import { useAuth } from "../components/AuthProvider";
 
+type DisplayRow = {
+  driverId: string;
+  driver: string;
+  badgeText: string;
+  exercisesText: string;
+  errors: number;
+  criticalErrors: number;
+  avgScore: number;
+  verdict: string;
+  color: string;
+};
+
 export default function Home() {
-  const [params] = useSearchParams();
-  const phase = PHASES.some((p) => p.id === Number(params.get("fase"))) ? Number(params.get("fase")) : 1;
-  const [rows, setRows] = useState<PhaseSummary[] | null>(null);
+  const [params, setParams] = useSearchParams();
+  const phaseParam = params.get("fase");
+  const selectedPhase = phaseParam && PHASES.some((p) => p.id === Number(phaseParam))
+    ? Number(phaseParam)
+    : null;
+
+  // Filtro de fechas (Desde / Hasta)
+  const [startDate, setStartDate] = useState(params.get("desde") || "");
+  const [endDate, setEndDate] = useState(params.get("hasta") || "");
+
+  const [availablePhases, setAvailablePhases] = useState<number[]>([]);
+  const [rows, setRows] = useState<DisplayRow[] | null>(null);
   const [error, setError] = useState("");
   const { user } = useAuth();
 
@@ -19,13 +48,69 @@ export default function Home() {
 
   const isAdmin = isAdminEmail(user?.email);
 
+  const dateFilter: DateFilter = {
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+  };
+
   const load = useCallback(() => {
     setRows(null);
     setError("");
-    phaseSummaries(phase).then(setRows).catch((e: Error) => setError(e.message));
-  }, [phase]);
+
+    // Cargar las fases que tienen resultados que cumplan el rango de fechas
+    getPhasesWithEvaluations(dateFilter).then(setAvailablePhases).catch(() => {});
+
+    if (selectedPhase === null) {
+      // Promedio General por defecto
+      overallSummaries(dateFilter)
+        .then((data: DriverOverallSummary[]) => {
+          setRows(
+            data.map((d) => ({
+              driverId: d.driverId,
+              driver: d.driver,
+              badgeText: `${d.phasesEvaluated} de 6 fases`,
+              exercisesText: `${d.totalExercises} ejercicio(s)`,
+              errors: d.totalErrors,
+              criticalErrors: d.criticalErrors,
+              avgScore: d.avgScore,
+              verdict: d.verdict,
+              color: d.color,
+            }))
+          );
+        })
+        .catch((e: Error) => setError(e.message));
+    } else {
+      // Filtrado por Fase específica seleccionada
+      phaseSummaries(selectedPhase, dateFilter)
+        .then((data: PhaseSummary[]) => {
+          setRows(
+            data.map((d) => ({
+              driverId: d.driverId,
+              driver: d.driver,
+              badgeText: `Fase ${d.phase}`,
+              exercisesText: `${d.exercises}/${d.expected}`,
+              errors: d.errors,
+              criticalErrors: d.criticalErrors,
+              avgScore: d.avgScore,
+              verdict: d.verdict,
+              color: d.color,
+            }))
+          );
+        })
+        .catch((e: Error) => setError(e.message));
+    }
+  }, [selectedPhase, startDate, endDate]);
 
   useEffect(load, [load]);
+
+  // Actualizar URL params cuando cambian fechas o fases
+  const updateUrl = (newPhase: number | null, start: string, end: string) => {
+    const next: Record<string, string> = {};
+    if (newPhase !== null) next.fase = String(newPhase);
+    if (start) next.desde = start;
+    if (end) next.hasta = end;
+    setParams(next);
+  };
 
   async function handleDeleteDatabase() {
     if (confirmInput.trim().toUpperCase() !== "ELIMINAR") return;
@@ -35,6 +120,9 @@ export default function Home() {
       await deleteAllEvaluations();
       setShowConfirmModal(false);
       setConfirmInput("");
+      setParams({});
+      setStartDate("");
+      setEndDate("");
       load();
     } catch (e: any) {
       setDeleteError(e?.message || "Ocurrió un error al eliminar los datos.");
@@ -43,7 +131,15 @@ export default function Home() {
     }
   }
 
-  // Métricas rápidas de la fase seleccionada
+  const clearDateFilter = () => {
+    setStartDate("");
+    setEndDate("");
+    updateUrl(selectedPhase, "", "");
+  };
+
+  const hasDateFilter = Boolean(startDate || endDate);
+
+  // Métricas rápidas
   const totalConductores = rows?.length ?? 0;
   const aptos = rows?.filter((r) => r.verdict.toUpperCase().includes("APTO") && !r.verdict.toUpperCase().includes("NO")).length ?? 0;
   const noAptos = rows?.filter((r) => r.verdict.toUpperCase().includes("NO APTO")).length ?? 0;
@@ -64,7 +160,9 @@ export default function Home() {
             Evaluación de Conductores
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            Supervisión continua, dictamen y telemetría de rendimiento por fase.
+            {selectedPhase === null
+              ? "Vista global: Calificaciones promediadas de todo el programa de capacitación."
+              : `Vista focalizada: Resultados detallados de la Fase ${selectedPhase}.`}
           </p>
         </div>
 
@@ -85,34 +183,99 @@ export default function Home() {
         )}
       </div>
 
-      {/* Selector de fases en Tabs modernos */}
-      <div className="space-y-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Fases del Programa</label>
-        <nav className="flex flex-wrap gap-2">
-          {PHASES.map((p) => {
-            const active = p.id === phase;
-            return (
-              <Link
-                key={p.id}
-                to={`/?fase=${p.id}`}
-                className={`group relative flex items-center gap-2.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition ${
-                  active
-                    ? "border-indigo-600 bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
-                }`}
+      {/* Barra de Filtros: Fases y Fechas */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        {/* Selector de Fase */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-200/70 text-indigo-600">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+            </div>
+            <label htmlFor="phase-select" className="text-xs font-bold uppercase tracking-wider text-slate-700 whitespace-nowrap">
+              Fase:
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              id="phase-select"
+              value={selectedPhase === null ? "ALL" : String(selectedPhase)}
+              onChange={(e) => {
+                const val = e.target.value;
+                const nextPhase = val === "ALL" ? null : Number(val);
+                updateUrl(nextPhase, startDate, endDate);
+              }}
+              className="w-full sm:w-64 rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm focus:border-indigo-600 focus:bg-white focus:outline-none transition cursor-pointer"
+            >
+              <option value="ALL">🌐 Promedio General (Todas)</option>
+              {PHASES.filter((p) => availablePhases.includes(p.id)).map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  Fase {p.id}: {p.name}
+                </option>
+              ))}
+            </select>
+
+            {selectedPhase !== null && (
+              <button
+                onClick={() => updateUrl(null, startDate, endDate)}
+                className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition whitespace-nowrap shadow-sm"
+                title="Volver a promedio general"
               >
-                <span
-                  className={`flex h-5 w-5 items-center justify-center rounded-md text-[10px] font-bold ${
-                    active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
-                  }`}
-                >
-                  {p.id}
-                </span>
-                <span>{p.name}</span>
-              </Link>
-            );
-          })}
-        </nav>
+                Todas
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Selector de Rango de Fechas */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-t lg:border-t-0 pt-3 lg:pt-0 border-slate-100">
+          <div className="flex items-center gap-1.5 text-slate-600">
+            <svg className="h-4 w-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-700 whitespace-nowrap">
+              Fechas:
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                const val = e.target.value;
+                setStartDate(val);
+                updateUrl(selectedPhase, val, endDate);
+              }}
+              className="rounded-xl border border-slate-300 bg-slate-50/50 px-2.5 py-1.5 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-600 focus:bg-white focus:outline-none transition"
+              title="Fecha inicial (Desde)"
+            />
+            <span className="text-xs text-slate-400 font-medium">—</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => {
+                const val = e.target.value;
+                setEndDate(val);
+                updateUrl(selectedPhase, startDate, val);
+              }}
+              className="rounded-xl border border-slate-300 bg-slate-50/50 px-2.5 py-1.5 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-600 focus:bg-white focus:outline-none transition"
+              title="Fecha final (Hasta)"
+            />
+
+            {hasDateFilter && (
+              <button
+                onClick={clearDateFilter}
+                className="rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition shadow-sm"
+                title="Limpiar filtro de fechas"
+              >
+                Limpiar fechas
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Carga de Archivos */}
@@ -126,7 +289,9 @@ export default function Home() {
             <div className="mt-1 text-2xl font-bold text-slate-900">{totalConductores}</div>
           </div>
           <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Promedio Fase</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              {selectedPhase === null ? "Promedio Programa" : `Promedio Fase ${selectedPhase}`}
+            </span>
             <div className="mt-1 text-2xl font-bold text-indigo-600">{promedioGeneral}</div>
           </div>
           <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
@@ -144,11 +309,18 @@ export default function Home() {
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-bold text-slate-800">
-            Resultados — Fase {phase}: {PHASES.find((p) => p.id === phase)?.name}
+            {selectedPhase === null
+              ? "Resultados Generales — Todos los Conductores"
+              : `Resultados — Fase ${selectedPhase}: ${PHASES.find((p) => p.id === selectedPhase)?.name}`}
+            {hasDateFilter && (
+              <span className="ml-2 text-xs font-normal text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                {startDate && endDate ? `${startDate} al ${endDate}` : startDate ? `Desde ${startDate}` : `Hasta ${endDate}`}
+              </span>
+            )}
           </h2>
           {rows && rows.length > 0 && (
             <span className="text-xs text-slate-500">
-              {rows.length} {rows.length === 1 ? "registro" : "registros"}
+              {rows.length} {rows.length === 1 ? "conductor" : "conductores"}
             </span>
           )}
         </div>
@@ -163,7 +335,7 @@ export default function Home() {
           <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white p-12 text-sm text-slate-500 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-              <span>Cargando evaluaciones…</span>
+              <span>Calculando resultados…</span>
             </div>
           </div>
         )}
@@ -175,8 +347,14 @@ export default function Home() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <p className="text-sm font-semibold text-slate-800">Aún no hay evaluaciones cargadas para esta fase</p>
-            <p className="mt-1 text-xs text-slate-500">Carga un archivo CSV arriba para generar los primeros informes.</p>
+            <p className="text-sm font-semibold text-slate-800">
+              Sin evaluaciones para el criterio o rango de fechas seleccionado
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {hasDateFilter
+                ? "Prueba ajustando o limpiando el filtro de fechas para ampliar la búsqueda."
+                : "Carga un archivo CSV arriba para generar los primeros informes."}
+            </p>
           </div>
         )}
 
@@ -187,10 +365,14 @@ export default function Home() {
                 <thead className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="px-4 py-3.5">Conductor</th>
-                    <th className="px-4 py-3.5">Ejercicios</th>
+                    <th className="px-4 py-3.5">
+                      {selectedPhase === null ? "Avance de Fases" : "Ejercicios Evaluados"}
+                    </th>
                     <th className="px-4 py-3.5">Errores Totales</th>
                     <th className="px-4 py-3.5">Críticos</th>
-                    <th className="px-4 py-3.5">Calificación</th>
+                    <th className="px-4 py-3.5">
+                      {selectedPhase === null ? "Calificación Global" : "Calificación Fase"}
+                    </th>
                     <th className="px-4 py-3.5 text-right">Dictamen</th>
                   </tr>
                 </thead>
@@ -212,8 +394,8 @@ export default function Home() {
                         </Link>
                       </td>
                       <td className="px-4 py-3.5 text-slate-600">
-                        <span className="font-mono font-medium text-slate-900">{r.exercises}</span>
-                        <span className="text-slate-400">/{r.expected}</span>
+                        <span className="font-medium text-slate-800">{r.badgeText}</span>
+                        <span className="block text-[11px] text-slate-400 font-mono">{r.exercisesText}</span>
                       </td>
                       <td className="px-4 py-3.5 text-slate-600 font-mono">{r.errors}</td>
                       <td className="px-4 py-3.5">

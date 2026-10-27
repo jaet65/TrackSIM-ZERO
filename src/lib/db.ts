@@ -88,6 +88,18 @@ export type PhaseSummary = {
   color: string;
 };
 
+export type DriverOverallSummary = {
+  driverId: string;
+  driver: string;
+  phasesEvaluated: number;
+  totalExercises: number;
+  totalErrors: number;
+  criticalErrors: number;
+  avgScore: number;
+  verdict: string;
+  color: string;
+};
+
 // Con CRITICAL_LIMIT o más errores críticos el dictamen es NO APTO; con menos solo pesan en la calificación.
 export function dictamen(score: number, criticalErrors: number) {
   return criticalErrors >= CRITICAL_LIMIT ? verdictFor(0) : verdictFor(score);
@@ -142,14 +154,80 @@ function summarize(docs: EvaluationView[]): PhaseSummary[] {
     .sort((a, b) => a.driver.localeCompare(b.driver) || a.phase - b.phase);
 }
 
-async function fetchEvaluations(field: "phase" | "driverId", value: number | string) {
-  await loadCatalog();
-  const q = query(evaluations(), where(field, "==", value));
-  return (await getDocs(q)).docs.map((d) => withCurrentScore(d.data() as EvaluationDoc));
+export type DateFilter = {
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string;   // YYYY-MM-DD
+};
+
+function matchesDateRange(dateStr: string, filter?: DateFilter): boolean {
+  if (!filter || (!filter.startDate && !filter.endDate)) return true;
+  // dateStr usualmente tiene formato YYYY-MM-DD o YYYY-MM-DD HH:mm:ss
+  const itemDate = dateStr.slice(0, 10);
+  if (filter.startDate && itemDate < filter.startDate) return false;
+  if (filter.endDate && itemDate > filter.endDate) return false;
+  return true;
 }
 
-export async function phaseSummaries(phase: number) {
-  return summarize(await fetchEvaluations("phase", phase));
+async function fetchEvaluations(field?: "phase" | "driverId", value?: number | string, dateFilter?: DateFilter) {
+  await Promise.all([loadCatalog(), loadExercises()]);
+  const q = field !== undefined && value !== undefined
+    ? query(evaluations(), where(field, "==", value))
+    : query(evaluations());
+  const docs = (await getDocs(q)).docs.map((d) => withCurrentScore(d.data() as EvaluationDoc));
+  return docs.filter((d) => matchesDateRange(d.date, dateFilter));
+}
+
+export async function phaseSummaries(phase: number, dateFilter?: DateFilter) {
+  return summarize(await fetchEvaluations("phase", phase, dateFilter));
+}
+
+// Devuelve los IDs de fases que tienen al menos una evaluación cargada en la BD
+export async function getPhasesWithEvaluations(dateFilter?: DateFilter): Promise<number[]> {
+  const allDocs = await fetchEvaluations(undefined, undefined, dateFilter);
+  const phases = new Set<number>();
+  for (const doc of allDocs) {
+    if (typeof doc.phase === "number") phases.add(doc.phase);
+  }
+  return [...phases].sort((a, b) => a - b);
+}
+
+// Resumen del Promedio General agrupando todos los conductores en todas las fases con filtro de fecha opcional
+export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverOverallSummary[]> {
+  const allDocs = await fetchEvaluations(undefined, undefined, dateFilter);
+  const driverMap = new Map<string, EvaluationView[]>();
+  for (const doc of allDocs) {
+    const list = driverMap.get(doc.driverId) || [];
+    list.push(doc);
+    driverMap.set(doc.driverId, list);
+  }
+
+  const results: DriverOverallSummary[] = [];
+
+  for (const [driverId, docs] of driverMap.entries()) {
+    const pSummaries = summarize(docs);
+    if (!pSummaries.length) continue;
+
+    const totalScore = pSummaries.reduce((acc, p) => acc + p.avgScore, 0);
+    const avgScore = Math.round((totalScore / pSummaries.length) * 10) / 10;
+    const criticalErrors = pSummaries.reduce((acc, p) => acc + p.criticalErrors, 0);
+    const totalErrors = pSummaries.reduce((acc, p) => acc + p.errors, 0);
+    const totalExercises = docs.length;
+    const v = dictamen(avgScore, criticalErrors);
+
+    results.push({
+      driverId,
+      driver: docs[0].driverName,
+      phasesEvaluated: pSummaries.length,
+      totalExercises,
+      totalErrors,
+      criticalErrors,
+      avgScore,
+      verdict: v.label,
+      color: v.color,
+    });
+  }
+
+  return results.sort((a, b) => a.driver.localeCompare(b.driver));
 }
 
 export async function driverData(driverId: string) {

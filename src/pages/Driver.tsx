@@ -5,6 +5,7 @@ import { SEVERITIES, SEVERITY_ORDER, classify, type Severity } from "../lib/cata
 import { driverData, type EvaluationView } from "../lib/db";
 
 type Data = NonNullable<Awaited<ReturnType<typeof driverData>>>;
+type BreakdownItem = Data["breakdown"][number];
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
@@ -16,6 +17,9 @@ export default function Driver() {
   const [data, setData] = useState<Data | null | undefined>(undefined);
   const [error, setError] = useState("");
   const [selectedEval, setSelectedEval] = useState<EvaluationView | null>(null);
+
+  // Filtro de severidad para la sección Puntos Débiles (ALL = todas)
+  const [activeSeverityTab, setActiveSeverityTab] = useState<Severity | "ALL">("ALL");
 
   // Estado de ordenamiento para el modal de errores
   const [sortField, setSortField] = useState<SortField>("time");
@@ -41,18 +45,34 @@ export default function Driver() {
     }
   };
 
-  const { name, evals, phases, breakdown, overall, criticalErrors, verdict, color } = data ?? {
-    name: "",
-    evals: [],
-    phases: [],
-    breakdown: [],
-    overall: 0,
-    criticalErrors: 0,
-    verdict: "",
-    color: "",
-  };
+  const breakdownList: BreakdownItem[] = useMemo(() => data?.breakdown ?? [], [data]);
 
-  // Filtrar exclusivamente los eventos de tipo ERROR y calcular conteos por severidad
+  // Agrupamiento y cálculos de Puntos Débiles para los gráficos y pestañas
+  const { totalErrorsCount, breakdownBySeverity, maxErrorCount } = useMemo(() => {
+    const bySev: Record<Severity, BreakdownItem[]> = {
+      CRITICO: [],
+      GRAVE: [],
+      MODERADO: [],
+      LEVE: [],
+    };
+
+    let total = 0;
+    let maxCount = 1;
+
+    for (const item of breakdownList) {
+      bySev[item.severity].push(item);
+      total += item.count;
+      if (item.count > maxCount) maxCount = item.count;
+    }
+
+    return {
+      totalErrorsCount: total,
+      breakdownBySeverity: bySev,
+      maxErrorCount: maxCount,
+    };
+  }, [breakdownList]);
+
+  // Filtrar exclusivamente los eventos de tipo ERROR y calcular conteos por severidad para el modal
   const { sortedErrorMarks, severityCounts } = useMemo(() => {
     const counts: Record<Severity, number> = {
       CRITICO: 0,
@@ -127,6 +147,12 @@ export default function Driver() {
       </main>
     );
   }
+
+  const { name, evals, phases, overall, criticalErrors, verdict, color } = data;
+
+  const displayedSeverities = activeSeverityTab === "ALL"
+    ? SEVERITY_ORDER
+    : [activeSeverityTab];
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
@@ -300,33 +326,176 @@ export default function Driver() {
         </div>
       </section>
 
-      {/* Frecuencia de errores */}
-      <section className="space-y-3">
-        <h2 className="text-base font-bold text-slate-900">Puntos Débiles (Errores más Frecuentes)</h2>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          {breakdown.length === 0 ? (
-            <p className="text-xs text-slate-500">Sin incidencias registradas.</p>
-          ) : (
-            <ul className="grid gap-2 sm:grid-cols-2">
-              {breakdown.map((b) => (
-                <li
-                  key={b.description}
-                  className="flex items-center justify-between rounded-xl border border-slate-200/70 bg-slate-50/50 p-3 text-xs"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-rose-50 text-rose-700 font-bold text-[11px] border border-rose-200">
-                      {b.count}×
-                    </span>
-                    <span className="text-slate-800 font-medium">{b.description}</span>
-                  </div>
-                  <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${SEVERITIES[b.severity].badge}`}>
-                    {SEVERITIES[b.severity].label}
-                  </span>
-                </li>
-              ))}
-            </ul>
+      {/* Puntos Débiles (Agrupados por Gravedad con Visualización Gráfica) */}
+      <section className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Puntos Débiles (Análisis por Gravedad)</h2>
+            <p className="text-xs text-slate-500">Distribución porcentual e incidencias acumuladas en todas las fases.</p>
+          </div>
+
+          {/* Selector de pestañas por severidad */}
+          {breakdownList.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+              <button
+                onClick={() => setActiveSeverityTab("ALL")}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                  activeSeverityTab === "ALL"
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Todos ({breakdownList.length})
+              </button>
+              {SEVERITY_ORDER.map((s) => {
+                const count = breakdownBySeverity[s].length;
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setActiveSeverityTab(s)}
+                    disabled={count === 0}
+                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                      activeSeverityTab === s
+                        ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                        : count === 0
+                        ? "text-slate-300 cursor-not-allowed"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <span>{SEVERITIES[s].label}</span>
+                    <span className="text-[10px] opacity-75 font-mono">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
+
+        {/* Gráfico de Distribución Visual (Stacked Bar) */}
+        {totalErrorsCount > 0 && (
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-3">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+              <span>Proporción de Incidencias Totales ({totalErrorsCount} eventos acumulados)</span>
+            </div>
+
+            {/* Barra compuesta */}
+            <div className="flex h-3.5 w-full overflow-hidden rounded-full bg-slate-100 p-0.5 border border-slate-200">
+              {SEVERITY_ORDER.map((s) => {
+                const totalInSev = breakdownBySeverity[s].reduce((sum, item) => sum + item.count, 0);
+                const pct = totalErrorsCount > 0 ? (totalInSev / totalErrorsCount) * 100 : 0;
+                if (pct === 0) return null;
+                const barColor =
+                  s === "CRITICO"
+                    ? "bg-rose-500"
+                    : s === "GRAVE"
+                    ? "bg-orange-500"
+                    : s === "MODERADO"
+                    ? "bg-amber-500"
+                    : "bg-slate-400";
+                return (
+                  <div
+                    key={s}
+                    style={{ width: `${pct}%` }}
+                    className={`${barColor} transition-all duration-300 first:rounded-l-full last:rounded-r-full`}
+                    title={`${SEVERITIES[s].label}: ${totalInSev} (${pct.toFixed(1)}%)`}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Leyenda interactiva */}
+            <div className="grid grid-cols-2 gap-2 pt-1 sm:grid-cols-4">
+              {SEVERITY_ORDER.map((s) => {
+                const totalInSev = breakdownBySeverity[s].reduce((sum, item) => sum + item.count, 0);
+                const pct = totalErrorsCount > 0 ? ((totalInSev / totalErrorsCount) * 100).toFixed(1) : "0";
+                return (
+                  <div key={s} className="flex items-center gap-2 text-xs">
+                    <span className={`h-2.5 w-2.5 rounded-full ${SEVERITIES[s].dot}`} />
+                    <span className="font-medium text-slate-700">{SEVERITIES[s].label}:</span>
+                    <span className="font-bold font-mono text-slate-900">{totalInSev}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">({pct}%)</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Tarjetas agrupadas por nivel de gravedad con barras de frecuencia */}
+        {breakdownList.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-500 shadow-sm">
+            Sin incidencias registradas en este expediente.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {displayedSeverities.map((sev) => {
+              const items = breakdownBySeverity[sev];
+              if (items.length === 0 && activeSeverityTab === "ALL") return null;
+
+              return (
+                <div
+                  key={sev}
+                  className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-3"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2.5 w-2.5 rounded-full ${SEVERITIES[sev].dot}`} />
+                      <h3 className="text-sm font-bold text-slate-900">
+                        Nivel {SEVERITIES[sev].label}
+                      </h3>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${SEVERITIES[sev].badge}`}>
+                        {items.length} {items.length === 1 ? "tipo de error" : "tipos de error"}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-400 font-mono">
+                      {items.reduce((acc, i) => acc + i.count, 0)} incidencias en total
+                    </span>
+                  </div>
+
+                  {items.length === 0 ? (
+                    <p className="py-2 text-xs text-slate-400 italic">No hay faltas registradas en esta gravedad.</p>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {items.map((b) => {
+                        const barWidth = Math.max(8, Math.round((b.count / maxErrorCount) * 100));
+                        return (
+                          <div
+                            key={b.description}
+                            className="group rounded-xl border border-slate-100 bg-slate-50/60 p-3 hover:border-slate-200 hover:bg-slate-50 transition"
+                          >
+                            <div className="flex items-center justify-between gap-3 text-xs mb-1.5">
+                              <span className="font-semibold text-slate-800">{b.description}</span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="font-mono font-extrabold text-slate-900">{b.count}×</span>
+                                <span className="text-[10px] text-slate-400">veces</span>
+                              </div>
+                            </div>
+
+                            {/* Barra visual proporcional */}
+                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200/80">
+                              <div
+                                style={{ width: `${barWidth}%` }}
+                                className={`h-full rounded-full transition-all duration-300 ${
+                                  sev === "CRITICO"
+                                    ? "bg-rose-500"
+                                    : sev === "GRAVE"
+                                    ? "bg-orange-500"
+                                    : sev === "MODERADO"
+                                    ? "bg-amber-500"
+                                    : "bg-slate-400"
+                                }`}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* Modal de Reporte Detallado del Ejercicio */}
