@@ -4,6 +4,8 @@ import { phaseName, CRITICAL_LIMIT, verdictFor } from "../lib/config";
 import { SEVERITIES, SEVERITY_ORDER, classify, type Severity } from "../lib/catalog";
 import { driverData, type EvaluationView } from "../lib/db";
 import { resolveExerciseEnvironment } from "../lib/exercises";
+import { computeTelemetryAxes } from "../lib/telemetryRadar";
+import { downloadDriverPdf } from "../lib/pdfExport";
 
 type Data = NonNullable<Awaited<ReturnType<typeof driverData>>>;
 type BreakdownItem = Data["breakdown"][number];
@@ -25,6 +27,7 @@ export default function Driver() {
   // Estado de ordenamiento para el modal de errores
   const [sortField, setSortField] = useState<SortField>("time");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   useEffect(() => {
     setData(undefined);
@@ -178,9 +181,37 @@ export default function Driver() {
               <p className="text-xs text-slate-500">Expediente de Desempeño y Telemetría</p>
             </div>
           </div>
-          <span className={`rounded-full px-3.5 py-1 text-xs font-bold ${color}`}>
-            {verdict}
-          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={async () => {
+                if (isExportingPdf || !data) return;
+                try {
+                  setIsExportingPdf(true);
+                  await downloadDriverPdf(id, name);
+                } catch (e: any) {
+                  console.error("Error al exportar expediente PDF:", e);
+                  window.print();
+                } finally {
+                  setIsExportingPdf(false);
+                }
+              }}
+              disabled={isExportingPdf}
+              className="no-print inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 hover:text-indigo-600 disabled:opacity-50 transition cursor-pointer"
+              title="Descargar el expediente oficial en formato PDF"
+            >
+              {isExportingPdf ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+              ) : (
+                <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+              )}
+              <span>{isExportingPdf ? "Generando PDF..." : "Exportar Expediente PDF"}</span>
+            </button>
+            <span className={`rounded-full px-3.5 py-1 text-xs font-bold ${color}`}>
+              {verdict}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -232,37 +263,167 @@ export default function Driver() {
       {/* Resumen por Fase */}
       <section className="space-y-3">
         <h2 className="text-base font-bold text-slate-900">Progreso por Fase</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {phases.map((p) => (
-            <div
-              key={p.phase}
-              className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm space-y-3"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
-                    Fase {p.phase}
-                  </span>
-                  <h3 className="text-sm font-semibold text-slate-900">{phaseName(p.phase)}</h3>
-                </div>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${p.color}`}>
-                  {p.verdict}
-                </span>
-              </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {phases.map((p) => {
+            // Evaluaciones correspondientes a esta fase para promediar ejes de telemetría
+            const phaseEvals = evals.filter((e) => e.phase === p.phase);
+            const telemetries = phaseEvals.map((e) => e.telemetry);
+            const firstExerciseName = phaseEvals[0]?.exercise || "";
+            const radarSummary = computeTelemetryAxes(telemetries, firstExerciseName);
+            const axes = radarSummary.axes;
 
-              <div className="flex items-center justify-between text-xs text-slate-600 border-t border-slate-100 pt-2.5">
-                <div>
-                  <span className="text-slate-900 font-semibold">{p.exercises}</span>/{p.expected} ejercicios
+            // Coordenadas para radar en layout horizontal (size: 210x170, radius: 46)
+            const miniW = 210;
+            const miniH = 165;
+            const cX = miniW / 2;
+            const cY = miniH / 2;
+            const r = 44;
+
+            const getCoord = (index: number, val: number, customR = r) => {
+              const angle = (Math.PI * 2 / 5) * index - Math.PI / 2;
+              const rad = (val / 100) * customR;
+              return {
+                x: cX + rad * Math.cos(angle),
+                y: cY + rad * Math.sin(angle),
+              };
+            };
+
+            const miniPolygonPoints = axes
+              .map((a, i) => {
+                const c = getCoord(i, a.value);
+                return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+              })
+              .join(" ");
+
+            return (
+              <div
+                key={p.phase}
+                className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4"
+              >
+                {/* Lado Izquierdo: Información de la Fase */}
+                <div className="flex-1 space-y-3 w-full">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
+                        Fase {p.phase}
+                      </span>
+                      <h3 className="text-base font-bold text-slate-900 leading-snug">{phaseName(p.phase)}</h3>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${p.color}`}>
+                      {p.verdict}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs border-t border-slate-100 pt-3">
+                    <div className="rounded-xl bg-slate-50 p-2 border border-slate-100">
+                      <span className="text-[10px] text-slate-400 block font-medium">Ejercicios</span>
+                      <span className="text-sm font-bold text-slate-900">{p.exercises}</span>
+                      <span className="text-slate-500 text-[11px]"> de {p.expected}</span>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 p-2 border border-slate-100">
+                      <span className="text-[10px] text-slate-400 block font-medium">Infracciones</span>
+                      <span className={`text-sm font-bold ${p.errors > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                        {p.errors}
+                      </span>
+                      <span className="text-slate-500 text-[11px]"> error(es)</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl bg-indigo-50/60 p-2.5 border border-indigo-100">
+                    <div>
+                      <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">
+                        Calificación
+                      </span>
+                      <span className="text-xl font-black font-mono text-indigo-600">{p.avgScore}</span>
+                      <span className="text-xs text-indigo-500"> / 100</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">
+                        Puntaje Eco
+                      </span>
+                      <span className="text-base font-extrabold font-mono text-indigo-700">
+                        {radarSummary.ecoScore}/100
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-slate-900 font-semibold">{p.errors}</span> errores
-                </div>
-                <div className="text-indigo-600 font-bold font-mono">
-                  {p.avgScore} pts
+
+                {/* Lado Derecho: Gráfico Radar */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2 flex flex-col items-center shrink-0">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Radar Telemetría
+                  </span>
+
+                  <svg width={miniW} height={miniH} className="overflow-visible select-none">
+                    {/* Círculos / Guías (50% y 100%) */}
+                    {[0.5, 1.0].map((step) => {
+                      const gridPts = axes
+                        .map((_, i) => {
+                          const c = getCoord(i, step * 100);
+                          return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+                        })
+                        .join(" ");
+                      return (
+                        <polygon
+                          key={step}
+                          points={gridPts}
+                          fill={step === 1.0 ? "#ffffff" : "transparent"}
+                          stroke="#e2e8f0"
+                          strokeWidth="1"
+                        />
+                      );
+                    })}
+
+                    {/* Ejes radiales */}
+                    {axes.map((_, i) => {
+                      const c = getCoord(i, 100);
+                      return (
+                        <line
+                          key={i}
+                          x1={cX}
+                          y1={cY}
+                          x2={c.x}
+                          y2={c.y}
+                          stroke="#e2e8f0"
+                          strokeWidth="1"
+                        />
+                      );
+                    })}
+
+                    {/* Polígono del conductor en esta fase */}
+                    <polygon
+                      points={miniPolygonPoints}
+                      fill="rgba(79, 70, 229, 0.20)"
+                      stroke="#4f46e5"
+                      strokeWidth="2"
+                    />
+
+                    {/* Vértices y Etiquetas */}
+                    {axes.map((a, i) => {
+                      const c = getCoord(i, a.value);
+                      const labelPos = getCoord(i, 130);
+                      return (
+                        <g key={i}>
+                          <circle cx={c.x} cy={c.y} r="2.5" fill="#4f46e5" stroke="#ffffff" strokeWidth="1" />
+                          <text
+                            x={labelPos.x}
+                            y={labelPos.y + 3}
+                            textAnchor="middle"
+                            fontSize="8"
+                            fontWeight="600"
+                            fill="#475569"
+                          >
+                            {a.label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </svg>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -498,8 +659,8 @@ export default function Driver() {
 
       {/* Modal de Reporte Detallado del Ejercicio */}
       {selectedEval && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm modal-open-for-print">
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden print-modal-content">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-6 py-4">
               <div className="flex items-center gap-3">
@@ -517,19 +678,31 @@ export default function Driver() {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setSelectedEval(null)}
-                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition"
-                title="Cerrar reporte"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="no-print inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition shadow-xs"
+                  title="Exportar esta hoja a PDF"
+                >
+                  <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  <span>Imprimir / PDF</span>
+                </button>
+                <button
+                  onClick={() => setSelectedEval(null)}
+                  className="no-print rounded-xl p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition"
+                  title="Cerrar reporte"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Modal Body */}
-            <div className="overflow-y-auto p-6 space-y-6">
+            <div className="overflow-y-auto p-6 space-y-6 print-modal-scroll">
               {/* Metadatos principales de la prueba */}
               <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 text-xs grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <div className="col-span-2 sm:col-span-2">
@@ -1016,7 +1189,16 @@ export default function Driver() {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end border-t border-slate-200 bg-slate-50/80 px-6 py-3">
+            <div className="no-print flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-3">
+              <button
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
+              >
+                <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                <span>Imprimir Hoja (PDF)</span>
+              </button>
               <button
                 onClick={() => setSelectedEval(null)}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition shadow-sm"

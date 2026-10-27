@@ -12,8 +12,9 @@ import {
   type PhaseSummary,
 } from "../lib/db";
 import { useAuth } from "../components/AuthProvider";
+import { downloadBulkReportsZip } from "../lib/pdfExport";
 
-type DisplayRow = {
+export type DisplayRow = {
   driverId: string;
   driver: string;
   badgeText: string;
@@ -45,6 +46,10 @@ export default function Home() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmInput, setConfirmInput] = useState("");
   const [deleteError, setDeleteError] = useState("");
+
+  // Estado de exportación de reporte global + expedientes ZIP
+  const [isExportingZip, setIsExportingZip] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number; name: string } | null>(null);
 
   const isAdmin = isAdminEmail(user?.email);
 
@@ -138,6 +143,40 @@ export default function Home() {
   };
 
   const hasDateFilter = Boolean(startDate || endDate);
+
+  const handleExportZip = async () => {
+    if (!rows || rows.length === 0 || isExportingZip) return;
+    try {
+      setIsExportingZip(true);
+      const phaseTitle = selectedPhase === null
+        ? "Promedio General (Todas las fases)"
+        : `Fase ${selectedPhase}: ${PHASES.find((p) => p.id === selectedPhase)?.name || ""}`;
+      const dateSubtitle = hasDateFilter
+        ? (startDate && endDate ? `${startDate} al ${endDate}` : startDate ? `Desde ${startDate}` : `Hasta ${endDate}`)
+        : "Sin filtro de fecha (Histórico completo)";
+      const filterSubtitle = `${phaseTitle} · Rango: ${dateSubtitle}`;
+
+      await downloadBulkReportsZip(
+        rows,
+        filterSubtitle,
+        {
+          total: totalConductores,
+          promedio: promedioGeneral,
+          aptos,
+          noAptos,
+        },
+        (current, total, name) => {
+          setExportProgress({ current, total, name });
+        }
+      );
+    } catch (err: any) {
+      console.error("Error al exportar lote PDF/ZIP:", err);
+      alert("Hubo un error al generar los reportes: " + (err?.message || "Error desconocido"));
+    } finally {
+      setIsExportingZip(false);
+      setExportProgress(null);
+    }
+  };
 
   // Métricas rápidas
   const totalConductores = rows?.length ?? 0;
@@ -307,23 +346,64 @@ export default function Home() {
 
       {/* Tabla de Resultados */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-slate-800">
-            {selectedPhase === null
-              ? "Resultados Generales — Todos los Conductores"
-              : `Resultados — Fase ${selectedPhase}: ${PHASES.find((p) => p.id === selectedPhase)?.name}`}
-            {hasDateFilter && (
-              <span className="ml-2 text-xs font-normal text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
-                {startDate && endDate ? `${startDate} al ${endDate}` : startDate ? `Desde ${startDate}` : `Hasta ${endDate}`}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-slate-800">
+              {selectedPhase === null
+                ? "Resultados Generales — Todos los Conductores"
+                : `Resultados — Fase ${selectedPhase}: ${PHASES.find((p) => p.id === selectedPhase)?.name}`}
+              {hasDateFilter && (
+                <span className="ml-2 text-xs font-normal text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                  {startDate && endDate ? `${startDate} al ${endDate}` : startDate ? `Desde ${startDate}` : `Hasta ${endDate}`}
+                </span>
+              )}
+            </h2>
+            {rows && rows.length > 0 && (
+              <span className="text-xs text-slate-500">
+                {rows.length} {rows.length === 1 ? "conductor visible" : "conductores visibles en este filtro"}
               </span>
             )}
-          </h2>
+          </div>
+
           {rows && rows.length > 0 && (
-            <span className="text-xs text-slate-500">
-              {rows.length} {rows.length === 1 ? "conductor" : "conductores"}
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportZip}
+                disabled={isExportingZip}
+                className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-semibold text-indigo-700 shadow-sm hover:border-indigo-300 hover:bg-indigo-100 disabled:opacity-50 transition active:scale-95 cursor-pointer"
+                title="Genera un reporte global y los expedientes independientes de cada conductor en un ZIP"
+              >
+                {isExportingZip ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+                ) : (
+                  <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                )}
+                <span>
+                  {isExportingZip
+                    ? `Exportando (${exportProgress?.current || 0}/${exportProgress?.total || rows.length})...`
+                    : "Descargar Reportes en PDF (ZIP)"}
+                </span>
+              </button>
+            </div>
           )}
         </div>
+
+        {/* Notificación de Progreso de Exportación */}
+        {isExportingZip && exportProgress && (
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 text-xs text-indigo-900 flex items-center justify-between animate-pulse">
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+              <span>
+                <strong>Generando reportes:</strong> {exportProgress.name}
+              </span>
+            </div>
+            <span className="font-mono font-bold text-indigo-700">
+              {Math.round((exportProgress.current / (exportProgress.total || 1)) * 100)}%
+            </span>
+          </div>
+        )}
 
         {error && (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">

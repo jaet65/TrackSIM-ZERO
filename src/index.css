@@ -24,3 +24,75 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Estilos de Impresión Profesional (Exportar a PDF / Imprimir) */
+@media print {
+  /* Configuración de página */
+  @page {
+    size: A4 portrait;
+    margin: 12mm 15mm;
+  }
+
+  /* Ocultar elementos no imprimibles de la interfaz */
+  header,
+  nav,
+  footer,
+  .no-print,
+  button,
+  a[href^="/"] {
+    display: none !important;
+  }
+
+  body {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 11pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Si el modal está abierto durante la impresión, imprimir exclusivamente el modal en toda la página */
+  .modal-open-for-print {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .modal-open-for-print .print-modal-content {
+    max-height: none !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
+  }
+
+  .modal-open-for-print .print-modal-scroll {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Si el modal está abierto, ocultar el fondo general */
+  body:has(.modal-open-for-print) main > *:not(.modal-open-for-print) {
+    display: none !important;
+  }
+
+  /* Mantener bordes suaves y fondos claros sin sombras */
+  .shadow-sm,
+  .shadow-md,
+  .shadow-lg,
+  .shadow-xl,
+  .shadow-2xl {
+    box-shadow: none !important;
+  }
+
+  /* Evitar saltos de página dentro de bloques clave */
+  .break-inside-avoid,
+  section,
+  table,
+  tr,
+  .rounded-2xl {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

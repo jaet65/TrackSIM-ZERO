@@ -67,12 +67,12 @@ export default function ProtectedLayout() {
       {/* Top Header */}
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <Link to="/" className="flex items-center gap-2.5 group">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white shadow-md shadow-indigo-600/25 group-hover:scale-105 transition">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
+          <Link to="/" className="flex items-center gap-3 group">
+            <img
+              src="/Logo.png"
+              alt="TrackSIM Logo"
+              className="h-9 w-9 object-contain rounded-full shadow-sm group-hover:scale-105 transition"
+            />
             <div>
               <span className="font-bold tracking-tight text-slate-900 group-hover:text-indigo-600 transition">
                 TrackSIM
