@@ -1,5 +1,6 @@
 import { PENALTY_PER_ERROR_RATE } from "./config";
 import { classify, type Severity } from "./catalog";
+import { resolveExerciseEnvironment, type ExerciseEnvironment } from "./exercises";
 
 export type Mark = { time: string; type: string; description: string };
 
@@ -22,6 +23,8 @@ export type TelemetryMetrics = {
   pctRedZone?: number;              // %
   coastDistanceMeters?: number;     // m sin freno ni acelerador
   auxBrakeTimeSec?: number;         // s (retarder / freno motor)
+  hasSlipperyRoad?: boolean;        // Lluvia, nieve o hielo detectados
+  slipperyCondition?: string;       // Descripción del clima adverso
 };
 
 export type ParsedReport = {
@@ -68,68 +71,123 @@ export type Evaluation = {
 };
 
 /**
- * Calcula el puntaje de eficiencia y telemetría (0 a 100).
- * Ponderación multidimensional:
- * 1. Rango de RPM (40%):
- *    - Base del % en zona verde (0-100%).
- *    - Penalización severa por zona roja (-20 pts por cada 1%) y zona amarilla (-5 pts por cada 1%).
- * 2. Frenado eficiente y Retarder (25%):
- *    - Base de 100 pts.
- *    - Penalización por frenadas bruscas >60% (-3 pts por evento tras tolerancia de 2).
- *    - Bonificación o confirmación de uso de freno auxiliar / retarder cuando se requirió frenado prolongado.
- * 3. Aprovechamiento de Inercia / Rodadura Libre (20%):
- *    - Ratio entre distancia recorrida sin acelerar ni frenar y distancia total.
- *    - Se normaliza a escala 0-100 considerando óptimo un rango entre 30% y 50% de inercia.
- * 4. Consumo y Progresividad del acelerador (15%):
- *    - Penalización si el tiempo de acelerador >60% es alto o si el consumo excede el estándar operativo.
+ * Calcula el puntaje de eficiencia y telemetría (0 a 100) adaptado al entorno del ejercicio.
+ * Entornos soportados:
+ * - MONTANA (Sierra / Pendientes):
+ *   * Meta de RPM verde más realista (45-50% = 100 pts de sub-escala).
+ *   * Zona amarilla tolerada si se usa para retención en bajada.
+ *   * Mayor peso a uso de Retarder / Freno de motor (35%) y tolerancia en inercia.
+ * - CIUDAD (Urbano / Maniobras):
+ *   * Meta de RPM verde (55-60%).
+ *   * Mayor tolerancia a frenadas progresivas necesarias por tráfico, pero castigo a acelerador >60%.
+ * - CARRETERA (Autopista / Plano):
+ *   * Meta estándar de RPM verde (75%).
+ *   * Mayor peso al aprovechamiento de inercia y velocidad constante.
  */
-export function calculateTelemetryScore(telemetry?: TelemetryMetrics): number | undefined {
+export function calculateTelemetryScore(
+  telemetry?: TelemetryMetrics,
+  exerciseName?: string,
+): number | undefined {
   if (!telemetry || telemetry.pctGreenZone === undefined) return undefined;
 
-  // --- 1. Sub-puntaje RPM (40%) ---
-  let rpmScore = telemetry.pctGreenZone;
+  const env = resolveExerciseEnvironment(exerciseName);
+
+  // --- 1. Sub-puntaje RPM ---
+  // Meta de zona verde según entorno
+  const greenTarget = env === "MONTANA" ? 48 : env === "CIUDAD" ? 58 : 75;
+  let rpmScore = Math.min(100, (telemetry.pctGreenZone / greenTarget) * 100);
+
+  // Penalización severa por zona roja (nunca permitida en ningún entorno)
   if (telemetry.pctRedZone && telemetry.pctRedZone > 0) {
-    rpmScore -= telemetry.pctRedZone * 20;
+    rpmScore -= telemetry.pctRedZone * 25;
   }
+
+  // Zona amarilla: en montaña es tolerada para retención en bajada siempre que no haya aceleración a fondo
   if (telemetry.pctYellowZone && telemetry.pctYellowZone > 0) {
-    rpmScore -= telemetry.pctYellowZone * 5;
+    if (env === "MONTANA") {
+      // En montaña solo penaliza levemente si es excesiva (> 20%)
+      if (telemetry.pctYellowZone > 20) {
+        rpmScore -= (telemetry.pctYellowZone - 20) * 3;
+      }
+    } else {
+      rpmScore -= telemetry.pctYellowZone * 4;
+    }
   }
   rpmScore = Math.max(0, Math.min(100, rpmScore));
 
-  // --- 2. Sub-puntaje Frenado & Retarder (25%) ---
-  let brakeScore = 100;
-  // Penalización por frenados bruscos excesivos (>60%)
-  if (telemetry.brakeAbove60Uses && telemetry.brakeAbove60Uses > 2) {
-    brakeScore -= (telemetry.brakeAbove60Uses - 2) * 4;
+  // --- 2. Sub-puntaje Frenado & Retarder ---
+  // Escala diferenciada por entorno:
+  // - CIUDAD / ENRAMPE: 3 de tolerancia para semáforos y maniobras a baja velocidad (-5 pts desde la 4ª).
+  // - MONTANA / SIERRA: 1 de tolerancia; se debe priorizar retarder (-8 pts desde la 2ª).
+  // - CARRETERA / AUTOPISTA: Tolerancia cero (-10 pts por cada frenada brusca a velocidad).
+  const harshBrakes = telemetry.brakeAbove60Uses || 0;
+  let brakePenalty = 0;
+  if (env === "CIUDAD") {
+    if (harshBrakes > 3) brakePenalty = (harshBrakes - 3) * 5;
+  } else if (env === "MONTANA") {
+    if (harshBrakes > 1) brakePenalty = (harshBrakes - 1) * 8;
+  } else {
+    brakePenalty = harshBrakes * 10;
   }
-  // Valorar uso de freno auxiliar: si hubo uso de freno auxiliar (>10s), premia la anticipación
-  if (telemetry.auxBrakeTimeSec && telemetry.auxBrakeTimeSec > 10) {
-    brakeScore = Math.min(100, brakeScore + 5);
+  let brakeScore = Math.max(0, 100 - brakePenalty);
+
+  // REGLA DE SEGURIDAD CLIMÁTICA: Lluvia, nieve o hielo
+  if (telemetry.hasSlipperyRoad) {
+    // Con piso deslizante NO se debe usar el freno auxiliar para evitar el efecto tijera (jackknife).
+    // Si el operador NO usó el retarder (0s o < 3s), se premia la retención segura.
+    if (!telemetry.auxBrakeTimeSec || telemetry.auxBrakeTimeSec <= 3) {
+      brakeScore = Math.min(100, brakeScore + 5);
+    } else {
+      // Si usó el retarder sobre mojado o nieve, penaliza severamente por riesgo de pérdida de tracción
+      brakeScore = Math.max(0, brakeScore - Math.min(40, telemetry.auxBrakeTimeSec * 3));
+    }
+  } else {
+    // Pavimento seco:
+    // En montaña el retarder es crítico: bonifica su uso o penaliza si no se usó en bajada prolongada
+    if (env === "MONTANA") {
+      if (telemetry.auxBrakeTimeSec && telemetry.auxBrakeTimeSec > 15) {
+        brakeScore = Math.min(100, brakeScore + 10);
+      } else if (!telemetry.auxBrakeTimeSec || telemetry.auxBrakeTimeSec === 0) {
+        brakeScore = Math.max(20, brakeScore - 15); // Alerta por no usar freno de motor en sierra seca
+      }
+    } else if (telemetry.auxBrakeTimeSec && telemetry.auxBrakeTimeSec > 5) {
+      brakeScore = Math.min(100, brakeScore + 5);
+    }
   }
   brakeScore = Math.max(0, Math.min(100, brakeScore));
 
-  // --- 3. Sub-puntaje Inercia / Rodadura Libre (20%) ---
-  let inertiaScore = 80; // Puntuación base en caso de que no haya distancia suficiente
+  // --- 3. Sub-puntaje Inercia / Rodadura Libre ---
+  let inertiaScore = 80;
   if (telemetry.distanceMeters && telemetry.distanceMeters > 100 && telemetry.coastDistanceMeters !== undefined) {
     const inertiaRatio = telemetry.coastDistanceMeters / telemetry.distanceMeters;
-    // Un ratio de 35% o más de inercia es excelente (100 pts). Por debajo de 10% es pobre.
-    inertiaScore = Math.min(100, Math.max(20, Math.round((inertiaRatio / 0.35) * 100)));
+    const optimalInertia = env === "MONTANA" ? 0.25 : env === "CIUDAD" ? 0.20 : 0.35;
+    inertiaScore = Math.min(100, Math.max(25, Math.round((inertiaRatio / optimalInertia) * 100)));
   }
 
-  // --- 4. Sub-puntaje Consumo y Progresividad (15%) ---
-  let fuelScore = 90;
-  // Si el consumo medio reportado supera 35 l/100km penaliza progresivamente
-  if (telemetry.averageConsumption && telemetry.averageConsumption > 35) {
-    fuelScore -= Math.min(60, (telemetry.averageConsumption - 35) * 2);
+  // --- 4. Sub-puntaje Aceleración Suave (Técnica de Ahorro y Pedal) ---
+  // Evaluado exclusivamente por el uso del acelerador (evitar pedal a fondo >60%).
+  let accelScore = 100;
+  if (telemetry.throttleAbove60Time) {
+    const secAbove60 = toSeconds(telemetry.throttleAbove60Time);
+    // Cada segundo de acelerador por encima del 60% resta 5 puntos de técnica
+    if (secAbove60 > 0) {
+      accelScore = Math.max(20, 100 - (secAbove60 * 5));
+    }
   }
-  // Penalizar tiempo excesivo en acelerador a fondo (>60%)
-  if (telemetry.throttleAbove60Time && telemetry.throttleAbove60Time !== "00:00") {
-    fuelScore -= 10;
-  }
-  fuelScore = Math.max(0, Math.min(100, fuelScore));
+  accelScore = Math.max(0, Math.min(100, accelScore));
 
-  // Ponderación total compuesta: 40% RPM + 25% Freno + 20% Inercia + 15% Consumo
-  const totalScore = (rpmScore * 0.40) + (brakeScore * 0.25) + (inertiaScore * 0.20) + (fuelScore * 0.15);
+  // Ponderaciones adaptadas según el entorno:
+  let totalScore = 0;
+  if (env === "MONTANA") {
+    // 30% RPM + 35% Frenado/Retarder + 20% Inercia + 15% Aceleración Progresiva
+    totalScore = (rpmScore * 0.30) + (brakeScore * 0.35) + (inertiaScore * 0.20) + (accelScore * 0.15);
+  } else if (env === "CIUDAD") {
+    // 35% RPM + 30% Frenado + 15% Inercia + 20% Aceleración Progresiva
+    totalScore = (rpmScore * 0.35) + (brakeScore * 0.30) + (inertiaScore * 0.15) + (accelScore * 0.20);
+  } else {
+    // CARRETERA: 40% RPM + 25% Frenado + 20% Inercia + 15% Aceleración Progresiva
+    totalScore = (rpmScore * 0.40) + (brakeScore * 0.25) + (inertiaScore * 0.20) + (accelScore * 0.15);
+  }
 
   return Math.round(Math.max(0, Math.min(100, totalScore)) * 10) / 10;
 }
@@ -140,6 +198,7 @@ export function evaluateMarks(
   marks: Mark[],
   durationSec: number,
   telemetry?: TelemetryMetrics,
+  exerciseName?: string,
 ): Evaluation {
   const bySeverity: Record<Severity, number> = { CRITICO: 0, GRAVE: 0, MODERADO: 0, LEVE: 0 };
   const uncataloged = new Set<string>();
@@ -159,7 +218,7 @@ export function evaluateMarks(
   const rawError = 100 - (points / minutes) * PENALTY_PER_ERROR_RATE;
   const errorScore = Math.round(Math.max(0, Math.min(100, rawError)) * 10) / 10;
 
-  const telemetryScore = calculateTelemetryScore(telemetry);
+  const telemetryScore = calculateTelemetryScore(telemetry, exerciseName);
 
   let finalScore = errorScore;
   if (telemetryScore !== undefined) {
@@ -199,13 +258,37 @@ export function parseReport(text: string): ParsedReport {
   // Extracción de marcas
   const marks: Mark[] = [];
   const markRe = /^(\d+:\d{2}:\d{2});([A-Z ]+);(.*)$/;
+  let hasSlipperyRoad = false;
+  let slipperyCondition = "";
+
   for (const line of lines) {
     const m = markRe.exec(line.trim());
-    if (m) marks.push({ time: m[1], type: m[2].trim(), description: m[3].trim() });
+    if (m) {
+      const type = m[2].trim();
+      const desc = m[3].trim();
+      marks.push({ time: m[1], type, description: desc });
+
+      const lower = desc.toLowerCase();
+      if (
+        lower.includes("lluvia") ||
+        lower.includes("nieve") ||
+        lower.includes("hielo") ||
+        lower.includes("mojad") ||
+        lower.includes("deslizante")
+      ) {
+        hasSlipperyRoad = true;
+        if (!slipperyCondition) {
+          slipperyCondition = lower.includes("nieve") ? "Nieve" : lower.includes("hielo") ? "Hielo" : "Lluvia / Pavimento mojado";
+        }
+      }
+    }
   }
 
   // Extracción de la sección «Indicadores genéricos»
-  const telemetry: TelemetryMetrics = {};
+  const telemetry: TelemetryMetrics = {
+    hasSlipperyRoad,
+    slipperyCondition: hasSlipperyRoad ? slipperyCondition : undefined,
+  };
   const indIdx = find(/^Indicadores gen.ricos/i);
   if (indIdx >= 0) {
     for (let i = indIdx + 1; i < lines.length; i++) {
@@ -237,7 +320,7 @@ export function parseReport(text: string): ParsedReport {
   }
 
   const durationSec = toSeconds(duration);
-  const ev = evaluateMarks(marks, durationSec, telemetry);
+  const ev = evaluateMarks(marks, durationSec, telemetry, exercise);
 
   return {
     driver,

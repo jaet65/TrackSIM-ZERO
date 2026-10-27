@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { phaseName, CRITICAL_LIMIT, verdictFor } from "../lib/config";
 import { SEVERITIES, SEVERITY_ORDER, classify, type Severity } from "../lib/catalog";
 import { driverData, type EvaluationView } from "../lib/db";
+import { resolveExerciseEnvironment } from "../lib/exercises";
 
 type Data = NonNullable<Awaited<ReturnType<typeof driverData>>>;
 type BreakdownItem = Data["breakdown"][number];
@@ -339,11 +340,10 @@ export default function Driver() {
             <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
               <button
                 onClick={() => setActiveSeverityTab("ALL")}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                  activeSeverityTab === "ALL"
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${activeSeverityTab === "ALL"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+                  }`}
               >
                 Todos ({breakdownList.length})
               </button>
@@ -354,13 +354,12 @@ export default function Driver() {
                     key={s}
                     onClick={() => setActiveSeverityTab(s)}
                     disabled={count === 0}
-                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                      activeSeverityTab === s
-                        ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
-                        : count === 0
+                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${activeSeverityTab === s
+                      ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                      : count === 0
                         ? "text-slate-300 cursor-not-allowed"
                         : "text-slate-600 hover:text-slate-900"
-                    }`}
+                      }`}
                   >
                     <span>{SEVERITIES[s].label}</span>
                     <span className="text-[10px] opacity-75 font-mono">({count})</span>
@@ -388,10 +387,10 @@ export default function Driver() {
                   s === "CRITICO"
                     ? "bg-rose-500"
                     : s === "GRAVE"
-                    ? "bg-orange-500"
-                    : s === "MODERADO"
-                    ? "bg-amber-500"
-                    : "bg-slate-400";
+                      ? "bg-orange-500"
+                      : s === "MODERADO"
+                        ? "bg-amber-500"
+                        : "bg-slate-400";
                 return (
                   <div
                     key={s}
@@ -475,15 +474,14 @@ export default function Driver() {
                             <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200/80">
                               <div
                                 style={{ width: `${barWidth}%` }}
-                                className={`h-full rounded-full transition-all duration-300 ${
-                                  sev === "CRITICO"
-                                    ? "bg-rose-500"
-                                    : sev === "GRAVE"
+                                className={`h-full rounded-full transition-all duration-300 ${sev === "CRITICO"
+                                  ? "bg-rose-500"
+                                  : sev === "GRAVE"
                                     ? "bg-orange-500"
                                     : sev === "MODERADO"
-                                    ? "bg-amber-500"
-                                    : "bg-slate-400"
-                                }`}
+                                      ? "bg-amber-500"
+                                      : "bg-slate-400"
+                                  }`}
                               />
                             </div>
                           </div>
@@ -501,19 +499,21 @@ export default function Driver() {
       {/* Modal de Reporte Detallado del Ejercicio */}
       {selectedEval && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-6 py-4">
               <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-xs">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-xs shadow-xs">
                   F{selectedEval.phase}
                 </span>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 leading-tight">
                     {selectedEval.exercise}
                   </h3>
-                  <p className="text-xs text-slate-500">
-                    Fase {selectedEval.phase}: {phaseName(selectedEval.phase)}
+                  <p className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
+                    <span className="font-semibold text-slate-700">{selectedEval.driverName || data?.name || "Conductor"}</span>
+                    <span>·</span>
+                    <span>Fase {selectedEval.phase}: {phaseName(selectedEval.phase)}</span>
                   </p>
                 </div>
               </div>
@@ -531,7 +531,11 @@ export default function Driver() {
             {/* Modal Body */}
             <div className="overflow-y-auto p-6 space-y-6">
               {/* Metadatos principales de la prueba */}
-              <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 text-xs grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 text-xs grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="col-span-2 sm:col-span-2">
+                  <span className="text-slate-400">Conductor:</span>{" "}
+                  <strong className="text-slate-900 font-bold">{selectedEval.driverName || data?.name || "—"}</strong>
+                </div>
                 <div>
                   <span className="text-slate-400">Fecha:</span>{" "}
                   <strong className="text-slate-700">{selectedEval.date || "—"}</strong>
@@ -541,13 +545,13 @@ export default function Driver() {
                   <strong className="text-slate-700">{selectedEval.instructor || "—"}</strong>
                 </div>
                 {selectedEval.vehicle && (
-                  <div>
+                  <div className="col-span-2 sm:col-span-4 pt-1 border-t border-slate-200/50 mt-1">
                     <span className="text-slate-400">Vehículo:</span>{" "}
                     <strong className="text-slate-700">{selectedEval.vehicle}</strong>
                   </div>
                 )}
                 {selectedEval.fileName && (
-                  <div className="col-span-2 sm:col-span-3 truncate pt-1 border-t border-slate-200/50 mt-1">
+                  <div className="col-span-2 sm:col-span-4 truncate text-[11px]">
                     <span className="text-slate-400">Archivo origen:</span>{" "}
                     <span className="font-mono text-slate-600">{selectedEval.fileName}</span>
                   </div>
@@ -565,13 +569,13 @@ export default function Driver() {
                     <span className="text-xs text-indigo-400">/ 100</span>
                   </div>
                   <span className="block text-[10px] text-indigo-600/80 mt-0.5">
-                    {selectedEval.telemetryScore !== undefined ? "70% err + 30% eco" : "100% errores"}
+                    {selectedEval.telemetryScore !== undefined ? "70% destreza + 30% eco" : "100% destreza"}
                   </span>
                 </div>
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    Nota Errores (70%)
+                    Destreza Operativa (70%)
                   </span>
                   <div className="mt-1 text-2xl font-bold font-mono text-slate-900">
                     {selectedEval.errorScore}
@@ -606,94 +610,280 @@ export default function Driver() {
                 </div>
               </div>
 
-              {/* Indicadores Genéricos de Telemetría (si están disponibles) */}
-              {selectedEval.telemetry && Object.keys(selectedEval.telemetry).length > 0 && (
-                <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                      <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      Indicadores Genéricos de Telemetría y Eficiencia
-                    </h4>
-                    <span className="text-[10px] font-medium text-slate-400">
-                      Ponderación: 40% RPM · 25% Freno · 20% Inercia · 15% Consumo
-                    </span>
+              {/* Indicadores Genéricos de Telemetría (con Gráfico de Radar) */}
+              {selectedEval.telemetry && Object.keys(selectedEval.telemetry).length > 0 && (() => {
+                const tel = selectedEval.telemetry;
+                const env = resolveExerciseEnvironment(selectedEval.exercise);
+
+                // Ejes normalizados de 0 a 100 para el gráfico de radar según el entorno
+                // 1. Rango RPM (Zona verde vs meta del entorno)
+                const greenTarget = env === "MONTANA" ? 48 : env === "CIUDAD" ? 58 : 75;
+                const rawRpmRatio = ((tel.pctGreenZone || 0) / greenTarget) * 100;
+                const axisRpm = Math.max(0, Math.min(100, Math.round(rawRpmRatio - ((tel.pctRedZone || 0) * 20))));
+
+                // 2. Control de Frenado Suave con escala diferenciada por entorno:
+                const harshBrakes = tel.brakeAbove60Uses || 0;
+                const brakeTolerance = env === "CIUDAD" ? 3 : env === "MONTANA" ? 1 : 0;
+                let brakePenalty = 0;
+                if (env === "CIUDAD") {
+                  if (harshBrakes > 3) brakePenalty = (harshBrakes - 3) * 5;
+                } else if (env === "MONTANA") {
+                  if (harshBrakes > 1) brakePenalty = (harshBrakes - 1) * 8;
+                } else {
+                  brakePenalty = harshBrakes * 10;
+                }
+                const axisBrake = Math.max(0, 100 - brakePenalty);
+                const brakeTargetLabel = brakeTolerance > 0 ? `meta ≤${brakeTolerance}` : "meta 0";
+
+                // 3. Freno Auxiliar / Retarder
+                let axisRetarder = 100;
+                let retarderRaw = `${tel.auxBrakeTimeSec || 0}s`;
+                if (tel.hasSlipperyRoad) {
+                  // Con piso resbaladizo (lluvia/nieve), NO usar retarder es lo correcto y seguro
+                  if (!tel.auxBrakeTimeSec || tel.auxBrakeTimeSec <= 3) {
+                    axisRetarder = 100;
+                    retarderRaw = `${tel.auxBrakeTimeSec || 0}s (Desactivado ✓)`;
+                  } else {
+                    axisRetarder = Math.max(10, Math.round(100 - Math.min(90, (tel.auxBrakeTimeSec || 0) * 4)));
+                    retarderRaw = `${tel.auxBrakeTimeSec}s (Riesgo tijera ⚠️)`;
+                  }
+                } else {
+                  // Pavimento seco: en montaña la meta es 45s, en carretera/ciudad 20s
+                  const retarderTarget = env === "MONTANA" ? 45 : 20;
+                  const sec = tel.auxBrakeTimeSec || 0;
+                  if (env === "MONTANA" && sec < 5) {
+                    axisRetarder = 25;
+                    retarderRaw = `${sec}s (Riesgo cristalización ⚠️)`;
+                  } else {
+                    axisRetarder = Math.min(100, Math.round((sec / retarderTarget) * 100));
+                    retarderRaw = `${sec}s (meta ${retarderTarget}s)`;
+                  }
+                }
+
+                // 4. Aprovechamiento de Inercia (meta según terreno)
+                const optInertia = env === "MONTANA" ? 0.25 : env === "CIUDAD" ? 0.20 : 0.35;
+                const inRatio = (tel.distanceMeters && tel.distanceMeters > 50 && tel.coastDistanceMeters !== undefined)
+                  ? (tel.coastDistanceMeters / tel.distanceMeters)
+                  : 0.25;
+                const axisInertia = Math.min(100, Math.round((inRatio / optInertia) * 100));
+                const inRatioPct = Math.round(inRatio * 100);
+                const optInertiaPct = Math.round(optInertia * 100);
+
+                // 5. Aceleración Suave (Técnica de Ahorro: evitar acelerador a fondo >60%)
+                let axisAccel = 100;
+                let accelRaw = "0s (meta 0s)";
+                if (tel.throttleAbove60Time && tel.throttleAbove60Time !== "00:00") {
+                  const parts = tel.throttleAbove60Time.split(":").map(Number);
+                  const sec = (parts[0] || 0) * 60 + (parts[1] || 0);
+                  if (sec > 0) {
+                    axisAccel = Math.max(20, 100 - sec * 5);
+                    accelRaw = `${tel.throttleAbove60Time} (>60% ⚠️)`;
+                  }
+                }
+
+                const axes = [
+                  { label: "Zona Verde", value: axisRpm, raw: `${tel.pctGreenZone || 0}% (meta ${greenTarget}%)` },
+                  { label: "Freno Suave", value: axisBrake, raw: `${harshBrakes} f. bruscas (${brakeTargetLabel})` },
+                  { label: tel.hasSlipperyRoad ? "Retarder Seguro" : "Retarder", value: axisRetarder, raw: retarderRaw },
+                  { label: "Inercia", value: axisInertia, raw: `${inRatioPct}% (${Math.round(tel.coastDistanceMeters || 0)}m, meta ≥${optInertiaPct}%)` },
+                  { label: "Acel. Suave", value: axisAccel, raw: accelRaw },
+                ];
+
+                const totalAxes = axes.length;
+                const width = 340;
+                const height = 290;
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const radius = 80;
+
+                // Función trigonométrica para calcular coordenadas en el radar
+                const getCoords = (index: number, val: number, customRadius = radius) => {
+                  const angle = (Math.PI * 2 / totalAxes) * index - Math.PI / 2;
+                  const r = (val / 100) * customRadius;
+                  return {
+                    x: centerX + r * Math.cos(angle),
+                    y: centerY + r * Math.sin(angle),
+                  };
+                };
+
+                const radarPolygonPoints = axes
+                  .map((a, i) => {
+                    const c = getCoords(i, a.value);
+                    return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+                  })
+                  .join(" ");
+
+                const envLabel = env === "MONTANA" ? "🏔️ Entorno Montaña / Sierra" : env === "CIUDAD" ? "🏙️ Entorno Ciudad / Maniobras" : "🛣️ Entorno Carretera / Plano";
+
+                return (
+                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                            <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            Indicadores de Telemetría · Perfil Radar
+                          </h4>
+                          <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                            {envLabel}
+                          </span>
+                          {tel.hasSlipperyRoad && (
+                            <span className="rounded-full bg-sky-100 border border-sky-300 px-2 py-0.5 text-[10px] font-bold text-sky-800 flex items-center gap-1">
+                              🌧️ {tel.slipperyCondition || "Pavimento mojado"} (Retarder off)
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          Calibrado para {env.toLowerCase()} (Meta Verde: {greenTarget}%)
+                        </span>
+                      </div>
+                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                        Puntaje Eco: {selectedEval.telemetryScore ?? "—"}/100
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                      {/* Gráfico de Radar SVG */}
+                      <div className="md:col-span-6 flex flex-col items-center justify-center p-3 rounded-xl bg-white border border-slate-200/80 shadow-xs overflow-hidden">
+                        <svg width={width} height={height} className="overflow-visible select-none">
+                          {/* Círculos / Polígonos de cuadrícula guía (25%, 50%, 75%, 100%) */}
+                          {[0.25, 0.5, 0.75, 1.0].map((step) => {
+                            const gridPoints = axes
+                              .map((_, i) => {
+                                const c = getCoords(i, step * 100);
+                                return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+                              })
+                              .join(" ");
+                            return (
+                              <polygon
+                                key={step}
+                                points={gridPoints}
+                                fill={step === 1.0 ? "#f8fafc" : "transparent"}
+                                stroke="#e2e8f0"
+                                strokeWidth="1"
+                                strokeDasharray={step < 1.0 ? "2,2" : undefined}
+                              />
+                            );
+                          })}
+
+                          {/* Ejes radiales desde el centro */}
+                          {axes.map((_, i) => {
+                            const c = getCoords(i, 100);
+                            return (
+                              <line
+                                key={i}
+                                x1={centerX}
+                                y1={centerY}
+                                x2={c.x}
+                                y2={c.y}
+                                stroke="#e2e8f0"
+                                strokeWidth="1"
+                              />
+                            );
+                          })}
+
+                          {/* Polígono del Operador (Relleno y Borde) */}
+                          <polygon
+                            points={radarPolygonPoints}
+                            fill="rgba(16, 185, 129, 0.22)"
+                            stroke="#059669"
+                            strokeWidth="2.5"
+                          />
+
+                          {/* Nodos de datos en cada eje con etiquetas de concepto y porcentaje */}
+                          {axes.map((a, i) => {
+                            const c = getCoords(i, a.value);
+                            // Calculamos posición de la etiqueta hacia afuera del vértice
+                            const labelCoords = getCoords(i, 100, radius + 32);
+                            return (
+                              <g key={i}>
+                                <circle
+                                  cx={c.x}
+                                  cy={c.y}
+                                  r="4"
+                                  className="fill-emerald-600 stroke-white stroke-2"
+                                />
+                                <text
+                                  x={labelCoords.x}
+                                  y={labelCoords.y - 7}
+                                  textAnchor="middle"
+                                  dominantBaseline="central"
+                                  className="text-[10px] font-bold fill-slate-800"
+                                >
+                                  {a.label}
+                                </text>
+                                <text
+                                  x={labelCoords.x}
+                                  y={labelCoords.y + 7}
+                                  textAnchor="middle"
+                                  dominantBaseline="central"
+                                  className={`text-[9px] font-semibold font-mono ${a.value >= 75 ? "fill-emerald-600" : a.value >= 50 ? "fill-amber-600" : "fill-rose-600"
+                                    }`}
+                                >
+                                  {a.value}%
+                                </text>
+                              </g>
+                            );
+                          })}
+                        </svg>
+
+                        <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-500">
+                          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
+                          <span>Área verde = Nivel de destreza operativa</span>
+                        </div>
+                      </div>
+
+                      {/* Tarjetas complementarias con los valores reales */}
+                      <div className="md:col-span-6 grid grid-cols-2 gap-2 text-xs">
+                        {axes.map((axis, idx) => (
+                          <div key={idx} className="rounded-lg bg-white p-2.5 border border-slate-200/80">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span className="truncate">{axis.label}</span>
+                              <span className="font-bold text-slate-600">{axis.value}%</span>
+                            </div>
+                            <div className="mt-1 flex items-baseline justify-between">
+                              <strong className="text-slate-800 font-mono text-sm">
+                                {axis.raw}
+                              </strong>
+                            </div>
+                            {/* Barra de progreso miniatura */}
+                            <div className="mt-1.5 h-1 w-full rounded-full bg-slate-100 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${axis.value >= 75 ? "bg-emerald-500" : axis.value >= 50 ? "bg-amber-500" : "bg-rose-500"
+                                  }`}
+                                style={{ width: `${axis.value}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+
+                        <div className="rounded-lg bg-white p-2.5 border border-slate-200/80 col-span-2 grid grid-cols-3 gap-2 text-center">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block truncate">Consumo Reportado</span>
+                            <span className="font-mono text-xs text-slate-800 font-semibold">
+                              {tel.averageConsumption !== undefined ? `${tel.averageConsumption} l/100km` : "—"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block truncate">Velocidad Med/Max</span>
+                            <span className="font-mono text-xs text-slate-800 font-semibold">
+                              {tel.averageSpeed || "—"} / {tel.maxSpeed || "—"} km/h
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block truncate">RPM Max / Cambios</span>
+                            <span className="font-mono text-xs text-slate-800 font-semibold">
+                              {tel.maxRpm || "—"} rpm · {tel.gearChanges ?? "—"} c.
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 text-xs">
-                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
-                      <span className="text-[10px] text-slate-400 block">% Zona Verde</span>
-                      <strong className="text-emerald-700 font-mono text-sm">
-                        {selectedEval.telemetry.pctGreenZone !== undefined ? `${selectedEval.telemetry.pctGreenZone}%` : "—"}
-                      </strong>
-                    </div>
-
-                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
-                      <span className="text-[10px] text-slate-400 block">% Zona Roja</span>
-                      <strong className={`font-mono text-sm ${selectedEval.telemetry.pctRedZone && selectedEval.telemetry.pctRedZone > 0 ? "text-rose-600" : "text-slate-800"}`}>
-                        {selectedEval.telemetry.pctRedZone !== undefined ? `${selectedEval.telemetry.pctRedZone}%` : "0%"}
-                      </strong>
-                    </div>
-
-                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
-                      <span className="text-[10px] text-slate-400 block">Consumo Medio</span>
-                      <strong className="text-slate-800 font-mono text-sm">
-                        {selectedEval.telemetry.averageConsumption !== undefined ? `${selectedEval.telemetry.averageConsumption} l/100km` : "—"}
-                      </strong>
-                    </div>
-
-                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
-                      <span className="text-[10px] text-slate-400 block">Freno Aux (Retarder)</span>
-                      <strong className="text-slate-800 font-mono text-sm">
-                        {selectedEval.telemetry.auxBrakeTimeSec !== undefined ? `${selectedEval.telemetry.auxBrakeTimeSec} s` : "—"}
-                      </strong>
-                    </div>
-
-                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
-                      <span className="text-[10px] text-slate-400 block">Freno &gt; 60%</span>
-                      <strong className={`font-mono text-sm ${selectedEval.telemetry.brakeAbove60Uses && selectedEval.telemetry.brakeAbove60Uses > 2 ? "text-amber-600" : "text-slate-800"}`}>
-                        {selectedEval.telemetry.brakeAbove60Uses !== undefined ? `${selectedEval.telemetry.brakeAbove60Uses} veces` : "—"}
-                      </strong>
-                    </div>
-
-                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
-                      <span className="text-[10px] text-slate-400 block">Inercia (Sin Pedales)</span>
-                      <strong className="text-slate-800 font-mono text-sm">
-                        {selectedEval.telemetry.coastDistanceMeters !== undefined ? `${Math.round(selectedEval.telemetry.coastDistanceMeters)} m` : "—"}
-                      </strong>
-                    </div>
-
-                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
-                      <span className="text-[10px] text-slate-400 block">Distancia Total</span>
-                      <strong className="text-slate-800 font-mono text-sm">
-                        {selectedEval.telemetry.distanceMeters !== undefined ? `${Math.round(selectedEval.telemetry.distanceMeters)} m` : "—"}
-                      </strong>
-                    </div>
-
-                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
-                      <span className="text-[10px] text-slate-400 block">RPM Máximas</span>
-                      <strong className="text-slate-800 font-mono text-sm">
-                        {selectedEval.telemetry.maxRpm !== undefined ? `${selectedEval.telemetry.maxRpm} rpm` : "—"}
-                      </strong>
-                    </div>
-
-                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
-                      <span className="text-[10px] text-slate-400 block">Velocidad Media / Max</span>
-                      <strong className="text-slate-800 font-mono text-sm">
-                        {selectedEval.telemetry.averageSpeed || "—"} / {selectedEval.telemetry.maxSpeed || "—"} km/h
-                      </strong>
-                    </div>
-
-                    <div className="rounded-lg bg-white p-2.5 border border-slate-200/80">
-                      <span className="text-[10px] text-slate-400 block">Cambios de Marcha</span>
-                      <strong className="text-slate-800 font-mono text-sm">
-                        {selectedEval.telemetry.gearChanges !== undefined ? selectedEval.telemetry.gearChanges : "—"}
-                      </strong>
-                    </div>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Conteo detallado por Nivel de Gravedad */}
               <div className="space-y-1.5">
@@ -706,9 +896,8 @@ export default function Driver() {
                     return (
                       <div
                         key={sev}
-                        className={`rounded-xl border p-2.5 transition flex flex-col justify-between ${
-                          count > 0 ? SEVERITIES[sev].badge : "border-slate-200 bg-slate-50/50 text-slate-400"
-                        }`}
+                        className={`rounded-xl border p-2.5 transition flex flex-col justify-between ${count > 0 ? SEVERITIES[sev].badge : "border-slate-200 bg-slate-50/50 text-slate-400"
+                          }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-bold uppercase tracking-wider">
@@ -811,9 +1000,8 @@ export default function Driver() {
                             </td>
                             <td className="px-3.5 py-2.5 text-right whitespace-nowrap">
                               <span
-                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
-                                  SEVERITIES[m.severity].badge
-                                }`}
+                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${SEVERITIES[m.severity].badge
+                                  }`}
                               >
                                 {SEVERITIES[m.severity].label}
                               </span>

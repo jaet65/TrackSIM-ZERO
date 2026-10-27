@@ -119,10 +119,39 @@ export type EvaluationView = EvaluationDoc & {
 };
 
 function withCurrentScore(d: EvaluationDoc): EvaluationView {
-  const ev = evaluateMarks(d.marks, d.durationSec, d.telemetry);
+  const exerciseName = d.unit || d.exercise;
+  
+  // Si la telemetría no traía hasSlipperyRoad (ej. guardada antes), detectarlo dinámicamente de d.marks
+  let telemetry = d.telemetry;
+  if (telemetry) {
+    let hasSlipperyRoad = telemetry.hasSlipperyRoad ?? false;
+    let slipperyCondition = telemetry.slipperyCondition;
+    if (!hasSlipperyRoad && d.marks) {
+      for (const m of d.marks) {
+        const lower = (m.description || "").toLowerCase();
+        if (
+          lower.includes("lluvia") ||
+          lower.includes("nieve") ||
+          lower.includes("hielo") ||
+          lower.includes("mojad") ||
+          lower.includes("deslizante")
+        ) {
+          hasSlipperyRoad = true;
+          if (!slipperyCondition) {
+            slipperyCondition = lower.includes("nieve") ? "Nieve" : lower.includes("hielo") ? "Hielo" : "Lluvia / Pavimento mojado";
+          }
+          break;
+        }
+      }
+    }
+    telemetry = { ...telemetry, hasSlipperyRoad, slipperyCondition };
+  }
+
+  const ev = evaluateMarks(d.marks, d.durationSec, telemetry, exerciseName);
   return {
     ...d,
-    exercise: d.unit || d.exercise,
+    telemetry,
+    exercise: exerciseName,
     errorCount: ev.errorCount,
     criticalCount: ev.criticalCount,
     errorScore: ev.errorScore,
