@@ -467,11 +467,11 @@ export default function Home() {
           <div className="mt-1 flex items-center gap-1.5">
             <span
               className={`h-2 w-2 rounded-full ${
-                promedioGeneral >= 80 ? "bg-emerald-500" : promedioGeneral >= 60 ? "bg-amber-500" : "bg-rose-500"
+                promedioGeneral >= 8 ? "bg-emerald-500" : promedioGeneral >= 6 ? "bg-amber-500" : "bg-rose-500"
               }`}
             />
             <span className="text-[11px] font-medium text-slate-600">
-              {promedioGeneral >= 80 ? "Nivel Satisfactorio" : promedioGeneral >= 60 ? "En Riesgo / Regular" : "No Apto"}
+              {promedioGeneral >= 8 ? "Nivel Satisfactorio" : promedioGeneral >= 6 ? "En Riesgo / Regular" : "No Apto"}
             </span>
           </div>
         </div>
@@ -668,9 +668,9 @@ export default function Home() {
                         <div className="h-1.5 w-16 rounded-full bg-slate-100 overflow-hidden mt-0.5">
                           <div
                             className={`h-full rounded-full ${
-                              r.avgScore >= 80 ? "bg-emerald-500" : r.avgScore >= 60 ? "bg-amber-500" : "bg-rose-500"
+                              r.avgScore >= 8 ? "bg-emerald-500" : r.avgScore >= 6 ? "bg-amber-500" : "bg-rose-500"
                             }`}
-                            style={{ width: `${Math.min(100, Math.max(0, r.avgScore))}%` }}
+                            style={{ width: `${Math.min(100, Math.max(0, r.avgScore * 10))}%` }}
                           />
                         </div>
                       </div>

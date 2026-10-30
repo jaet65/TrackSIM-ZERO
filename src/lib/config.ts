@@ -29,13 +29,13 @@ export const CRITICAL_LIMIT = 2;
 
 export const VERDICTS = [
   {
-    min: 80,
+    min: 8,
     label: "APTO",
     color: "bg-emerald-50 text-emerald-700 border border-emerald-200",
     badgeColor: "bg-emerald-500",
   },
   {
-    min: 60,
+    min: 6,
     label: "APTO CON OBSERVACIONES",
     color: "bg-amber-50 text-amber-800 border border-amber-200",
     badgeColor: "bg-amber-500",

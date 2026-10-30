@@ -190,10 +190,10 @@ export function calculateTelemetryScore(
     totalScore = (rpmScore * 0.40) + (brakeScore * 0.25) + (inertiaScore * 0.20) + (accelScore * 0.15);
   }
 
-  return Math.round(Math.max(0, Math.min(100, totalScore)) * 10) / 10;
+  return Math.round(Math.max(0, Math.min(10, totalScore / 10)) * 10) / 10;
 }
 
-// Calificación compuesta: 70% Errores de maniobra + 30% Telemetría y Eco-Driving.
+// Calificación compuesta (escala 0 a 10): 70% Errores de maniobra + 30% Telemetría y Eco-Driving.
 // Si no hay telemetría disponible en el reporte, se toma el 100% de la nota de errores.
 export function evaluateMarks(
   marks: Mark[],
@@ -219,8 +219,8 @@ export function evaluateMarks(
   }
 
   const minutes = Math.max(durationSec / 60, 1);
-  const rawError = 100 - (points / minutes) * PENALTY_PER_ERROR_RATE;
-  const errorScore = Math.round(Math.max(0, Math.min(100, rawError)) * 10) / 10;
+  const rawError = (100 - (points / minutes) * PENALTY_PER_ERROR_RATE) / 10;
+  const errorScore = Math.round(Math.max(0, Math.min(10, rawError)) * 10) / 10;
 
   const telemetryScore = calculateTelemetryScore(telemetry, exerciseName, groupId);
 

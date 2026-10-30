@@ -155,10 +155,10 @@ export function dictamen(score: number, criticalErrors: number) {
   return criticalErrors >= CRITICAL_LIMIT ? verdictFor(0) : verdictFor(score);
 }
 
-// Asegura coherencia entre la calificación y el dictamen: un NO APTO nunca debe tener calificación verde/aprobatoria
+// Asegura coherencia entre la calificación y el dictamen: un NO APTO nunca debe tener calificación verde/aprobatoria (escala 0-10)
 export function adjustScoreForCritical(score: number, criticalErrors: number): number {
   if (criticalErrors >= CRITICAL_LIMIT) {
-    return Math.min(score, 59.0);
+    return Math.min(score, 5.9);
   }
   return score;
 }
@@ -173,16 +173,18 @@ export type EvaluationView = EvaluationDoc & {
 export function withCurrentScore(d: EvaluationDoc): EvaluationView {
   const exerciseName = d.unit || d.exercise;
   
-  // Si la evaluación ya fue congelada, sus métricas son inalterables
+  // Si la evaluación ya fue congelada, sus métricas son inalterables (normalizando a escala 0-10 si se congeló en escala 0-100)
   if (d.frozen && typeof d.frozenScore === "number") {
+    const toScale10 = (val?: number) =>
+      val !== undefined ? (val > 10 ? Math.round((val / 10) * 10) / 10 : val) : undefined;
     return {
       ...d,
       exercise: exerciseName,
       errorCount: d.frozenErrorCount ?? d.errorCount,
       criticalCount: d.frozenCriticalCount ?? 0,
-      errorScore: d.frozenErrorScore ?? d.score,
-      telemetryScore: d.frozenTelemetryScore,
-      score: d.frozenScore,
+      errorScore: toScale10(d.frozenErrorScore ?? d.score) ?? 0,
+      telemetryScore: toScale10(d.frozenTelemetryScore),
+      score: toScale10(d.frozenScore) ?? 0,
       marks: d.frozenMarks ?? d.marks,
     };
   }

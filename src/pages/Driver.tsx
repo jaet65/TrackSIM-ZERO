@@ -242,7 +242,7 @@ export default function Driver() {
             </span>
             <div className="mt-2 flex items-baseline gap-3">
               <span className="text-5xl font-black text-slate-900 tracking-tight">{overall}</span>
-              <span className="text-sm text-slate-500">/ 100 pts</span>
+              <span className="text-sm text-slate-500">/ 10 pts</span>
             </div>
             <p className="mt-2 text-xs text-slate-600">
               Calculada sobre {expectedExercises} ejercicio(s) esperados en {phases.length} fase(s) configuradas (70% seguridad y errores + 30% eficiencia y telemetría).
@@ -358,14 +358,14 @@ export default function Driver() {
                         Calificación
                       </span>
                       <span className="text-xl font-black font-mono text-indigo-600">{p.avgScore}</span>
-                      <span className="text-xs text-indigo-500"> / 100</span>
+                      <span className="text-xs text-indigo-500"> / 10</span>
                     </div>
                     <div className="text-right">
                       <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">
                         Puntaje Eco
                       </span>
                       <span className="text-base font-extrabold font-mono text-indigo-700">
-                        {radarSummary.ecoScore}/100
+                        {radarSummary.ecoScore}/10
                       </span>
                     </div>
                   </div>
@@ -761,7 +761,7 @@ export default function Driver() {
                   </span>
                   <div className="mt-1 flex items-baseline gap-1">
                     <span className="text-2xl font-black font-mono text-indigo-600">{selectedEval.score}</span>
-                    <span className="text-xs text-indigo-400">/ 100</span>
+                    <span className="text-xs text-indigo-400">/ 10</span>
                   </div>
                   <span className="block text-[10px] text-indigo-600/80 mt-0.5">
                     {selectedEval.telemetryScore !== undefined ? "70% destreza + 30% eco" : "100% destreza"}
@@ -935,7 +935,7 @@ export default function Driver() {
                         </span>
                       </div>
                       <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
-                        Puntaje Eco: {selectedEval.telemetryScore ?? "—"}/100
+                        Puntaje Eco: {selectedEval.telemetryScore ?? "—"}/10
                       </span>
                     </div>
 

@@ -11,7 +11,7 @@ import {
   type Severity,
 } from "../lib/catalog";
 import { loadCatalog, saveCatalog } from "../lib/catalogStore";
-import { CRITICAL_LIMIT, PENALTY_PER_ERROR_RATE, isAdminEmail } from "../lib/config";
+import { CRITICAL_LIMIT, isAdminEmail } from "../lib/config";
 import { listGroups, getActiveGroupId, type GroupDoc } from "../lib/groups";
 import { useAuth } from "../components/AuthProvider";
 
@@ -180,7 +180,7 @@ export default function Catalog() {
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">Catálogo de Errores y Ponderaciones</h1>
             <p className="mt-1 text-xs text-slate-600 max-w-2xl leading-relaxed">
               Cada grupo mantiene sus propias reglas de errores y ponderaciones de forma independiente.
-              La calificación final parte de 100 menos los puntos/min × {PENALTY_PER_ERROR_RATE}.
+              La calificación final parte de 10 puntos menos la penalización proporcional por minuto.
               Acumular {CRITICAL_LIMIT} o más errores críticos genera dictamen automático de <strong className="text-rose-700">NO APTO</strong>.
             </p>
           </div>

@@ -32,7 +32,7 @@ export function computeTelemetryAxes(
         { label: "Inercia", value: 50, raw: "N/D" },
         { label: "Acel. Suave", value: 50, raw: "N/D" },
       ],
-      ecoScore: 50,
+      ecoScore: 5.0,
       environment: "CARRETERA",
       hasSlipperyRoad: false,
     };
@@ -129,7 +129,7 @@ export function computeTelemetryAxes(
     { label: "Acel. Suave", value: axisAccel, raw: accelRaw },
   ];
 
-  const ecoScore = Math.round(axes.reduce((a, b) => a + b.value, 0) / axes.length);
+  const ecoScore = Math.round(((axes.reduce((a, b) => a + b.value, 0) / axes.length) / 10) * 10) / 10;
 
   return {
     axes,

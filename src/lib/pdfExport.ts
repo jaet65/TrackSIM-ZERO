@@ -289,7 +289,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text("/ 100 pts", 54, y + 18.5);
+  doc.text("/ 10 pts", 54, y + 18.5);
 
   doc.setFontSize(7);
   doc.text(
@@ -410,8 +410,8 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
 
     doc.setFont("helvetica", "bold");
     doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-    doc.text(`Nota: ${p.avgScore} pts`, cardX + 32, cardY + 16);
-    doc.text(`Eco: ${radarData.ecoScore}/100`, cardX + 32, cardY + 20.5);
+    doc.text(`Nota: ${p.avgScore} / 10`, cardX + 32, cardY + 16);
+    doc.text(`Eco: ${radarData.ecoScore}/10`, cardX + 32, cardY + 20.5);
 
     // Divisor vertical entre texto y radar
     doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
