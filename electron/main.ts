@@ -747,10 +747,11 @@ function launchSilentInstaller(installerPath: string, restartAfterInstall: boole
   const escapedInstaller = installerPath.replace(/'/g, "''");
   const exePath = app.getPath("exe").replace(/'/g, "''");
   const shouldRestart = restartAfterInstall && app.isPackaged ? "$true" : "$false";
-  const psScriptPath = path.join(app.getPath("temp"), "tracksim-apply-update.ps1");
+  const tempDir = app.getPath("temp");
+  const psScriptPath = path.join(tempDir, "tracksim-apply-update.ps1");
+  const vbsLauncherPath = path.join(tempDir, "tracksim-update-launcher.vbs");
 
-  const psScript = `
-$ErrorActionPreference = 'SilentlyContinue'
+  const psScript = `\uFEFF$ErrorActionPreference = 'SilentlyContinue'
 $installer = '${escapedInstaller}'
 $appExe = '${exePath}'
 $restart = ${shouldRestart}
@@ -805,7 +806,7 @@ if (Test-Path -LiteralPath $installer) {
     if ($form) { [System.Windows.Forms.Application]::DoEvents() }
     Start-Sleep -Milliseconds 100
   }
-  Start-Sleep -Milliseconds 500
+  Start-Sleep -Milliseconds 1000
   Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
 }
 
@@ -820,11 +821,16 @@ if ($restart -and (Test-Path -LiteralPath $appExe)) {
 }
 `;
 
+  // wscript.exe es un proceso GUI nativo de Windows (no requiere consola al usar DETACHED_PROCESS)
+  // y lanza powershell.exe con una consola oculta válida (0 = SW_HIDE) independiente del proceso padre.
+  const vbsScript = `CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & WScript.Arguments(0) & """", 0, False\r\n`;
+
   try {
     fs.writeFileSync(psScriptPath, psScript, "utf-8");
+    fs.writeFileSync(vbsLauncherPath, vbsScript, "utf-8");
     const child = spawn(
-      "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", psScriptPath],
+      "wscript.exe",
+      ["//B", "//NoLogo", vbsLauncherPath, psScriptPath],
       {
         detached: true,
         stdio: "ignore",
