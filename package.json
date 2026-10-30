@@ -18,6 +18,7 @@
   "build": {
     "appId": "com.tracksim.zero",
     "productName": "TrackSIM ZERO",
+    "icon": "public/favicon.ico",
     "protocols": [
       {
         "name": "TrackSIM ZERO",
@@ -39,6 +40,7 @@
     ],
     "asar": true,
     "win": {
+      "icon": "public/favicon.ico",
       "artifactName": "TrackSIM-ZERO-Setup-${version}.${ext}",
       "target": [
         {
@@ -50,27 +52,30 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "installerIcon": "public/favicon.ico",
+      "uninstallerIcon": "public/favicon.ico",
+      "installerHeaderIcon": "public/favicon.ico"
     }
   },
   "dependencies": {
-    "@types/pg": "^8.23.1",
-    "firebase": "^13.1.0",
-    "jspdf": "^4.2.1",
-    "jszip": "^3.10.2",
-    "pg": "^8.23.1",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "react-router-dom": "^7.18.4"
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.6",
     "electron": "^45.1.0",
     "electron-builder": "^26.18.0",
+    "firebase": "^13.1.0",
+    "jspdf": "^4.2.1",
+    "jszip": "^3.10.2",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-router-dom": "^7.18.4",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite": "^8.3.5",

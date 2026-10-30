@@ -358,6 +358,10 @@ function startEmbeddedStaticServer(): Promise<number> {
 let mainWindow: BrowserWindow | null = null;
 
 async function createWindow() {
+  const distIcon = path.join(__dirname, "../dist/favicon.ico");
+  const pubIcon = path.join(__dirname, "../public/favicon.ico");
+  const iconPath = fs.existsSync(distIcon) ? distIcon : fs.existsSync(pubIcon) ? pubIcon : undefined;
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -365,6 +369,7 @@ async function createWindow() {
     minHeight: 700,
     show: false,
     title: "TrackSIM ZERO",
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
@@ -741,22 +746,95 @@ function launchSilentInstaller(installerPath: string, restartAfterInstall: boole
 
   const escapedInstaller = installerPath.replace(/'/g, "''");
   const exePath = app.getPath("exe").replace(/'/g, "''");
+  const shouldRestart = restartAfterInstall && app.isPackaged ? "$true" : "$false";
+  const psScriptPath = path.join(app.getPath("temp"), "tracksim-apply-update.ps1");
 
-  // Ejecuta el instalador NSIS en modo silencioso (/S) tras cerrar la app; si restartAfterInstall=true, relanza TrackSIM ZERO
-  const psCommand = restartAfterInstall && app.isPackaged
-    ? `Start-Sleep -Milliseconds 1500; Start-Process -FilePath '${escapedInstaller}' -ArgumentList '/S' -Wait; Start-Process -FilePath '${exePath}'`
-    : `Start-Sleep -Milliseconds 1500; Start-Process -FilePath '${escapedInstaller}' -ArgumentList '/S' -Wait`;
+  const psScript = `
+$ErrorActionPreference = 'SilentlyContinue'
+$installer = '${escapedInstaller}'
+$appExe = '${exePath}'
+$restart = ${shouldRestart}
 
-  const child = spawn(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", psCommand],
-    {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-    }
-  );
-  child.unref();
+# 1. Esperar a que todos los procesos de TrackSIM ZERO terminen y liberen archivos
+for ($i = 0; $i -lt 30; $i++) {
+  $procs = Get-Process -Name 'TrackSIM ZERO' -ErrorAction SilentlyContinue
+  if (-not $procs) { break }
+  if ($i -ge 10) {
+    $procs | Stop-Process -Force -ErrorAction SilentlyContinue
+  }
+  Start-Sleep -Milliseconds 300
+}
+
+# 2. Si el usuario solicitó reiniciar ahora, mostrar una ventana ligera de progreso mientras NSIS actualiza
+$form = $null
+if ($restart) {
+  Add-Type -AssemblyName System.Windows.Forms
+  Add-Type -AssemblyName System.Drawing
+  $form = New-Object System.Windows.Forms.Form
+  $form.Text = 'Actualizando TrackSIM ZERO'
+  $form.Size = New-Object System.Drawing.Size(400, 130)
+  $form.StartPosition = 'CenterScreen'
+  $form.FormBorderStyle = 'FixedDialog'
+  $form.ControlBox = $false
+  $form.TopMost = $true
+  $form.BackColor = [System.Drawing.Color]::White
+
+  $lbl = New-Object System.Windows.Forms.Label
+  $lbl.Text = 'Aplicando actualización en segundo plano...' + [Environment]::NewLine + 'TrackSIM ZERO se abrirá automáticamente en unos segundos.'
+  $lbl.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
+  $lbl.AutoSize = $false
+  $lbl.Size = New-Object System.Drawing.Size(360, 48)
+  $lbl.Location = New-Object System.Drawing.Point(20, 18)
+  $form.Controls.Add($lbl)
+
+  $bar = New-Object System.Windows.Forms.ProgressBar
+  $bar.Style = 'Marquee'
+  $bar.MarqueeAnimationSpeed = 25
+  $bar.Size = New-Object System.Drawing.Size(345, 18)
+  $bar.Location = New-Object System.Drawing.Point(20, 72)
+  $form.Controls.Add($bar)
+
+  $form.Show()
+  [System.Windows.Forms.Application]::DoEvents()
+}
+
+# 3. Ejecutar el instalador NSIS en modo silencioso (/S)
+if (Test-Path -LiteralPath $installer) {
+  $proc = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru
+  while ($proc -and -not $proc.HasExited) {
+    if ($form) { [System.Windows.Forms.Application]::DoEvents() }
+    Start-Sleep -Milliseconds 100
+  }
+  Start-Sleep -Milliseconds 500
+  Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+}
+
+if ($form) {
+  $form.Close()
+  $form.Dispose()
+}
+
+# 4. Relanzar TrackSIM ZERO si corresponde
+if ($restart -and (Test-Path -LiteralPath $appExe)) {
+  Start-Process -FilePath $appExe
+}
+`;
+
+  try {
+    fs.writeFileSync(psScriptPath, psScript, "utf-8");
+    const child = spawn(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", psScriptPath],
+      {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      }
+    );
+    child.unref();
+  } catch (err) {
+    console.error("Failed to launch silent installer script:", err);
+  }
 }
 
 ipcMain.handle("updater:check", async () => {
@@ -853,8 +931,13 @@ ipcMain.handle("updater:downloadAndInstall", async (_, { downloadUrl, fileName, 
     if (downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
       launchSilentInstaller(downloadedInstallerPath, true);
       setTimeout(() => {
-        app.quit();
-      }, 400);
+        if (localStaticServer) {
+          try {
+            localStaticServer.close();
+          } catch {}
+        }
+        app.exit(0);
+      }, 300);
       return { ok: true, filePath: downloadedInstallerPath };
     }
 
@@ -866,8 +949,13 @@ ipcMain.handle("updater:downloadAndInstall", async (_, { downloadUrl, fileName, 
     launchSilentInstaller(destPath, true);
 
     setTimeout(() => {
-      app.quit();
-    }, 400);
+      if (localStaticServer) {
+        try {
+          localStaticServer.close();
+        } catch {}
+      }
+      app.exit(0);
+    }, 300);
 
     return { ok: true, filePath: destPath };
   } catch (err: any) {
