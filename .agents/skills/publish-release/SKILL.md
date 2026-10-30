@@ -8,8 +8,8 @@ description: Crea y publica una nueva versión (Release) del ejecutable de Track
 Sigue estos pasos cuando el usuario pida publicar un nuevo Release en GitHub:
 
 ## Opción A: Publicación automática vía GitHub Actions (Recomendada, sin configurar tokens locales)
-1. Verifica la versión actual en `package.json` (o actualízala con `npm version patch/minor/major --no-git-tag-version` si el usuario indicó una versión nueva).
-2. Verifica que `.github/workflows/release.yml` y los cambios del proyecto estén confirmados en Git:
+1. **IMPORTANTE**: `electron-builder` lee la versión de `package.json` para nombrar el instalador y el release. Siempre actualiza primero la versión en `package.json` (ej. `npm version patch --no-git-tag-version` o editando `"version"` en `package.json`). Además, `.github/workflows/release.yml` sincroniza automáticamente la versión con el tag `vX.Y.Z` durante el CI.
+2. Verifica que `.github/workflows/release.yml`, `package.json` y los cambios del proyecto estén confirmados en Git:
    ```powershell
    git add .
    git commit -m "chore: release vX.Y.Z"
