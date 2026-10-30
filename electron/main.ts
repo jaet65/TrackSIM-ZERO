@@ -363,6 +363,7 @@ async function createWindow() {
     height: 840,
     minWidth: 1024,
     minHeight: 700,
+    show: false,
     title: "TrackSIM ZERO",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -371,6 +372,9 @@ async function createWindow() {
       webSecurity: true,
     },
   });
+
+  mainWindow.maximize();
+  mainWindow.show();
 
   const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
   if (isDev) {
@@ -526,8 +530,15 @@ ipcMain.handle("lander:extractSessions", async (_, { inicio, fin, anon, limit })
 });
 
 // --------------------------------------------------------
-// Auto-Updater contra GitHub Releases
+// Auto-Updater en Segundo Plano contra GitHub Releases
 // --------------------------------------------------------
+let isBackgroundDownloading = false;
+let downloadedInstallerPath: string | null = null;
+let downloadedVersion: string | null = null;
+let lastDownloadProgress: { percent: number; transferredMB: number; totalMB: number } | null = null;
+let installOnQuit = true;
+let installingNow = false;
+
 function parseSemver(v: string): number[] {
   const clean = (v || "").trim().replace(/^[vV]/, "").split("-")[0];
   return clean.split(".").map((n) => parseInt(n, 10) || 0);
@@ -647,6 +658,107 @@ function downloadFileWithProgress(
   });
 }
 
+function getInstallerDestPath(fileName: string, version: string): string {
+  const fallback = `TrackSIM-ZERO-Setup-${version || "latest"}.exe`;
+  const safeName = (fileName || fallback).replace(/[^a-zA-Z0-9._ -]/g, "_");
+  return path.join(app.getPath("temp"), safeName);
+}
+
+async function startBackgroundDownload(
+  downloadUrl: string,
+  fileName: string,
+  version: string,
+  expectedBytes?: number
+): Promise<string> {
+  const destPath = getInstallerDestPath(fileName, version);
+
+  // Si ya se descargó previamente en esta sesión o en temp con el tamaño esperado, reutilizarlo
+  if (fs.existsSync(destPath)) {
+    try {
+      const stat = fs.statSync(destPath);
+      if (!expectedBytes || stat.size === expectedBytes || stat.size > 10 * 1024 * 1024) {
+        downloadedInstallerPath = destPath;
+        downloadedVersion = version;
+        lastDownloadProgress = {
+          percent: 100,
+          transferredMB: Number((stat.size / (1024 * 1024)).toFixed(1)),
+          totalMB: Number((stat.size / (1024 * 1024)).toFixed(1)),
+        };
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("updater:downloaded", {
+            version,
+            filePath: destPath,
+          });
+        }
+        return destPath;
+      }
+    } catch {}
+  }
+
+  if (isBackgroundDownloading) {
+    return destPath;
+  }
+
+  isBackgroundDownloading = true;
+  const partPath = `${destPath}.part`;
+
+  try {
+    await downloadFileWithProgress(downloadUrl, partPath, (progress) => {
+      lastDownloadProgress = progress;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("updater:downloadProgress", {
+          ...progress,
+          version,
+        });
+      }
+    });
+
+    if (fs.existsSync(destPath)) {
+      try {
+        fs.unlinkSync(destPath);
+      } catch {}
+    }
+    fs.renameSync(partPath, destPath);
+
+    downloadedInstallerPath = destPath;
+    downloadedVersion = version;
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("updater:downloaded", {
+        version,
+        filePath: destPath,
+      });
+    }
+    return destPath;
+  } finally {
+    isBackgroundDownloading = false;
+  }
+}
+
+function launchSilentInstaller(installerPath: string, restartAfterInstall: boolean) {
+  if (!installerPath || !fs.existsSync(installerPath) || installingNow) return;
+  installingNow = true;
+
+  const escapedInstaller = installerPath.replace(/'/g, "''");
+  const exePath = app.getPath("exe").replace(/'/g, "''");
+
+  // Ejecuta el instalador NSIS en modo silencioso (/S) tras cerrar la app; si restartAfterInstall=true, relanza TrackSIM ZERO
+  const psCommand = restartAfterInstall && app.isPackaged
+    ? `Start-Sleep -Milliseconds 1500; Start-Process -FilePath '${escapedInstaller}' -ArgumentList '/S' -Wait; Start-Process -FilePath '${exePath}'`
+    : `Start-Sleep -Milliseconds 1500; Start-Process -FilePath '${escapedInstaller}' -ArgumentList '/S' -Wait`;
+
+  const child = spawn(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", psCommand],
+    {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    }
+  );
+  child.unref();
+}
+
 ipcMain.handle("updater:check", async () => {
   const currentVersion = app.getVersion();
   try {
@@ -692,6 +804,21 @@ ipcMain.handle("updater:check", async () => {
           !a.name.toLowerCase().endsWith(".blockmap")
       ) || null;
 
+    const downloadUrl = exeAsset ? exeAsset.browser_download_url : null;
+    const fileName = exeAsset ? exeAsset.name : `TrackSIM-ZERO-Setup-${latestVersion}.exe`;
+    const expectedSize = exeAsset?.size ? Number(exeAsset.size) : undefined;
+
+    // Si hay actualización disponible con instalador .exe, iniciar descarga automática en segundo plano
+    if (updateAvailable && downloadUrl) {
+      startBackgroundDownload(downloadUrl, fileName, latestVersion, expectedSize).catch((err) => {
+        console.error("Background update download error:", err);
+      });
+    }
+
+    const isReadyToInstall =
+      Boolean(downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) &&
+      downloadedVersion === latestVersion;
+
     return {
       ok: true,
       currentVersion,
@@ -702,9 +829,12 @@ ipcMain.handle("updater:check", async () => {
       releaseUrl:
         data.html_url || `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
       publishedAt: data.published_at || null,
-      downloadUrl: exeAsset ? exeAsset.browser_download_url : null,
-      fileName: exeAsset ? exeAsset.name : `TrackSIM-ZERO-Setup-${latestVersion}.exe`,
+      downloadUrl,
+      fileName,
       assetSizeMB: exeAsset?.size ? Number((exeAsset.size / (1024 * 1024)).toFixed(1)) : null,
+      downloadingInBackground: isBackgroundDownloading,
+      readyToInstall: isReadyToInstall,
+      progress: lastDownloadProgress,
     };
   } catch (err: any) {
     return {
@@ -715,30 +845,29 @@ ipcMain.handle("updater:check", async () => {
   }
 });
 
-ipcMain.handle("updater:downloadAndInstall", async (_, { downloadUrl, fileName }) => {
+ipcMain.handle("updater:downloadAndInstall", async (_, { downloadUrl, fileName, version }) => {
   try {
+    const targetVersion = version || downloadedVersion || "latest";
+
+    // Si ya se descargó en segundo plano, aplicarlo de inmediato en modo silencioso y reiniciar
+    if (downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
+      launchSilentInstaller(downloadedInstallerPath, true);
+      setTimeout(() => {
+        app.quit();
+      }, 400);
+      return { ok: true, filePath: downloadedInstallerPath };
+    }
+
     if (!downloadUrl) {
       throw new Error("No se encontró el archivo instalador (.exe) en el Release de GitHub.");
     }
-    const safeName = (fileName || "TrackSIM-ZERO-Setup.exe").replace(/[^a-zA-Z0-9._ -]/g, "_");
-    const destPath = path.join(app.getPath("temp"), safeName);
 
-    await downloadFileWithProgress(downloadUrl, destPath, (progress) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("updater:downloadProgress", progress);
-      }
-    });
-
-    // Ejecutar el instalador NSIS en proceso separado y cerrar la app actual
-    const child = spawn(destPath, [], {
-      detached: true,
-      stdio: "ignore",
-    });
-    child.unref();
+    const destPath = await startBackgroundDownload(downloadUrl, fileName, targetVersion);
+    launchSilentInstaller(destPath, true);
 
     setTimeout(() => {
       app.quit();
-    }, 600);
+    }, 400);
 
     return { ok: true, filePath: destPath };
   } catch (err: any) {
@@ -782,6 +911,13 @@ if (!gotTheLock) {
     });
   });
 }
+
+app.on("will-quit", () => {
+  // Si hay una actualización ya descargada en segundo plano, aplicarla silenciosamente al cerrar la app
+  if (!installingNow && installOnQuit && downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
+    launchSilentInstaller(downloadedInstallerPath, false);
+  }
+});
 
 app.on("window-all-closed", () => {
   if (localStaticServer) {

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import pkg from "../../package.json";
 
 export interface UpdateCheckResult {
@@ -14,6 +15,9 @@ export interface UpdateCheckResult {
   downloadUrl?: string | null;
   fileName?: string;
   assetSizeMB?: number | null;
+  downloadingInBackground?: boolean;
+  readyToInstall?: boolean;
+  progress?: DownloadProgress | null;
   error?: string;
 }
 
@@ -21,6 +25,7 @@ export interface DownloadProgress {
   percent: number;
   transferredMB: number;
   totalMB: number;
+  version?: string;
 }
 
 const GITHUB_OWNER = "jaet65";
@@ -54,7 +59,10 @@ export default function UpdateNotifier() {
   const [checking, setChecking] = useState(false);
   const [info, setInfo] = useState<UpdateCheckResult | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [readyToastOpen, setReadyToastOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [readyToInstall, setReadyToInstall] = useState(false);
+  const [applyingUpdate, setApplyingUpdate] = useState(false);
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [upToDateNotice, setUpToDateNotice] = useState(false);
@@ -74,7 +82,6 @@ export default function UpdateNotifier() {
       if (bridge?.checkForUpdates) {
         result = await bridge.checkForUpdates();
       } else {
-        // Fallback para navegador web consultando API pública de GitHub
         const res = await fetch(
           `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
           { headers: { Accept: "application/vnd.github+json" } }
@@ -121,7 +128,20 @@ export default function UpdateNotifier() {
 
       setInfo(result);
 
-      if (result.ok && result.updateAvailable) {
+      if (result.progress) {
+        setProgress(result.progress);
+      }
+
+      if (result.readyToInstall) {
+        setReadyToInstall(true);
+        setDownloading(false);
+        setReadyToastOpen(true);
+      } else if (result.downloadingInBackground) {
+        setDownloading(true);
+      }
+
+      // Solo abrir el modal completo si el usuario buscó manualmente; en automático todo ocurre en segundo plano
+      if (manual && result.ok && result.updateAvailable) {
         setModalOpen(true);
       } else if (manual && result.ok && !result.updateAvailable) {
         setUpToDateNotice(true);
@@ -147,29 +167,54 @@ export default function UpdateNotifier() {
 
   useEffect(() => {
     const bridge = getLanderBridge();
-    if (!bridge?.onUpdateProgress) return;
-    const unsubscribe = bridge.onUpdateProgress((data: DownloadProgress) => {
-      setProgress(data);
-    });
+    if (!bridge) return;
+
+    const unsubProgress = bridge.onUpdateProgress
+      ? bridge.onUpdateProgress((data: DownloadProgress) => {
+          setDownloading(true);
+          setProgress(data);
+        })
+      : null;
+
+    const unsubDownloaded = bridge.onUpdateDownloaded
+      ? bridge.onUpdateDownloaded(() => {
+          setDownloading(false);
+          setReadyToInstall(true);
+          setProgress((prev) =>
+            prev ? { ...prev, percent: 100, transferredMB: prev.totalMB } : { percent: 100, transferredMB: 0, totalMB: 0 }
+          );
+          setReadyToastOpen(true);
+        })
+      : null;
+
     return () => {
-      if (typeof unsubscribe === "function") unsubscribe();
+      if (typeof unsubProgress === "function") unsubProgress();
+      if (typeof unsubDownloaded === "function") unsubDownloaded();
     };
   }, []);
 
   if (!isElectron) return null;
 
-  const handleInstall = async () => {
+  const handleInstallNow = async () => {
     if (!info) return;
     setActionError(null);
     const bridge = getLanderBridge();
 
-    if (bridge?.downloadAndInstallUpdate && info.downloadUrl) {
-      setDownloading(true);
-      setProgress({ percent: 0, transferredMB: 0, totalMB: info.assetSizeMB || 0 });
-      const res = await bridge.downloadAndInstallUpdate(info.downloadUrl, info.fileName);
+    if (bridge?.downloadAndInstallUpdate && (info.downloadUrl || readyToInstall)) {
+      setApplyingUpdate(true);
+      if (!readyToInstall) {
+        setDownloading(true);
+        setProgress((prev) => prev || { percent: 0, transferredMB: 0, totalMB: info.assetSizeMB || 0 });
+      }
+      const res = await bridge.downloadAndInstallUpdate(
+        info.downloadUrl,
+        info.fileName,
+        info.latestVersion
+      );
       if (!res?.ok) {
+        setApplyingUpdate(false);
         setDownloading(false);
-        setActionError(res?.error || "No se pudo descargar el instalador automáticamente.");
+        setActionError(res?.error || "No se pudo aplicar la actualización automáticamente.");
       }
     } else {
       const targetUrl =
@@ -199,17 +244,42 @@ export default function UpdateNotifier() {
     <>
       <div className="relative flex items-center gap-2">
         {info?.updateAvailable ? (
-          <button
-            type="button"
-            onClick={() => setModalOpen(true)}
-            className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm shadow-amber-500/30 hover:from-amber-600 hover:to-orange-700 transition animate-pulse"
-            title={`Nueva versión v${info.latestVersion} disponible en GitHub`}
-          >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Actualizar a v{info.latestVersion}
-          </button>
+          readyToInstall ? (
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm shadow-emerald-600/30 hover:from-emerald-700 hover:to-teal-700 transition"
+              title={`v${info.latestVersion} descargada en segundo plano · Haz clic para reiniciar o ver detalles`}
+            >
+              <span className="h-2 w-2 rounded-full bg-white animate-ping" />
+              Reiniciar a v{info.latestVersion}
+            </button>
+          ) : downloading ? (
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition"
+              title="Descargando actualización en segundo plano..."
+            >
+              <div className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+              <span>
+                Descargando v{info.latestVersion}{" "}
+                {progress?.percent ? `(${progress.percent}%)` : "..."}
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm shadow-amber-500/30 hover:from-amber-600 hover:to-orange-700 transition"
+              title={`Nueva versión v${info.latestVersion} disponible en GitHub`}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Actualizar a v{info.latestVersion}
+            </button>
+          )
         ) : (
           <button
             type="button"
@@ -242,129 +312,212 @@ export default function UpdateNotifier() {
         )}
       </div>
 
-      {/* Modal de Actualización Disponible */}
-      {modalOpen && info?.updateAvailable && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
+      {/* Notificación flotante no intrusiva cuando la descarga en segundo plano terminó */}
+      {readyToastOpen &&
+        !modalOpen &&
+        info?.updateAvailable &&
+        readyToInstall &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed bottom-5 right-5 z-[9998] w-full max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white shadow-md shadow-indigo-600/25">
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Nueva actualización disponible
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Versión actual:{" "}
-                    <span className="font-semibold text-slate-700">v{info.currentVersion}</span>
-                    {" → "}
-                    Nueva:{" "}
-                    <span className="font-bold text-indigo-600">v{info.latestVersion}</span>
+                  <h4 className="text-xs font-bold text-slate-900">
+                    Actualización v{info.latestVersion} lista
+                  </h4>
+                  <p className="mt-0.5 text-[11px] text-slate-500 leading-snug">
+                    Se descargó en segundo plano y se instalará automáticamente al cerrar la app.
                   </p>
                 </div>
               </div>
-
-              {!downloading && (
-                <button
-                  onClick={() => setModalOpen(false)}
-                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                >
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
-
-            {info.releaseNotes && (
-              <div className="mt-4 max-h-44 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs text-slate-600 whitespace-pre-line">
-                <div className="mb-1 font-semibold text-slate-800">
-                  {info.releaseName || `Novedades en v${info.latestVersion}`}
-                </div>
-                {info.releaseNotes}
-              </div>
-            )}
-
-            {info.assetSizeMB && !downloading && (
-              <p className="mt-3 text-[11px] text-slate-500">
-                Tamaño del instalador: <span className="font-semibold text-slate-700">{info.assetSizeMB} MB</span>
-              </p>
-            )}
-
-            {downloading && (
-              <div className="mt-5 space-y-2">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                  <span>Descargando instalador...</span>
-                  <span>
-                    {progress?.percent ?? 0}%
-                    {progress?.totalMB
-                      ? ` (${progress.transferredMB} / ${progress.totalMB} MB)`
-                      : ""}
-                  </span>
-                </div>
-                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-blue-600 transition-all duration-200"
-                    style={{ width: `${progress?.percent ?? 0}%` }}
-                  />
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Al finalizar la descarga se abrirá el instalador automáticamente y TrackSIM ZERO se reiniciará.
-                </p>
-              </div>
-            )}
-
-            {actionError && (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
-                {actionError}
-              </div>
-            )}
-
-            <div className="mt-6 flex items-center justify-end gap-2.5">
               <button
                 type="button"
-                onClick={handleOpenReleasePage}
-                disabled={downloading}
-                className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                onClick={() => setReadyToastOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               >
-                Ver en GitHub
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
+            </div>
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setReadyToastOpen(false);
+                  setModalOpen(true);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Ver detalles
+              </button>
+              <button
+                type="button"
+                onClick={handleInstallNow}
+                disabled={applyingUpdate}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {applyingUpdate ? "Reiniciando..." : "Reiniciar ahora"}
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
 
-              {!downloading && (
+      {/* Modal de Detalles de Actualización (Portal a document.body) */}
+      {modalOpen &&
+        info?.updateAvailable &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md ${
+                      readyToInstall
+                        ? "bg-gradient-to-tr from-emerald-600 to-teal-600 shadow-emerald-600/25"
+                        : "bg-gradient-to-tr from-indigo-600 to-blue-600 shadow-indigo-600/25"
+                    }`}
+                  >
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      {readyToInstall ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      )}
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      {readyToInstall
+                        ? "Actualización lista para instalar"
+                        : "Nueva actualización disponible"}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Versión actual:{" "}
+                      <span className="font-semibold text-slate-700">v{info.currentVersion}</span>
+                      {" → "}
+                      Nueva:{" "}
+                      <span className="font-bold text-indigo-600">v{info.latestVersion}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {!applyingUpdate && (
+                  <button
+                    onClick={() => setModalOpen(false)}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+
+              {info.releaseNotes && (
+                <div className="mt-4 max-h-44 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs text-slate-600 whitespace-pre-line">
+                  <div className="mb-1 font-semibold text-slate-800">
+                    {info.releaseName || `Novedades en v${info.latestVersion}`}
+                  </div>
+                  {info.releaseNotes}
+                </div>
+              )}
+
+              {readyToInstall && (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs text-emerald-800">
+                  ✓ El instalador ya se descargó en segundo plano. Se aplicará silenciosamente al cerrar la aplicación o puedes reiniciar ahora mismo.
+                </div>
+              )}
+
+              {!readyToInstall && info.assetSizeMB && !downloading && (
+                <p className="mt-3 text-[11px] text-slate-500">
+                  Tamaño del instalador: <span className="font-semibold text-slate-700">{info.assetSizeMB} MB</span>
+                </p>
+              )}
+
+              {downloading && !readyToInstall && (
+                <div className="mt-5 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                    <span>Descargando en segundo plano...</span>
+                    <span>
+                      {progress?.percent ?? 0}%
+                      {progress?.totalMB
+                        ? ` (${progress.transferredMB} / ${progress.totalMB} MB)`
+                        : ""}
+                    </span>
+                  </div>
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-blue-600 transition-all duration-200"
+                      style={{ width: `${progress?.percent ?? 0}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Puedes cerrar esta ventana y seguir trabajando mientras termina la descarga.
+                  </p>
+                </div>
+              )}
+
+              {actionError && (
+                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                  {actionError}
+                </div>
+              )}
+
+              <div className="mt-6 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  onClick={handleOpenReleasePage}
+                  disabled={applyingUpdate}
+                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                 >
-                  Más tarde
+                  Ver en GitHub
                 </button>
-              )}
 
-              <button
-                type="button"
-                onClick={handleInstall}
-                disabled={downloading}
-                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-600/25 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-60"
-              >
-                {downloading ? (
-                  <>
-                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Instalando...
-                  </>
-                ) : isElectron && info.downloadUrl ? (
-                  "Descargar e instalar ahora"
-                ) : (
-                  "Descargar instalador"
+                {!applyingUpdate && (
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(false)}
+                    className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    {readyToInstall ? "Actualizar al salir" : "Seguir trabajando"}
+                  </button>
                 )}
-              </button>
+
+                <button
+                  type="button"
+                  onClick={handleInstallNow}
+                  disabled={applyingUpdate}
+                  className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-60 ${
+                    readyToInstall
+                      ? "bg-gradient-to-r from-emerald-600 to-teal-600 shadow-emerald-600/25 hover:from-emerald-700 hover:to-teal-700"
+                      : "bg-gradient-to-r from-indigo-600 to-blue-600 shadow-indigo-600/25 hover:from-indigo-700 hover:to-blue-700"
+                  }`}
+                >
+                  {applyingUpdate ? (
+                    <>
+                      <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Reiniciando...
+                    </>
+                  ) : readyToInstall ? (
+                    "Reiniciar y actualizar ahora"
+                  ) : (
+                    "Instalar al terminar descarga"
+                  )}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </>
   );
 }
-
