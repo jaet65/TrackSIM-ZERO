@@ -26,6 +26,7 @@ export type DisplayRow = {
   badgeText: string;
   exercisesText: string;
   progressValue: number;
+  isIncomplete?: boolean;
   errors: number;
   criticalErrors: number;
   avgScore: number;
@@ -128,6 +129,7 @@ export default function Home() {
               badgeText: `${d.phasesEvaluated} de ${d.expectedPhases} fases`,
               exercisesText: `${d.totalExercises}/${d.expectedExercises} ejercicio(s)`,
               progressValue: d.totalExercises,
+              isIncomplete: d.totalExercises < d.expectedExercises,
               errors: d.totalErrors,
               criticalErrors: d.criticalErrors,
               avgScore: d.avgScore,
@@ -197,7 +199,13 @@ export default function Home() {
           comparison = a.avgScore - b.avgScore;
           break;
         case "verdict": {
-          const rank = (v: string) => (v.toUpperCase().includes("NO APTO") ? 0 : 1);
+          const rank = (v: string) => {
+            const up = v.toUpperCase();
+            if (up.includes("NO REALIZADO")) return 0;
+            if (up.includes("INCOMPLETO")) return 1;
+            if (up.includes("NO APTO")) return 2;
+            return 3;
+          };
           comparison = rank(a.verdict) - rank(b.verdict) || a.verdict.localeCompare(b.verdict);
           break;
         }
@@ -352,6 +360,7 @@ export default function Home() {
               onChange={(e) => {
                 const val = e.target.value;
                 setSelectedGroupId(val);
+                if (val) setActiveGroupId(val);
                 updateUrl(selectedPhase, startDate, endDate, val);
               }}
               className="rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm focus:border-indigo-600 focus:bg-white focus:outline-none transition cursor-pointer"
@@ -676,9 +685,16 @@ export default function Home() {
                       </div>
                     </td>
                     <td className="px-4 py-3.5 text-right">
-                      <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide ${r.color}`}>
-                        {r.verdict}
-                      </span>
+                      <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                        {r.isIncomplete && r.verdict !== "INCOMPLETO" && r.verdict !== "NO REALIZADO" && (
+                          <span className="inline-block rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-amber-700">
+                            Ejercicios incompletos
+                          </span>
+                        )}
+                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide ${r.color}`}>
+                          {r.verdict}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 ))}

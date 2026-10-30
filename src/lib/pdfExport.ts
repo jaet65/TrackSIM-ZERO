@@ -190,13 +190,22 @@ export function generateGlobalReportPdf(
 
     const isApto = r.verdict.startsWith("APTO") && !r.verdict.includes("OBSERVACIONES");
     const isObs = r.verdict.includes("OBSERVACIONES");
+    const isIncomplete = r.verdict === "INCOMPLETO";
+    const isNotDone = r.verdict === "NO REALIZADO";
     if (isApto) doc.setTextColor(16, 185, 129);
-    else if (isObs) doc.setTextColor(217, 119, 6);
+    else if (isObs || isIncomplete) doc.setTextColor(217, 119, 6);
+    else if (isNotDone) doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
     else doc.setTextColor(225, 29, 72);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(6.8);
+    doc.setFontSize(6.5);
     // Para no desbordar, abreviar "APTO CON OBSERVACIONES" si es necesario o dibujar a la derecha
-    const verdictLabel = isObs ? "APTO C/ OBSERVACIONES" : r.verdict;
+    const baseVerdict = isObs ? "APTO C/ OBS." : r.verdict;
+    const verdictLabel =
+      r.isIncomplete && r.verdict !== "INCOMPLETO" && r.verdict !== "NO REALIZADO"
+        ? `${baseVerdict} (Ej. incompletos)`
+        : isObs
+          ? "APTO C/ OBSERVACIONES"
+          : r.verdict;
     doc.text(verdictLabel, 193, y + 5.2, { align: "right" });
 
     doc.setDrawColor(241, 245, 249);
@@ -264,6 +273,13 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
   doc.text(data.verdict, 168, y + 7.5, { align: "center" });
+
+  if (data.completedExercises < data.expectedExercises) {
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(217, 119, 6);
+    doc.text("EJERCICIOS INCOMPLETOS", 168, y + 14.2, { align: "center" });
+  }
 
   y += 18;
 
@@ -391,7 +407,9 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     // Badge fase
     const pApto = p.verdict.startsWith("APTO") && !p.verdict.includes("OBSERVACIONES");
     const pObs = p.verdict.includes("OBSERVACIONES");
-    const pCol = pApto ? [16, 185, 129] : pObs ? [217, 119, 6] : [225, 29, 72];
+    const pIncomplete = p.verdict === "INCOMPLETO";
+    const pNotDone = p.verdict === "NO REALIZADO";
+    const pCol = pApto ? [16, 185, 129] : pObs || pIncomplete ? [217, 119, 6] : pNotDone ? COLOR_MUTED : [225, 29, 72];
     doc.setFontSize(6);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(pCol[0], pCol[1], pCol[2]);
@@ -411,7 +429,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     doc.setFont("helvetica", "bold");
     doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
     doc.text(`Nota: ${p.avgScore} / 10`, cardX + 32, cardY + 16);
-    doc.text(`Eco: ${radarData.ecoScore}/10`, cardX + 32, cardY + 20.5);
+    doc.text(`Eco: ${p.exercises > 0 ? `${radarData.ecoScore}/10` : "—"}`, cardX + 32, cardY + 20.5);
 
     // Divisor vertical entre texto y radar
     doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
@@ -448,15 +466,17 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
       doc.line(p1.x, p1.y, p2.x, p2.y);
     }
 
-    // Polígono de telemetría de la fase
-    doc.setDrawColor(79, 70, 229); // indigo
-    doc.setLineWidth(0.4);
-    for (let i = 0; i < 5; i++) {
-      const p1 = getPdfCoord(i, axes[i].value);
-      const p2 = getPdfCoord((i + 1) % 5, axes[(i + 1) % 5].value);
-      doc.line(p1.x, p1.y, p2.x, p2.y);
-      doc.setFillColor(79, 70, 229);
-      doc.circle(p1.x, p1.y, 0.5, "F");
+    // Polígono de telemetría de la fase (solo si realizó ejercicios)
+    if (p.exercises > 0) {
+      doc.setDrawColor(79, 70, 229); // indigo
+      doc.setLineWidth(0.4);
+      for (let i = 0; i < 5; i++) {
+        const p1 = getPdfCoord(i, axes[i].value);
+        const p2 = getPdfCoord((i + 1) % 5, axes[(i + 1) % 5].value);
+        doc.line(p1.x, p1.y, p2.x, p2.y);
+        doc.setFillColor(79, 70, 229);
+        doc.circle(p1.x, p1.y, 0.5, "F");
+      }
     }
 
     // Etiquetas abreviadas de los 5 ejes
@@ -666,7 +686,16 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   doc.text("CALIF. FINAL", 193, y + 4.8, { align: "right" });
   y += 7;
 
-  data.evals.forEach((e: EvaluationView, idx: number) => {
+  const pdfExerciseRows = [
+    ...data.evals.map((e: EvaluationView) => ({ type: "done" as const, phase: e.phase, eval: e })),
+    ...(data.missingExercises || []).map((m: { phase: number; exercise: string }) => ({
+      type: "missing" as const,
+      phase: m.phase,
+      exercise: m.exercise,
+    })),
+  ].sort((a, b) => a.phase - b.phase || (a.type === "done" && b.type === "missing" ? -1 : a.type === "missing" && b.type === "done" ? 1 : 0));
+
+  pdfExerciseRows.forEach((row, idx: number) => {
     if (y > 270) {
       doc.addPage();
       y = drawHeader(doc, `Expediente: ${data.name} (Desglose Cont.)`, "Continuación de ejercicios evaluados");
@@ -689,39 +718,60 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
       doc.rect(14, y, 182, 7.5, "F");
     }
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
-    doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-    doc.text(`F${e.phase}`, 17, y + 5);
-
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-    const exTitle = e.exercise.length > 30 ? `${e.exercise.substring(0, 28)}…` : e.exercise;
-    doc.text(exTitle, 32, y + 5);
-
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-    doc.text(e.date || "—", 88, y + 5);
-
-    const inst = (e.instructor || "—").length > 14 ? `${(e.instructor || "").substring(0, 12)}…` : e.instructor || "—";
-    doc.text(inst, 114, y + 5);
-
-    const min = Math.floor(e.durationSec / 60);
-    const sec = String(e.durationSec % 60).padStart(2, "0");
-    doc.text(`${min}:${sec}`, 148, y + 5);
-
-    if (e.errorCount > 0) {
+    if (row.type === "done") {
+      const e = row.eval;
       doc.setFont("helvetica", "bold");
-      doc.setTextColor(225, 29, 72);
-      doc.text(String(e.errorCount), 168, y + 5);
-    } else {
-      doc.setTextColor(16, 185, 129);
-      doc.text("0", 168, y + 5);
-    }
+      doc.setFontSize(7);
+      doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+      doc.text(`F${e.phase}`, 17, y + 5);
 
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-    doc.text(`${e.score}`, 193, y + 5, { align: "right" });
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+      const exTitle = e.exercise.length > 30 ? `${e.exercise.substring(0, 28)}…` : e.exercise;
+      doc.text(exTitle, 32, y + 5);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.text(e.date || "—", 88, y + 5);
+
+      const inst = (e.instructor || "—").length > 14 ? `${(e.instructor || "").substring(0, 12)}…` : e.instructor || "—";
+      doc.text(inst, 114, y + 5);
+
+      const min = Math.floor(e.durationSec / 60);
+      const sec = String(e.durationSec % 60).padStart(2, "0");
+      doc.text(`${min}:${sec}`, 148, y + 5);
+
+      if (e.errorCount > 0) {
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(225, 29, 72);
+        doc.text(String(e.errorCount), 168, y + 5);
+      } else {
+        doc.setTextColor(16, 185, 129);
+        doc.text("0", 168, y + 5);
+      }
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+      doc.text(`${e.score}`, 193, y + 5, { align: "right" });
+    } else {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.text(`F${row.phase}`, 17, y + 5);
+
+      const rawTitle = `${row.exercise} (NO REALIZADO)`;
+      const exTitle = rawTitle.length > 34 ? `${rawTitle.substring(0, 32)}…` : rawTitle;
+      doc.text(exTitle, 32, y + 5);
+
+      doc.setFont("helvetica", "normal");
+      doc.text("—", 88, y + 5);
+      doc.text("—", 114, y + 5);
+      doc.text("—", 148, y + 5);
+      doc.text("—", 168, y + 5);
+
+      doc.setFont("helvetica", "bold");
+      doc.text("0", 193, y + 5, { align: "right" });
+    }
 
     doc.setDrawColor(241, 245, 249);
     doc.line(14, y + 7.5, 196, y + 7.5);

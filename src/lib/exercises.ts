@@ -56,6 +56,11 @@ export function detectEnvironmentFromName(name: string): "CARRETERA" | "MONTANA"
 let current: ExerciseConfig = {};
 let currentEnvs: ExerciseEnvironmentsMap = {};
 let loading: Promise<ExerciseConfig> | null = null;
+let savingPromise: Promise<void> = Promise.resolve();
+
+export function waitForExerciseSaves(): Promise<void> {
+  return savingPromise;
+}
 
 const groupExercises = new Map<string, { phases: ExerciseConfig; environments: ExerciseEnvironmentsMap }>();
 
@@ -77,11 +82,7 @@ export function hasGroupExercises(groupId: string): boolean {
 
 export const getExercises = (groupId?: string | null): ExerciseConfig => {
   if (groupId && groupExercises.has(groupId)) {
-    const grpPhases = groupExercises.get(groupId)!.phases;
-    const hasAny = Object.values(grpPhases).some((list) => Array.isArray(list) && list.length > 0);
-    if (hasAny) {
-      return grpPhases;
-    }
+    return groupExercises.get(groupId)!.phases;
   }
   return current;
 };
@@ -89,10 +90,7 @@ export const getExercises = (groupId?: string | null): ExerciseConfig => {
 export const getExerciseEnvironments = (groupId?: string | null): ExerciseEnvironmentsMap => {
   if (groupId && groupExercises.has(groupId)) {
     const grp = groupExercises.get(groupId)!;
-    const hasAny = Object.values(grp.phases).some((list) => Array.isArray(list) && list.length > 0);
-    if (hasAny || Object.keys(grp.environments).length > 0) {
-      return { ...currentEnvs, ...grp.environments };
-    }
+    return { ...currentEnvs, ...grp.environments };
   }
   return currentEnvs;
 };
@@ -155,6 +153,8 @@ export function sanitizeExercises(raw: unknown): { phases: ExerciseConfig; envir
 }
 
 export async function loadExercises(force = false, groupId?: string | null): Promise<ExerciseConfig> {
+  await savingPromise;
+
   if (!loading || force) {
     loading = getDoc(ref())
       .then((snap) => {
@@ -196,25 +196,34 @@ export async function saveExercises(
   const clean = sanitizeExercises({ phases: cfg, environments: environments ?? fallbackEnvs });
 
   if (groupId) {
-    await updateDoc(groupRef(groupId), {
-      exercises: {
-        phases: clean.phases,
-        environments: clean.environments,
-      },
-      exercisesUpdatedAt: Date.now(),
-      exercisesUpdatedBy: editorEmail,
-    });
+    // Actualizar en memoria de inmediato para evitar lecturas obsoletas al cambiar de pestaña
     setGroupExercises(groupId, clean.phases, clean.environments);
+    const task = savingPromise.then(() =>
+      updateDoc(groupRef(groupId), {
+        exercises: {
+          phases: clean.phases,
+          environments: clean.environments,
+        },
+        exercisesUpdatedAt: Date.now(),
+        exercisesUpdatedBy: editorEmail,
+      })
+    );
+    savingPromise = task.catch(() => {});
+    await task;
     return;
   }
 
-  await setDoc(ref(), {
-    phases: clean.phases,
-    environments: clean.environments,
-    updatedAt: Date.now(),
-    updatedBy: editorEmail,
-  });
   current = clean.phases;
   currentEnvs = clean.environments;
   loading = Promise.resolve(clean.phases);
+  const task = savingPromise.then(() =>
+    setDoc(ref(), {
+      phases: clean.phases,
+      environments: clean.environments,
+      updatedAt: Date.now(),
+      updatedBy: editorEmail,
+    })
+  );
+  savingPromise = task.catch(() => {});
+  await task;
 }

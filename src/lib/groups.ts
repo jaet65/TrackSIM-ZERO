@@ -21,6 +21,7 @@ import {
   sanitizeExercises,
   setGroupExercises,
   removeGroupExercises,
+  waitForExerciseSaves,
   type ExerciseSettingsData,
 } from "./exercises";
 import { loadCatalog } from "./catalogStore";
@@ -89,6 +90,7 @@ export function hydrateGroupRules(g: GroupDoc): void {
 }
 
 export async function listGroups(): Promise<GroupDoc[]> {
+  await waitForExerciseSaves();
   const snap = await getDocs(query(groupsCol(), orderBy("createdAt", "desc")));
   const list = snap.docs.map((d) => ({
     id: d.id,
@@ -101,6 +103,7 @@ export async function listGroups(): Promise<GroupDoc[]> {
 }
 
 export async function getGroup(groupId: string): Promise<GroupDoc | null> {
+  await waitForExerciseSaves();
   const snap = await getDoc(doc(groupsCol(), groupId));
   if (!snap.exists()) return null;
   const g: GroupDoc = { id: snap.id, ...(snap.data() as Omit<GroupDoc, "id">) };

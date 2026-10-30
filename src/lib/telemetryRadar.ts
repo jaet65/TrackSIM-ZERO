@@ -26,13 +26,13 @@ export function computeTelemetryAxes(
   if (valid.length === 0) {
     return {
       axes: [
-        { label: "Zona Verde", value: 50, raw: "N/D" },
-        { label: "Freno Suave", value: 50, raw: "N/D" },
-        { label: "Retarder", value: 50, raw: "N/D" },
-        { label: "Inercia", value: 50, raw: "N/D" },
-        { label: "Acel. Suave", value: 50, raw: "N/D" },
+        { label: "Zona Verde", value: 0, raw: "N/D" },
+        { label: "Freno Suave", value: 0, raw: "N/D" },
+        { label: "Retarder", value: 0, raw: "N/D" },
+        { label: "Inercia", value: 0, raw: "N/D" },
+        { label: "Acel. Suave", value: 0, raw: "N/D" },
       ],
-      ecoScore: 5.0,
+      ecoScore: 0,
       environment: "CARRETERA",
       hasSlipperyRoad: false,
     };

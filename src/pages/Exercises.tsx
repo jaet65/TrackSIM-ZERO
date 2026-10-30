@@ -13,7 +13,8 @@ import {
   type ExerciseEnvironment,
   type ExerciseEnvironmentsMap,
 } from "../lib/exercises";
-import { listGroups, getActiveGroupId, type GroupDoc } from "../lib/groups";
+import { listGroups, getActiveGroupId, setActiveGroupId, type GroupDoc } from "../lib/groups";
+import { listUploadedExerciseNames } from "../lib/db";
 
 export default function Exercises() {
   const { user } = useAuth();
@@ -35,6 +36,7 @@ export default function Exercises() {
   const [busy, setBusy] = useState(false);
   const [loadingRules, setLoadingRules] = useState(true);
   const [copySourceId, setCopySourceId] = useState<string>("");
+  const [uploadedNames, setUploadedNames] = useState<string[]>([]);
 
   const selectedGroup = useMemo(
     () => groups.find((g) => g.id === selectedGroupId) || null,
@@ -61,10 +63,14 @@ export default function Exercises() {
     setLoadingRules(true);
     setMsg("");
     setDirty(false);
-    loadExercises(false, selectedGroupId || null)
-      .then((c) => {
+    Promise.all([
+      loadExercises(false, selectedGroupId || null),
+      listUploadedExerciseNames(selectedGroupId || null).catch(() => [] as string[]),
+    ])
+      .then(([c, detected]) => {
         setCfg(structuredClone(c));
         setEnvs(structuredClone(getExerciseEnvironments(selectedGroupId || null)));
+        setUploadedNames(detected);
       })
       .catch((e: Error) => setMsg(e.message))
       .finally(() => setLoadingRules(false));
@@ -76,6 +82,7 @@ export default function Exercises() {
     }
     setSelectedGroupId(nextGroupId);
     if (nextGroupId) {
+      setActiveGroupId(nextGroupId);
       setParams({ grupo: nextGroupId });
     } else {
       setParams({});
@@ -117,26 +124,57 @@ export default function Exercises() {
     );
   }
 
+  const persistImmediately = async (nextCfg: ExerciseConfig, nextEnvs: ExerciseEnvironmentsMap) => {
+    try {
+      await saveExercises(nextCfg, user?.email ?? "", nextEnvs, selectedGroupId || null);
+      setDirty(false);
+    } catch {
+      setDirty(true);
+    }
+  };
+
   const update = (next: ExerciseConfig, nextEnvs?: ExerciseEnvironmentsMap) => {
+    const targetEnvs = nextEnvs ?? envs;
     setCfg(next);
     if (nextEnvs) setEnvs(nextEnvs);
     setDirty(true);
     setMsg("");
+    void persistImmediately(next, targetEnvs);
   };
 
-  const add = (phase: number) => {
-    const name = (drafts[phase] ?? "").trim();
+  const add = (phase: number, explicitName?: string) => {
+    const name = (explicitName ?? drafts[phase] ?? "").trim();
     if (!name) return;
     const list = cfg[phase] ?? [];
     if (list.some((n) => exerciseKey(n) === exerciseKey(name))) return setMsg("Ese ejercicio ya está en la fase.");
 
     const key = exerciseKey(name);
-    const chosenEnv = draftEnvs[phase] || "AUTO";
+    const chosenEnv = draftEnvs[phase] || envs[key] || "AUTO";
     const nextEnvs = { ...envs, [key]: chosenEnv };
 
-    update({ ...cfg, [phase]: [...list, name] }, nextEnvs);
-    setDrafts({ ...drafts, [phase]: "" });
-    setDraftEnvs({ ...draftEnvs, [phase]: "AUTO" });
+    // Quitar de cualquier otra fase donde estuviera asignado previamente para evitar duplicados entre fases
+    const nextCfg: ExerciseConfig = {};
+    for (const [p, pList] of Object.entries(cfg)) {
+      if (Number(p) === phase) continue;
+      nextCfg[p] = (pList ?? []).filter((n) => exerciseKey(n) !== key);
+    }
+    nextCfg[phase] = [...list, name];
+
+    update(nextCfg, nextEnvs);
+    if (!explicitName) {
+      setDrafts({ ...drafts, [phase]: "" });
+      setDraftEnvs({ ...draftEnvs, [phase]: "AUTO" });
+    }
+  };
+
+  const movePhase = (fromPhase: number, toPhase: number, name: string) => {
+    if (fromPhase === toPhase) return;
+    const key = exerciseKey(name);
+    const nextCfg: ExerciseConfig = { ...cfg };
+    nextCfg[fromPhase] = (cfg[fromPhase] ?? []).filter((n) => exerciseKey(n) !== key);
+    const targetList = (cfg[toPhase] ?? []).filter((n) => exerciseKey(n) !== key);
+    nextCfg[toPhase] = [...targetList, name];
+    update(nextCfg, envs);
   };
 
   const remove = (phase: number, name: string) => {
@@ -152,6 +190,7 @@ export default function Exercises() {
     setEnvs(nextEnvs);
     setDirty(true);
     setMsg("");
+    void persistImmediately(cfg, nextEnvs);
   };
 
   const save = async () => {
@@ -304,7 +343,7 @@ export default function Exercises() {
 
               {list.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500 bg-slate-50/50">
-                  Sin ejercicios esperados. (La fase promediará los que se carguen).
+                  Sin ejercicios asignados a esta fase.
                 </p>
               ) : (
                 <ul className="space-y-2">
@@ -325,6 +364,21 @@ export default function Exercises() {
                         </div>
 
                         <div className="flex items-center gap-2 ml-auto">
+                          {canEdit && (
+                            <select
+                              value={p.id}
+                              onChange={(e) => movePhase(p.id, Number(e.target.value), n)}
+                              className="rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 py-1 text-[11px] font-bold text-indigo-700 shadow-xs focus:border-indigo-500 focus:outline-none"
+                              title="Mover ejercicio a otra fase"
+                            >
+                              {PHASES.map((ph) => (
+                                <option key={ph.id} value={ph.id}>
+                                  Fase {ph.id}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+
                           {canEdit ? (
                             <select
                               value={rawSetting}
@@ -362,30 +416,61 @@ export default function Exercises() {
               )}
 
               {canEdit && (
-                <div className="flex flex-wrap sm:flex-nowrap gap-2 pt-1">
-                  <input
-                    value={drafts[p.id] ?? ""}
-                    onChange={(e) => setDrafts({ ...drafts, [p.id]: e.target.value })}
-                    onKeyDown={(e) => e.key === "Enter" && add(p.id)}
-                    placeholder="Ej. 02 - Montaña o 03C - Autopista"
-                    className="flex-1 min-w-[200px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
-                  />
-                  <select
-                    value={draftEnvs[p.id] ?? "AUTO"}
-                    onChange={(e) => setDraftEnvs({ ...draftEnvs, [p.id]: e.target.value as ExerciseEnvironment })}
-                    className="rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-700 focus:border-indigo-500 focus:outline-none"
-                  >
-                    <option value="AUTO">⚡ Auto-detectar</option>
-                    <option value="CARRETERA">🛣️ Carretera</option>
-                    <option value="MONTANA">🏔️ Montaña</option>
-                    <option value="CIUDAD">🏙️ Ciudad</option>
-                  </select>
-                  <button
-                    onClick={() => add(p.id)}
-                    className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition"
-                  >
-                    Agregar
-                  </button>
+                <div className="space-y-2 pt-1">
+                  <div className="flex flex-wrap sm:flex-nowrap gap-2">
+                    <input
+                      value={drafts[p.id] ?? ""}
+                      onChange={(e) => setDrafts({ ...drafts, [p.id]: e.target.value })}
+                      onKeyDown={(e) => e.key === "Enter" && add(p.id)}
+                      placeholder="Ej. 02 - Montaña o 03C - Autopista"
+                      className="flex-1 min-w-[200px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+                    />
+                    <select
+                      value={draftEnvs[p.id] ?? "AUTO"}
+                      onChange={(e) => setDraftEnvs({ ...draftEnvs, [p.id]: e.target.value as ExerciseEnvironment })}
+                      className="rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-700 focus:border-indigo-500 focus:outline-none"
+                    >
+                      <option value="AUTO">⚡ Auto-detectar</option>
+                      <option value="CARRETERA">🛣️ Carretera</option>
+                      <option value="MONTANA">🏔️ Montaña</option>
+                      <option value="CIUDAD">🏙️ Ciudad</option>
+                    </select>
+                    <button
+                      onClick={() => add(p.id)}
+                      className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition"
+                    >
+                      Agregar
+                    </button>
+                  </div>
+
+                  {uploadedNames.filter((u) => !list.some((n) => exerciseKey(n) === exerciseKey(u))).length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[11px] font-medium text-slate-400">
+                        Ejercicios detectados en reportes (clic para asignar a Fase {p.id}):
+                      </span>
+                      {uploadedNames
+                        .filter((u) => !list.some((n) => exerciseKey(n) === exerciseKey(u)))
+                        .map((u) => {
+                          const assignedPhase = Object.entries(cfg).find(
+                            ([ph, phList]) => Number(ph) !== p.id && (phList ?? []).some((n) => exerciseKey(n) === exerciseKey(u))
+                          )?.[0];
+                          return (
+                            <button
+                              key={u}
+                              type="button"
+                              onClick={() => add(p.id, u)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/60 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer"
+                              title={assignedPhase ? `Mover de Fase ${assignedPhase} a Fase ${p.id}` : `Agregar a Fase ${p.id}`}
+                            >
+                              <span>+ {u}</span>
+                              {assignedPhase && (
+                                <span className="text-[9px] font-normal text-indigo-500">(en F{assignedPhase})</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
               )}
             </section>

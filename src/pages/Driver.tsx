@@ -169,8 +169,14 @@ export default function Driver() {
     );
   }
 
-  const { name, evals, phases, overall, completedExercises, expectedExercises, criticalErrors, verdict, color } = data;
+  const { name, evals, missingExercises = [], phases, overall, completedExercises, expectedExercises, criticalErrors, verdict, color } = data;
   const phasesWithActivity = phases.filter((p) => p.exercises > 0).length;
+
+  // Combinar ejercicios evaluados y ejercicios no realizados ordenados por fase
+  const allExerciseRows = [
+    ...evals.map((e) => ({ type: "done" as const, phase: e.phase, eval: e })),
+    ...missingExercises.map((m, idx) => ({ type: "missing" as const, phase: m.phase, exercise: m.exercise, key: `missing-${m.phase}-${idx}-${m.exercise}` })),
+  ].sort((a, b) => a.phase - b.phase || (a.type === "done" && b.type === "missing" ? -1 : a.type === "missing" && b.type === "done" ? 1 : 0));
 
   const displayedSeverities = activeSeverityTab === "ALL"
     ? SEVERITY_ORDER
@@ -226,6 +232,11 @@ export default function Driver() {
               )}
               <span>{isExportingPdf ? "Generando PDF..." : "Exportar Expediente PDF"}</span>
             </button>
+            {completedExercises < expectedExercises && (
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+                Ejercicios incompletos
+              </span>
+            )}
             <span className={`rounded-full px-3.5 py-1 text-xs font-bold ${color}`}>
               {verdict}
             </span>
@@ -249,7 +260,7 @@ export default function Driver() {
             </p>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-slate-100">
+          <div className="mt-4 pt-4 border-t border-slate-100 space-y-1.5">
             {criticalErrors > 0 ? (
               <div className="flex items-center gap-2 text-xs text-rose-700">
                 <span className="flex h-2 w-2 rounded-full bg-rose-500"></span>
@@ -262,6 +273,14 @@ export default function Driver() {
               <div className="flex items-center gap-2 text-xs text-emerald-700">
                 <span className="flex h-2 w-2 rounded-full bg-emerald-500"></span>
                 <span>Sin faltas críticas en su historial</span>
+              </div>
+            )}
+            {completedExercises < expectedExercises && (
+              <div className="flex items-center gap-2 text-xs text-amber-700">
+                <span className="flex h-2 w-2 rounded-full bg-amber-500"></span>
+                <span>
+                  <strong>Ejercicios incompletos</strong> — Faltan {expectedExercises - completedExercises} de {expectedExercises} ejercicio(s) por realizar
+                </span>
               </div>
             )}
           </div>
@@ -284,6 +303,23 @@ export default function Driver() {
       {/* Resumen por Fase */}
       <section className="space-y-3">
         <h2 className="text-base font-bold text-slate-900">Progreso por Fase</h2>
+        {phases.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center space-y-2 shadow-xs">
+            <p className="text-xs font-semibold text-slate-700">
+              No hay fases ni ejercicios configurados para este grupo.
+            </p>
+            <p className="text-xs text-slate-500">
+              Asigna los ejercicios esperados de cada fase en la pestaña{" "}
+              <Link
+                to={groupParam ? `/ejercicios?grupo=${groupParam}` : "/ejercicios"}
+                className="font-bold text-indigo-600 underline hover:text-indigo-700"
+              >
+                Ejercicios
+              </Link>{" "}
+              para calcular el progreso y las calificaciones del conductor.
+            </p>
+          </div>
+        ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {phases.map((p) => {
             // Evaluaciones correspondientes a esta fase para promediar ejes de telemetría
@@ -365,7 +401,7 @@ export default function Driver() {
                         Puntaje Eco
                       </span>
                       <span className="text-base font-extrabold font-mono text-indigo-700">
-                        {radarSummary.ecoScore}/10
+                        {p.exercises > 0 ? `${radarSummary.ecoScore}/10` : "—"}
                       </span>
                     </div>
                   </div>
@@ -413,13 +449,26 @@ export default function Driver() {
                       );
                     })}
 
-                    {/* Polígono del conductor en esta fase */}
-                    <polygon
-                      points={miniPolygonPoints}
-                      fill="rgba(79, 70, 229, 0.20)"
-                      stroke="#4f46e5"
-                      strokeWidth="2"
-                    />
+                    {/* Polígono del conductor en esta fase (solo si realizó ejercicios) */}
+                    {p.exercises > 0 ? (
+                      <polygon
+                        points={miniPolygonPoints}
+                        fill="rgba(79, 70, 229, 0.20)"
+                        stroke="#4f46e5"
+                        strokeWidth="2"
+                      />
+                    ) : (
+                      <text
+                        x={cX}
+                        y={cY + 3}
+                        textAnchor="middle"
+                        fontSize="8.5"
+                        fontWeight="600"
+                        fill="#94a3b8"
+                      >
+                        Sin realizar
+                      </text>
+                    )}
 
                     {/* Vértices y Etiquetas */}
                     {axes.map((a, i) => {
@@ -427,7 +476,9 @@ export default function Driver() {
                       const labelPos = getCoord(i, 130);
                       return (
                         <g key={i}>
-                          <circle cx={c.x} cy={c.y} r="2.5" fill="#4f46e5" stroke="#ffffff" strokeWidth="1" />
+                          {p.exercises > 0 && (
+                            <circle cx={c.x} cy={c.y} r="2.5" fill="#4f46e5" stroke="#ffffff" strokeWidth="1" />
+                          )}
                           <text
                             x={labelPos.x}
                             y={labelPos.y + 3}
@@ -447,6 +498,7 @@ export default function Driver() {
             );
           })}
         </div>
+        )}
       </section>
 
       {/* Historial detallado de ejercicios */}
@@ -473,37 +525,68 @@ export default function Driver() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {evals.map((e) => (
-                  <tr
-                    key={`${e.phase}-${e.fileName}`}
-                    className="group hover:bg-indigo-50/30 transition cursor-pointer"
-                    onClick={() => setSelectedEval(e)}
-                  >
-                    <td className="px-4 py-3">
-                      <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
-                        F{e.phase}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">
-                      <span className="text-indigo-600 group-hover:text-indigo-700 underline decoration-indigo-200 group-hover:decoration-indigo-500 underline-offset-2 transition">
-                        {e.exercise}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-500">{e.date}</td>
-                    <td className="px-4 py-3 text-slate-700">{e.instructor}</td>
-                    <td className="px-4 py-3 text-slate-500 font-mono">{fmt(e.durationSec)}</td>
-                    <td className="px-4 py-3 font-mono text-slate-700">
-                      {e.errorCount > 0 ? (
-                        <span className="font-semibold text-rose-600">{e.errorCount}</span>
-                      ) : (
-                        <span className="text-emerald-600">0</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">
-                      {e.score}
+                {allExerciseRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-xs text-slate-500">
+                      Sin ejercicios asignados en el catálogo de este grupo.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                allExerciseRows.map((row) =>
+                  row.type === "done" ? (
+                    <tr
+                      key={`${row.eval.phase}-${row.eval.fileName}`}
+                      className="group hover:bg-indigo-50/30 transition cursor-pointer"
+                      onClick={() => setSelectedEval(row.eval)}
+                    >
+                      <td className="px-4 py-3">
+                        <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
+                          F{row.eval.phase}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-slate-900">
+                        <span className="text-indigo-600 group-hover:text-indigo-700 underline decoration-indigo-200 group-hover:decoration-indigo-500 underline-offset-2 transition">
+                          {row.eval.exercise}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">{row.eval.date}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.eval.instructor}</td>
+                      <td className="px-4 py-3 text-slate-500 font-mono">{fmt(row.eval.durationSec)}</td>
+                      <td className="px-4 py-3 font-mono text-slate-700">
+                        {row.eval.errorCount > 0 ? (
+                          <span className="font-semibold text-rose-600">{row.eval.errorCount}</span>
+                        ) : (
+                          <span className="text-emerald-600">0</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">
+                        {row.eval.score}
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={row.key} className="bg-slate-50/60 text-slate-400">
+                      <td className="px-4 py-3">
+                        <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-500">
+                          F{row.phase}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-medium text-slate-500">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{row.exercise}</span>
+                          <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+                            No realizado
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-400">—</td>
+                      <td className="px-4 py-3 text-slate-400">—</td>
+                      <td className="px-4 py-3 font-mono text-slate-400">—</td>
+                      <td className="px-4 py-3 font-mono text-slate-400">—</td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-slate-400">0</td>
+                    </tr>
+                  )
+                )
+                )}
               </tbody>
             </table>
           </div>

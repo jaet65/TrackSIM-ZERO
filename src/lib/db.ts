@@ -5,7 +5,7 @@ import { evaluateMarks } from "./parse";
 import { classify } from "./catalog";
 import { loadCatalog } from "./catalogStore";
 import { CRITICAL_LIMIT, verdictFor } from "./config";
-import { exerciseKey, getExercises, loadExercises, resolveExerciseEnvironment } from "./exercises";
+import { exerciseKey, getExercises, loadExercises, phaseForExercise, resolveExerciseEnvironment } from "./exercises";
 import { listGroups } from "./groups";
 
 export type EvaluationDoc = {
@@ -128,6 +128,8 @@ export type PhaseSummary = {
   phase: number;
   exercises: number;
   expected: number;
+  countedEvals?: EvaluationView[];
+  missingExercises?: string[];
   errors: number;
   criticalErrors: number;
   totalScore: number;
@@ -170,8 +172,9 @@ export type EvaluationView = EvaluationDoc & {
   telemetryScore?: number;
 };
 
-export function withCurrentScore(d: EvaluationDoc): EvaluationView {
+export function withCurrentScore(d: EvaluationDoc, fallbackGroupId?: string | null): EvaluationView {
   const exerciseName = d.unit || d.exercise;
+  const effectiveGroupId = d.groupId || fallbackGroupId || undefined;
   
   // Si la evaluación ya fue congelada, sus métricas son inalterables (normalizando a escala 0-10 si se congeló en escala 0-100)
   if (d.frozen && typeof d.frozenScore === "number") {
@@ -215,9 +218,11 @@ export function withCurrentScore(d: EvaluationDoc): EvaluationView {
     telemetry = { ...telemetry, hasSlipperyRoad, slipperyCondition };
   }
 
-  const ev = evaluateMarks(d.marks, d.durationSec, telemetry, exerciseName, d.groupId);
+  const ev = evaluateMarks(d.marks, d.durationSec, telemetry, exerciseName, effectiveGroupId);
+  const resolvedPhase = phaseForExercise(exerciseName, effectiveGroupId) ?? d.phase;
   return {
     ...d,
+    phase: resolvedPhase,
     telemetry,
     exercise: exerciseName,
     errorCount: ev.errorCount,
@@ -242,16 +247,8 @@ function summarizeDriverPhases(
     .map(([p]) => Number(p))
     .sort((a, b) => a - b);
 
-  const hasCatalog = configuredPhases.length > 0;
-
-  let phasesToEvaluate: number[];
-  if (onlyPhase !== undefined) {
-    phasesToEvaluate = [onlyPhase];
-  } else if (hasCatalog) {
-    phasesToEvaluate = configuredPhases;
-  } else {
-    phasesToEvaluate = [...new Set(docs.map((d) => d.phase))].sort((a, b) => a - b);
-  }
+  const phasesToEvaluate: number[] =
+    onlyPhase !== undefined ? [onlyPhase] : configuredPhases;
 
   const latestAll = [...docs].sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
   const usedDocs = new Set<EvaluationView>();
@@ -262,32 +259,21 @@ function summarizeDriverPhases(
 
     let counted: EvaluationView[] = [];
     let expected = phaseDocs.length;
+    const unmatchedNames: string[] = [];
 
     if (expectedList.length > 0) {
       expected = expectedList.length;
-      // 1. Emparejar por nombre de ejercicio esperado (en cualquier evaluación del conductor)
+      // Emparejar estrictamente por nombre de ejercicio esperado en la configuración de esta fase
       for (const expectedName of expectedList) {
-        const match = latestAll
-          .filter((e) => !usedDocs.has(e) && exerciseKey(e.exercise) === exerciseKey(expectedName))
-          .pop();
+        const candidates = latestAll.filter(
+          (e) => !usedDocs.has(e) && exerciseKey(e.exercise) === exerciseKey(expectedName)
+        );
+        const match = candidates.filter((e) => e.phase === phase).pop() ?? candidates.pop();
         if (match) {
           usedDocs.add(match);
-          counted.push(match);
-        }
-      }
-      // 2. Si quedaron evaluaciones en esta fase sin emparejar por nombre exacto, incluir la última por ejercicio único
-      if (counted.length < expected && phaseDocs.length > 0) {
-        const remainingByKey = new Map<string, EvaluationView>();
-        for (const e of phaseDocs) {
-          if (!usedDocs.has(e)) {
-            remainingByKey.set(exerciseKey(e.exercise), e);
-          }
-        }
-        for (const extra of remainingByKey.values()) {
-          if (counted.length < expected) {
-            usedDocs.add(extra);
-            counted.push(extra);
-          }
+          counted.push({ ...match, phase });
+        } else {
+          unmatchedNames.push(expectedName);
         }
       }
     } else {
@@ -304,7 +290,13 @@ function summarizeDriverPhases(
     const rawAvg = expected > 0 ? Math.round((totalScore / expected) * 10) / 10 : 0;
     const criticalErrors = counted.reduce((a, e) => a + e.criticalCount, 0);
     const avgScore = adjustScoreForCritical(rawAvg, criticalErrors);
-    const v = dictamen(avgScore, criticalErrors);
+    const isNotDone = counted.length === 0;
+    const isIncomplete = counted.length > 0 && counted.length < expected;
+    const v = isNotDone
+      ? { label: "NO REALIZADO", color: "bg-slate-100 text-slate-600 border border-slate-300" }
+      : isIncomplete
+        ? { label: "INCOMPLETO", color: "bg-amber-50 text-amber-700 border border-amber-200" }
+        : dictamen(avgScore, criticalErrors);
 
     return {
       driverId,
@@ -312,6 +304,8 @@ function summarizeDriverPhases(
       phase,
       exercises: counted.length,
       expected,
+      countedEvals: counted,
+      missingExercises: unmatchedNames,
       errors: counted.reduce((a, e) => a + e.errorCount, 0),
       criticalErrors,
       totalScore,
@@ -356,11 +350,15 @@ function matchesDateRange(dateStr: string, filter?: DateFilter): boolean {
 }
 
 async function fetchEvaluations(field?: "phase" | "driverId", value?: number | string, filter?: DateFilter) {
-  await Promise.all([loadCatalog(), loadExercises(), listGroups()]);
+  await Promise.all([
+    loadCatalog(false, filter?.groupId),
+    loadExercises(false, filter?.groupId),
+    listGroups(),
+  ]);
   const q = field !== undefined && value !== undefined
     ? query(evaluations(), where(field, "==", value))
     : query(evaluations());
-  const docs = (await getDocs(q)).docs.map((d) => withCurrentScore(d.data() as EvaluationDoc));
+  const docs = (await getDocs(q)).docs.map((d) => withCurrentScore(d.data() as EvaluationDoc, filter?.groupId));
   
   return docs.filter((d) => {
     if (!matchesDateRange(d.date, filter)) return false;
@@ -383,20 +381,36 @@ export async function phaseSummaries(phase: number, dateFilter?: DateFilter) {
   return summarize(phaseDocs, dateFilter?.groupId, phase);
 }
 
-// Devuelve los IDs de fases que tienen al menos una evaluación cargada o ejercicios configurados en el grupo
+// Devuelve los IDs de fases que tienen ejercicios configurados en el grupo
 export async function getPhasesWithEvaluations(dateFilter?: DateFilter): Promise<number[]> {
-  const allDocs = await fetchEvaluations(undefined, undefined, dateFilter);
-  const phases = new Set<number>();
-  for (const doc of allDocs) {
-    if (typeof doc.phase === "number") phases.add(doc.phase);
-  }
+  await fetchEvaluations(undefined, undefined, dateFilter);
   const exercisesMap = getExercises(dateFilter?.groupId);
-  for (const [p, list] of Object.entries(exercisesMap)) {
-    if (Array.isArray(list) && list.length > 0) {
-      phases.add(Number(p));
+  const configuredPhases = Object.entries(exercisesMap)
+    .filter(([, list]) => Array.isArray(list) && list.length > 0)
+    .map(([p]) => Number(p))
+    .sort((a, b) => a - b);
+
+  return configuredPhases;
+}
+
+// Devuelve los nombres únicos de ejercicios detectados en las evaluaciones subidas (del grupo o globales)
+export async function listUploadedExerciseNames(groupId?: string | null): Promise<string[]> {
+  const snap = await getDocs(query(evaluations()));
+  const byKey = new Map<string, string>();
+  // Priorizar los del grupo seleccionado y luego incluir el resto
+  const allDocs = snap.docs.map((d) => d.data() as EvaluationDoc);
+  const sortedDocs = groupId
+    ? [...allDocs.filter((d) => d.groupId === groupId), ...allDocs.filter((d) => d.groupId !== groupId)]
+    : allDocs;
+  for (const d of sortedDocs) {
+    const name = (d.unit || d.exercise || "").trim();
+    if (!name) continue;
+    const key = exerciseKey(name);
+    if (key && !byKey.has(key)) {
+      byKey.set(key, name);
     }
   }
-  return [...phases].sort((a, b) => a - b);
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
 }
 
 // Resumen del Promedio General agrupando todos los conductores en todas las fases con filtros
@@ -413,7 +427,22 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
 
   for (const [driverId, docs] of driverMap.entries()) {
     const pSummaries = summarizeDriverPhases(driverId, docs[0].driverName, docs, dateFilter?.groupId);
-    if (!pSummaries.length) continue;
+    if (!pSummaries.length) {
+      results.push({
+        driverId,
+        driver: docs[0].driverName,
+        phasesEvaluated: 0,
+        expectedPhases: 0,
+        totalExercises: 0,
+        expectedExercises: 0,
+        totalErrors: 0,
+        criticalErrors: 0,
+        avgScore: 0,
+        verdict: "SIN CONFIGURAR",
+        color: "bg-slate-100 text-slate-600 border border-slate-300",
+      });
+      continue;
+    }
 
     const expectedExercises = pSummaries.reduce((acc, p) => acc + p.expected, 0);
     const totalExercises = pSummaries.reduce((acc, p) => acc + p.exercises, 0);
@@ -427,7 +456,10 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
     const totalErrors = pSummaries.reduce((acc, p) => acc + p.errors, 0);
     const phasesEvaluated = pSummaries.filter((p) => p.exercises > 0).length;
     const expectedPhases = pSummaries.length;
-    const v = dictamen(avgScore, criticalErrors);
+    const v =
+      totalExercises === 0
+        ? { label: "NO REALIZADO", color: "bg-slate-100 text-slate-600 border border-slate-300" }
+        : dictamen(avgScore, criticalErrors);
 
     results.push({
       driverId,
@@ -448,16 +480,23 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
 }
 
 export async function driverData(driverId: string, filter?: DateFilter) {
-  const evals = (await fetchEvaluations("driverId", driverId, filter)).sort(
+  const rawEvals = (await fetchEvaluations("driverId", driverId, filter)).sort(
     (a, b) => a.phase - b.phase || a.date.localeCompare(b.date) || a.createdAt - b.createdAt,
   );
-  if (!evals.length) return null;
+  if (!rawEvals.length) return null;
+
+  const phases = summarizeDriverPhases(driverId, rawEvals[0].driverName, rawEvals, filter?.groupId);
+  const countedFromPhases = phases.flatMap((p) => p.countedEvals ?? []);
+  // Usar estrictamente las evaluaciones que pertenecen a los ejercicios configurados en las fases
+  const evals = countedFromPhases.sort(
+    (a, b) => a.phase - b.phase || a.date.localeCompare(b.date) || a.createdAt - b.createdAt,
+  );
 
   // Agrupar incidencias considerando el entorno del ejercicio donde ocurrieron y las reglas del grupo
   const incidentMap = new Map<string, { description: string; environment: string; groupId?: string; count: number }>();
 
   for (const e of evals) {
-    const env = resolveExerciseEnvironment(e.exercise || e.unit, e.groupId);
+    const env = resolveExerciseEnvironment(e.exercise || e.unit, filter?.groupId || e.groupId);
     for (const m of e.marks) {
       if (m.type !== "ERROR") continue;
       const key = `${m.description}|${env}`;
@@ -492,18 +531,31 @@ export async function driverData(driverId: string, filter?: DateFilter) {
     .sort((a, b) => b.weight * b.count - a.weight * a.count || b.count - a.count)
     .slice(0, 20);
 
-  const phases = summarizeDriverPhases(driverId, evals[0].driverName, evals, filter?.groupId);
+  const missingExercises: { phase: number; exercise: string }[] = [];
+  for (const p of phases) {
+    if (p.missingExercises) {
+      for (const ex of p.missingExercises) {
+        missingExercises.push({ phase: p.phase, exercise: ex });
+      }
+    }
+  }
   const expectedExercises = phases.reduce((a, p) => a + p.expected, 0);
   const completedExercises = phases.reduce((a, p) => a + p.exercises, 0);
   const totalExerciseScore = phases.reduce((a, p) => a + p.totalScore, 0);
-  const rawOverall = Math.round((totalExerciseScore / Math.max(1, expectedExercises)) * 10) / 10;
+  const rawOverall = expectedExercises > 0 ? Math.round((totalExerciseScore / expectedExercises) * 10) / 10 : 0;
   const criticalErrors = phases.reduce((a, p) => a + p.criticalErrors, 0);
   const overall = adjustScoreForCritical(rawOverall, criticalErrors);
-  const v = dictamen(overall, criticalErrors);
+  const v =
+    expectedExercises === 0
+      ? { label: "SIN CONFIGURAR", color: "bg-slate-100 text-slate-600 border border-slate-300" }
+      : completedExercises === 0
+        ? { label: "NO REALIZADO", color: "bg-slate-100 text-slate-600 border border-slate-300" }
+        : dictamen(overall, criticalErrors);
 
   return {
-    name: evals[0].driverName,
+    name: rawEvals[0].driverName,
     evals,
+    missingExercises,
     phases,
     breakdown,
     overall,
