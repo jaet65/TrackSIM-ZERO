@@ -2,32 +2,157 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: evaluations
+    // Document ID: f{phase}_{fileName}
+    // Fields:
+    //   - phase: int (1..6) - Fase evaluada
+    //   - driverId: string - Slug del conductor
+    //   - driverName: string (1..200 chars) - Nombre del conductor
+    //   - fileName: string - Nombre de archivo procesado
+    //   - lesson: string - Lección evaluada
+    //   - unit: string - Unidad o ejercicio
+    //   - exercise: string - Ejercicio evaluado
+    //   - vehicle: string - Vehículo utilizado
+    //   - instructor: string - Nombre del instructor
+    //   - instructorEmail: string - Correo del instructor
+    //   - date: string - Fecha del reporte
+    //   - durationSec: number - Duración en segundos
+    //   - errorCount: number - Total de infracciones
+    //   - score: number (0..100) - Calificación obtenida
+    //   - marks: list (<= 1000 items) - Marcas/faltas registradas
+    //   - createdAt: int / timestamp - Momento de guardado inicial
+    //   - telemetry: map (opcional) - Métricas telemétricas
+    //   - groupId: string (opcional, <= 100 chars) - Grupo asignado
+    //   - frozen: bool (opcional) - Marca de congelación tras cierre de grupo
+    //   - frozenAt: int / timestamp (opcional) - Momento de congelación
+    //   - frozenByEmail: string (opcional) - Correo de quien congeló
+    //   - frozenScore: number (opcional) - Calificación congelada
+    //   - frozenErrorCount: number (opcional) - Faltas congeladas
+    //   - frozenCriticalCount: number (opcional) - Faltas críticas congeladas
+    //   - frozenErrorScore: number (opcional) - Puntos por faltas
+    //   - frozenTelemetryScore: number (opcional) - Puntos por telemetría
+    //   - frozenMarks: list (opcional) - Marcas congeladas
+    //
+    // Collection: groups
+    // Document ID: grp_{timestamp}_{random}
+    // Fields:
+    //   - id: string (<= 100 chars) - Identificador del grupo
+    //   - name: string (1..200 chars) - Nombre descriptivo del grupo
+    //   - description: string (opcional, <= 1000 chars) - Descripción u observaciones
+    //   - status: string ('open' | 'closed') - Estado del grupo
+    //   - createdAt: int / timestamp - Fecha de creación
+    //   - createdBy: string (opcional, <= 200 chars) - Nombre del creador
+    //   - createdByEmail: string - Correo del creador staff
+    //   - closedAt: int / timestamp (opcional) - Fecha de cierre y congelado
+    //   - closedBy: string (opcional, <= 200 chars) - Nombre de quien cerró
+    //   - closedByEmail: string (opcional) - Correo de quien cerró
+    //   - evaluationCount: number (opcional) - Cantidad de evaluaciones congeladas
+    //   - driverCount: number (opcional) - Cantidad de conductores participantes
+    //
+    // ===============================================================
+
+    // Helper functions
     function isStaff() {
       return request.auth != null
         && request.auth.token.email_verified == true
         && request.auth.token.email.matches('.*@corporativomaf[.]com');
     }
 
-    // Solo administradores configuran el catálogo, pesos y pueden vaciar evaluaciones.
+    // Solo administradores configuran el catálogo, pesos y pueden eliminar evaluaciones o grupos.
     function isAdmin() {
-      return isStaff() && request.auth.token.email in ['magraz@corporativomaf.com'];
+      return isStaff() && (
+        request.auth.token.email in ['magraz@corporativomaf.com']
+        || (request.auth.token.keys().hasAll(['admin']) && request.auth.token.admin == true)
+      );
     }
 
-    // Las evaluaciones se crean por instructores y solo un administrador puede eliminarlas.
-    match /evaluations/{id} {
-      allow read: if isStaff();
-      allow create: if isStaff()
-        && request.resource.data.phase is int
+    // Validador de creación de evaluación
+    function isValidEvaluationCreate() {
+      return request.resource.data.phase is int
         && request.resource.data.phase >= 1 && request.resource.data.phase <= 6
         && request.resource.data.driverName is string
+        && request.resource.data.driverName.size() > 0 && request.resource.data.driverName.size() <= 200
         && request.resource.data.score is number
         && request.resource.data.score >= 0 && request.resource.data.score <= 100
         && request.resource.data.instructorEmail == request.auth.token.email
-        && request.resource.data.marks is list;
-      allow update: if false;
+        && request.resource.data.marks is list
+        && request.resource.data.marks.size() <= 1000
+        && (!('groupId' in request.resource.data) || (request.resource.data.groupId is string && request.resource.data.groupId.size() <= 100))
+        && (!('frozen' in request.resource.data) || request.resource.data.frozen is bool);
+    }
+
+    // Validador de actualización de evaluación (congelado o asignación de grupo)
+    function isValidEvaluationUpdate() {
+      return request.resource.data.phase == resource.data.phase
+        && request.resource.data.driverName == resource.data.driverName
+        && request.resource.data.instructorEmail == resource.data.instructorEmail
+        && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt)
+        && (!('groupId' in request.resource.data) || (request.resource.data.groupId is string && request.resource.data.groupId.size() <= 100))
+        && (
+          // Congelación / snapshotting
+          (request.resource.data.get('frozen', false) == true
+            && request.resource.data.frozenByEmail == request.auth.token.email)
+          // Asignación de grupo u otra actualización mientras permanece sin congelar
+          || (request.resource.data.get('frozen', false) == false)
+        );
+    }
+
+    // Validador de creación de grupo
+    function isValidGroupCreate() {
+      return request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 200
+        && request.resource.data.status == 'open'
+        && request.resource.data.createdByEmail == request.auth.token.email
+        && (request.resource.data.createdAt is int || request.resource.data.createdAt is timestamp)
+        && (!('description' in request.resource.data) || (request.resource.data.description is string && request.resource.data.description.size() <= 1000))
+        && (!('createdBy' in request.resource.data) || (request.resource.data.createdBy is string && request.resource.data.createdBy.size() <= 200));
+    }
+
+    // Validador de actualización de grupo
+    function isValidGroupUpdate() {
+      return request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 200
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdByEmail == resource.data.createdByEmail
+        && (!('description' in request.resource.data) || (request.resource.data.description is string && request.resource.data.description.size() <= 1000))
+        && (
+          // Si el grupo ya estaba cerrado, no puede reabrirse y solo un admin puede editar metadatos
+          (resource.data.status == 'closed' && isAdmin() && request.resource.data.status == 'closed')
+          // Si el grupo está abierto, staff puede actualizar metadatos o cerrarlo
+          || (resource.data.status == 'open' && (
+            (request.resource.data.status == 'open')
+            || (request.resource.data.status == 'closed' && (request.resource.data.closedByEmail == request.auth.token.email || isAdmin()))
+          ))
+        );
+    }
+
+    // Reglas para evaluaciones
+    match /evaluations/{id} {
+      allow read: if isStaff();
+      allow create: if isStaff() && isValidEvaluationCreate();
+      // Si ya está congelado, no se puede volver a actualizar.
+      // Si no está congelado, se permite actualizar si es admin o staff aplicando congelación / asignación.
+      allow update: if resource.data.get('frozen', false) != true
+        && (isAdmin() || (isStaff() && isValidEvaluationUpdate()));
       allow delete: if isAdmin();
     }
 
+    // Reglas para grupos de evaluación
+    match /groups/{groupId} {
+      allow read: if isStaff();
+      allow create: if isStaff() && isValidGroupCreate();
+      allow update: if isStaff() && isValidGroupUpdate();
+      allow delete: if isAdmin();
+    }
+
+    // Configuración de catálogo y ponderación
     match /settings/catalog {
       allow read: if isStaff();
       allow write: if isAdmin()
@@ -36,11 +161,13 @@ service cloud.firestore {
         && request.resource.data.entries.size() <= 500;
     }
 
+    // Configuración de ejercicios por fase
     match /settings/exercises {
       allow read: if isStaff();
       allow write: if isAdmin() && request.resource.data.phases is map;
     }
 
+    // Bloqueo por defecto para cualquier otra ruta
     match /{document=**} {
       allow read, write: if false;
     }

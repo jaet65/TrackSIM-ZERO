@@ -1,8 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { decodeCsv, parseReport } from "../lib/parse";
 import { saveEvaluation } from "../lib/db";
 import { loadCatalog } from "../lib/catalogStore";
 import { loadExercises, phaseForExercise } from "../lib/exercises";
+import {
+  getActiveGroupId,
+  getGroup,
+  listGroups,
+  createGroup,
+  setActiveGroupId,
+  type GroupDoc,
+} from "../lib/groups";
 import { useAuth } from "./AuthProvider";
 import SimulatorSyncModal from "./SimulatorSyncModal";
 
@@ -23,9 +32,103 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
   const [results, setResults] = useState<Result[]>([]);
   const [fileCount, setFileCount] = useState<number>(0);
   const [showSyncModal, setShowSyncModal] = useState(false);
+  const [activeGroup, setActiveGroup] = useState<GroupDoc | null>(null);
+  const [loadingGroup, setLoadingGroup] = useState(true);
+
+  // Modal para abrir / crear grupo directamente
+  const [showOpenGroupModal, setShowOpenGroupModal] = useState(false);
+  const [openGroupsList, setOpenGroupsList] = useState<GroupDoc[]>([]);
+  const [selectedExistingGroupId, setSelectedExistingGroupId] = useState("");
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupDesc, setNewGroupDesc] = useState("");
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [modalBusy, setModalBusy] = useState(false);
+  const [modalError, setModalError] = useState("");
+
+  const refreshActiveGroup = async () => {
+    setLoadingGroup(true);
+    const grpId = getActiveGroupId();
+    if (grpId) {
+      try {
+        const grp = await getGroup(grpId);
+        if (grp && grp.status === "open") {
+          setActiveGroup(grp);
+        } else {
+          setActiveGroup(null);
+        }
+      } catch {
+        setActiveGroup(null);
+      }
+    } else {
+      setActiveGroup(null);
+    }
+    setLoadingGroup(false);
+  };
+
+  useEffect(() => {
+    refreshActiveGroup();
+  }, []);
+
+  const handleOpenModal = async () => {
+    setModalError("");
+    setModalBusy(true);
+    setShowOpenGroupModal(true);
+    try {
+      const all = await listGroups();
+      const openOnly = all.filter((g) => g.status === "open");
+      setOpenGroupsList(openOnly);
+      if (openOnly.length > 0) {
+        setSelectedExistingGroupId(openOnly[0].id);
+        setIsCreatingNew(false);
+      } else {
+        setIsCreatingNew(true);
+      }
+    } catch (err) {
+      setModalError((err as Error).message);
+    } finally {
+      setModalBusy(false);
+    }
+  };
+
+  const handleConfirmGroupSelection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalBusy(true);
+    setModalError("");
+
+    try {
+      if (isCreatingNew) {
+        if (!newGroupName.trim()) throw new Error("Ingresa el nombre del nuevo grupo.");
+        const created = await createGroup(newGroupName, newGroupDesc, {
+          name: user?.displayName || user?.email || "",
+          email: user?.email || "",
+        });
+        setActiveGroup(created);
+      } else {
+        if (!selectedExistingGroupId) throw new Error("Selecciona un grupo existente.");
+        const chosen = openGroupsList.find((g) => g.id === selectedExistingGroupId);
+        if (chosen) {
+          setActiveGroupId(chosen.id);
+          setActiveGroup(chosen);
+        }
+      }
+      setShowOpenGroupModal(false);
+      setNewGroupName("");
+      setNewGroupDesc("");
+      onDone();
+    } catch (err) {
+      setModalError((err as Error).message);
+    } finally {
+      setModalBusy(false);
+    }
+  };
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!activeGroup) {
+      handleOpenModal();
+      return;
+    }
+
     const form = e.currentTarget;
     const files = Array.from(new FormData(form).getAll("files")).filter((f): f is File => f instanceof File);
     if (!files.length) return;
@@ -38,10 +141,17 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
         const report = parseReport(decodeCsv(await f.arrayBuffer()));
         const phase = phaseForExercise(report.exercise);
         if (!phase) throw new Error(`La unidad «${report.exercise}» no está en el catálogo de ejercicios.`);
-        const status = await saveEvaluation(phase, f.name, report, {
-          name: user?.displayName || user?.email || "",
-          email: user?.email ?? "",
-        });
+        
+        const status = await saveEvaluation(
+          phase,
+          f.name,
+          report,
+          {
+            name: user?.displayName || user?.email || "",
+            email: user?.email ?? "",
+          },
+          activeGroup.id
+        );
         out.push({
           file: f.name,
           phase,
@@ -62,21 +172,206 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
     onDone();
   }
 
+  // SI NO HAY GRUPO ACTIVO: Se oculta toda la sección de carga y se muestra el botón para Abrir Grupo
+  if (!activeGroup && !loadingGroup) {
+    return (
+      <>
+        <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-white to-blue-50/60 p-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-md shadow-indigo-600/30 shrink-0">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Iniciar Sesión de Evaluación</h3>
+                <p className="text-xs text-slate-500">
+                  Abre o selecciona un grupo de trabajo para habilitar la carga de archivos CSV y sincronización con Lander DB.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenModal}
+              className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-5 py-3 text-xs font-bold text-white shadow-md shadow-indigo-600/25 hover:from-indigo-700 hover:to-blue-700 active:scale-98 transition shrink-0"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <span>Abrir Grupo de Trabajo</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Directo: Abrir Grupo */}
+        {showOpenGroupModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-base font-bold text-slate-900">Abrir Grupo de Evaluación</h3>
+                <button
+                  onClick={() => setShowOpenGroupModal(false)}
+                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {modalError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                  {modalError}
+                </div>
+              )}
+
+              <form onSubmit={handleConfirmGroupSelection} className="space-y-4">
+                {openGroupsList.length > 0 && (
+                  <div className="flex rounded-xl bg-slate-100 p-1 text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingNew(false)}
+                      className={`flex-1 rounded-lg py-1.5 transition ${
+                        !isCreatingNew
+                          ? "bg-white text-indigo-700 shadow-xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      Elegir Existente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingNew(true)}
+                      className={`flex-1 rounded-lg py-1.5 transition ${
+                        isCreatingNew
+                          ? "bg-white text-indigo-700 shadow-xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      Crear Nuevo
+                    </button>
+                  </div>
+                )}
+
+                {!isCreatingNew && openGroupsList.length > 0 ? (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Selecciona un grupo abierto:
+                    </label>
+                    <select
+                      value={selectedExistingGroupId}
+                      onChange={(e) => setSelectedExistingGroupId(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      {openGroupsList.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          🟢 {g.name} (Creado: {new Date(g.createdAt).toLocaleDateString("es-MX")})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Nombre del Grupo *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ej. Generación Octubre 2026"
+                        value={newGroupName}
+                        onChange={(e) => setNewGroupName(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Descripción (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Observaciones o sede..."
+                        value={newGroupDesc}
+                        onChange={(e) => setNewGroupDesc(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    disabled={modalBusy}
+                    onClick={() => setShowOpenGroupModal(false)}
+                    className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={modalBusy}
+                    className="rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 transition"
+                  >
+                    {modalBusy ? "Guardando..." : "Abrir Grupo"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // SI HAY GRUPO ACTIVO: Se muestra la barra de carga normal y el grupo asociado
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-4">
+      {activeGroup && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs font-bold text-slate-800">
+              Grupo de Trabajo Activo: <span className="text-indigo-600 font-extrabold">{activeGroup.name}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleOpenModal}
+              className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 underline"
+            >
+              Cambiar Grupo
+            </button>
+            <Link
+              to="/grupos"
+              className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline"
+            >
+              Administrar Grupos
+            </Link>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={onSubmit} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 flex-col gap-1.5 sm:flex-row sm:items-center">
           <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-2.5 text-xs font-medium text-slate-700 hover:border-indigo-500 hover:bg-indigo-50/40 transition">
             <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
-            <span>{fileCount > 0 ? `${fileCount} archivo(s) seleccionado(s)` : "Seleccionar archivos CSV del simulador"}</span>
+            <span>
+              {fileCount > 0
+                ? `${fileCount} archivo(s) seleccionado(s)`
+                : "Seleccionar archivos CSV del simulador"}
+            </span>
             <input
               type="file"
               name="files"
               accept=".csv"
               multiple
               required
+              disabled={busy}
               className="sr-only"
               onChange={(e) => setFileCount(e.target.files?.length || 0)}
             />
@@ -89,8 +384,9 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
+            disabled={busy}
             onClick={() => setShowSyncModal(true)}
-            className="flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 transition shadow-xs"
+            className="flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-xs"
           >
             <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3V7M4 7c0-2 1.5-3 3.5-3h9c2 0 3.5 1 3.5 3M4 7h16m-5 4h.01M9 15h6" />
@@ -128,11 +424,141 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
         }}
       />
 
+      {/* Modal Directo: Cambiar / Abrir Grupo */}
+      {showOpenGroupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900">Cambiar Grupo Activo</h3>
+              <button
+                onClick={() => setShowOpenGroupModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            {modalError && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                {modalError}
+              </div>
+            )}
+
+            <form onSubmit={handleConfirmGroupSelection} className="space-y-4">
+              {openGroupsList.length > 0 && (
+                <div className="flex rounded-xl bg-slate-100 p-1 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingNew(false)}
+                    className={`flex-1 rounded-lg py-1.5 transition ${
+                      !isCreatingNew
+                        ? "bg-white text-indigo-700 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Elegir Existente
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingNew(true)}
+                    className={`flex-1 rounded-lg py-1.5 transition ${
+                      isCreatingNew
+                        ? "bg-white text-indigo-700 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Crear Nuevo
+                  </button>
+                </div>
+              )}
+
+              {!isCreatingNew && openGroupsList.length > 0 ? (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Selecciona un grupo abierto:
+                  </label>
+                  <select
+                    value={selectedExistingGroupId}
+                    onChange={(e) => setSelectedExistingGroupId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    {openGroupsList.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        🟢 {g.name} (Creado: {new Date(g.createdAt).toLocaleDateString("es-MX")})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Nombre del Grupo *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Generación Octubre 2026"
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Descripción (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Observaciones o sede..."
+                      value={newGroupDesc}
+                      onChange={(e) => setNewGroupDesc(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={modalBusy}
+                  onClick={() => setShowOpenGroupModal(false)}
+                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={modalBusy}
+                  className="rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 transition"
+                >
+                  {modalBusy ? "Guardando..." : "Aplicar"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {results.length > 0 && (
         <div className="mt-4 border-t border-slate-100 pt-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
-            Registro de Carga
-          </h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Registro de Carga ({results.length})
+            </h3>
+            <button
+              type="button"
+              onClick={() => setResults([])}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+              title="Limpiar registro de carga"
+            >
+              <span>Limpiar</span>
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
           <ul className="space-y-2 text-xs">
             {results.map((r) => (
               <li

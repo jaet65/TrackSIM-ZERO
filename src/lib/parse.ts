@@ -289,8 +289,10 @@ export function parseReport(text: string): ParsedReport {
   // Extracción de la sección «Indicadores genéricos»
   const telemetry: TelemetryMetrics = {
     hasSlipperyRoad,
-    slipperyCondition: hasSlipperyRoad ? slipperyCondition : undefined,
   };
+  if (hasSlipperyRoad && slipperyCondition) {
+    telemetry.slipperyCondition = slipperyCondition;
+  }
   const indIdx = find(/^Indicadores gen.ricos/i);
   if (indIdx >= 0) {
     for (let i = indIdx + 1; i < lines.length; i++) {

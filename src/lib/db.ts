@@ -25,6 +25,17 @@ export type EvaluationDoc = {
   marks: Mark[];
   telemetry?: TelemetryMetrics;
   createdAt: number;
+  // Campos de grupos y congelación
+  groupId?: string;
+  frozen?: boolean;
+  frozenAt?: number;
+  frozenByEmail?: string;
+  frozenScore?: number;
+  frozenErrorCount?: number;
+  frozenCriticalCount?: number;
+  frozenErrorScore?: number;
+  frozenTelemetryScore?: number;
+  frozenMarks?: Mark[];
 };
 
 const evaluations = () => collection(firestore, "evaluations");
@@ -50,6 +61,7 @@ export async function saveEvaluation(
   fileName: string,
   r: ParsedReport,
   instructor: Instructor,
+  groupId?: string,
 ): Promise<"saved" | "duplicate"> {
   const ref = doc(evaluations(), evaluationId(phase, fileName));
   if ((await getDoc(ref)).exists()) return "duplicate";
@@ -73,8 +85,21 @@ export async function saveEvaluation(
     createdAt: Date.now(),
   };
 
+  if (groupId) {
+    data.groupId = groupId;
+  }
+
   if (r.telemetry && Object.keys(r.telemetry).length > 0) {
-    data.telemetry = r.telemetry;
+    // Limpiar claves con valor undefined para cumplir con las restricciones de Firestore
+    const cleanTelemetry: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r.telemetry)) {
+      if (v !== undefined) {
+        cleanTelemetry[k] = v;
+      }
+    }
+    if (Object.keys(cleanTelemetry).length > 0) {
+      data.telemetry = cleanTelemetry as TelemetryMetrics;
+    }
   }
 
   await setDoc(ref, data);
@@ -119,16 +144,30 @@ export function adjustScoreForCritical(score: number, criticalErrors: number): n
   return score;
 }
 
-// Calificación recalculada desde las marcas y telemetría para que cambios en el catálogo o ponderación apliquen inmediatamente.
+// Calificación calculada desde las marcas y telemetría, o respetando la congelada si el grupo está cerrado
 export type EvaluationView = EvaluationDoc & {
   criticalCount: number;
   errorScore: number;
   telemetryScore?: number;
 };
 
-function withCurrentScore(d: EvaluationDoc): EvaluationView {
+export function withCurrentScore(d: EvaluationDoc): EvaluationView {
   const exerciseName = d.unit || d.exercise;
   
+  // Si la evaluación ya fue congelada, sus métricas son inalterables
+  if (d.frozen && typeof d.frozenScore === "number") {
+    return {
+      ...d,
+      exercise: exerciseName,
+      errorCount: d.frozenErrorCount ?? d.errorCount,
+      criticalCount: d.frozenCriticalCount ?? 0,
+      errorScore: d.frozenErrorScore ?? d.score,
+      telemetryScore: d.frozenTelemetryScore,
+      score: d.frozenScore,
+      marks: d.frozenMarks ?? d.marks,
+    };
+  }
+
   // Si la telemetría no traía hasSlipperyRoad (ej. guardada antes), detectarlo dinámicamente de d.marks
   let telemetry = d.telemetry;
   if (telemetry) {
@@ -213,6 +252,7 @@ function summarize(docs: EvaluationView[]): PhaseSummary[] {
 export type DateFilter = {
   startDate?: string; // YYYY-MM-DD
   endDate?: string;   // YYYY-MM-DD
+  groupId?: string | null;
 };
 
 function matchesDateRange(dateStr: string, filter?: DateFilter): boolean {
@@ -223,20 +263,28 @@ function matchesDateRange(dateStr: string, filter?: DateFilter): boolean {
   return true;
 }
 
-async function fetchEvaluations(field?: "phase" | "driverId", value?: number | string, dateFilter?: DateFilter) {
+async function fetchEvaluations(field?: "phase" | "driverId", value?: number | string, filter?: DateFilter) {
   await Promise.all([loadCatalog(), loadExercises()]);
   const q = field !== undefined && value !== undefined
     ? query(evaluations(), where(field, "==", value))
     : query(evaluations());
   const docs = (await getDocs(q)).docs.map((d) => withCurrentScore(d.data() as EvaluationDoc));
-  return docs.filter((d) => matchesDateRange(d.date, dateFilter));
+  
+  return docs.filter((d) => {
+    if (!matchesDateRange(d.date, filter)) return false;
+    // Si se especifica un filtro de grupo:
+    if (filter?.groupId) {
+      if (d.groupId !== filter.groupId) return false;
+    }
+    return true;
+  });
 }
 
 export async function phaseSummaries(phase: number, dateFilter?: DateFilter) {
   return summarize(await fetchEvaluations("phase", phase, dateFilter));
 }
 
-// Devuelve los IDs de fases que tienen al menos una evaluación cargada en la BD
+// Devuelve los IDs de fases que tienen al menos una evaluación cargada en la BD (respetando filtros)
 export async function getPhasesWithEvaluations(dateFilter?: DateFilter): Promise<number[]> {
   const allDocs = await fetchEvaluations(undefined, undefined, dateFilter);
   const phases = new Set<number>();
@@ -246,7 +294,7 @@ export async function getPhasesWithEvaluations(dateFilter?: DateFilter): Promise
   return [...phases].sort((a, b) => a - b);
 }
 
-// Resumen del Promedio General agrupando todos los conductores en todas las fases con filtro de fecha opcional
+// Resumen del Promedio General agrupando todos los conductores en todas las fases con filtros
 export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverOverallSummary[]> {
   const allDocs = await fetchEvaluations(undefined, undefined, dateFilter);
   const driverMap = new Map<string, EvaluationView[]>();
@@ -286,8 +334,8 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
   return results.sort((a, b) => a.driver.localeCompare(b.driver));
 }
 
-export async function driverData(driverId: string) {
-  const evals = (await fetchEvaluations("driverId", driverId)).sort(
+export async function driverData(driverId: string, filter?: DateFilter) {
+  const evals = (await fetchEvaluations("driverId", driverId, filter)).sort(
     (a, b) => a.phase - b.phase || a.date.localeCompare(b.date) || a.createdAt - b.createdAt,
   );
   if (!evals.length) return null;

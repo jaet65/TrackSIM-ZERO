@@ -98,6 +98,18 @@ export default function ProtectedLayout() {
               Resultados
             </NavLink>
             <NavLink
+              to="/grupos"
+              className={({ isActive }) =>
+                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
+                  isActive
+                    ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                }`
+              }
+            >
+              Grupos
+            </NavLink>
+            <NavLink
               to="/ejercicios"
               className={({ isActive }) =>
                 `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${

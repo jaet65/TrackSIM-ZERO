@@ -618,11 +618,11 @@ export default function Driver() {
                     <p className="py-2 text-xs text-slate-400 italic">No hay faltas registradas en esta gravedad.</p>
                   ) : (
                     <div className="space-y-2.5">
-                      {items.map((b) => {
+                      {items.map((b, bIdx) => {
                         const barWidth = Math.max(8, Math.round((b.count / maxErrorCount) * 100));
                         return (
                           <div
-                            key={b.description}
+                            key={`${b.description}_${b.environment || ""}_${bIdx}`}
                             className="group rounded-xl border border-slate-100 bg-slate-50/60 p-3 hover:border-slate-200 hover:bg-slate-50 transition"
                           >
                             <div className="flex items-center justify-between gap-3 text-xs mb-1.5">
