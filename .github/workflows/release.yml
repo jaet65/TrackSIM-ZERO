@@ -32,8 +32,39 @@ jobs:
           $version = "${{ github.ref_name }}" -replace '^v', ''
           npm version $version --no-git-tag-version --allow-same-version
 
-      - name: Build and Publish to GitHub Releases
+      - name: Build Windows Installer (.exe)
+        run: npm run dist
+
+      - name: Publish single GitHub Release with .exe
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run release
+        shell: pwsh
+        run: |
+          $pkg = Get-Content package.json | ConvertFrom-Json
+          $version = $pkg.version
+          $tag = if ("${{ github.ref_name }}" -match '^v') { "${{ github.ref_name }}" } else { "v$version" }
 
+          Write-Host "Cleaning up any existing/duplicate releases for tag $tag..."
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept        = "application/vnd.github+json"
+            "User-Agent"  = "TrackSIM-ZERO-CI"
+          }
+          $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/${{ github.repository }}/releases?per_page=100" -Headers $headers
+          foreach ($rel in $releases) {
+            if ($rel.tag_name -eq $tag -or $rel.name -eq $version -or $rel.name -eq $tag) {
+              Write-Host "Deleting existing release ID $($rel.id) (tag: $($rel.tag_name), name: $($rel.name))"
+              Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/${{ github.repository }}/releases/$($rel.id)" -Headers $headers
+            }
+          }
+
+          $exeFiles = Get-ChildItem -Path "release" -Filter "TrackSIM-ZERO-Setup-*.exe" | Select-Object -ExpandProperty FullName
+          $blockmapFiles = Get-ChildItem -Path "release" -Filter "TrackSIM-ZERO-Setup-*.blockmap" | Select-Object -ExpandProperty FullName
+          $assets = @($exeFiles) + @($blockmapFiles) | Where-Object { $_ }
+
+          if (-not $exeFiles) {
+            throw "No .exe installer found in release/ directory!"
+          }
+
+          Write-Host "Creating single GitHub Release $tag with assets: $($assets -join ', ')"
+          gh release create $tag $assets --repo "${{ github.repository }}" --title "v$version" --generate-notes

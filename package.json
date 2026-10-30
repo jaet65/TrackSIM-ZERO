@@ -12,7 +12,7 @@
     "electron": "npm run build:electron && electron .",
     "electron:dev": "npm run build:electron && concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
     "dist:dir": "npm run build && npm run build:electron && electron-builder --dir",
-    "dist": "npm run build && npm run build:electron && electron-builder",
+    "dist": "npm run build && npm run build:electron && electron-builder --publish never",
     "release": "npm run build && npm run build:electron && electron-builder --publish always"
   },
   "build": {
@@ -24,14 +24,12 @@
         "schemes": ["tracksim"]
       }
     ],
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "jaet65",
-        "repo": "TrackSIM-ZERO",
-        "releaseType": "release"
-      }
-    ],
+    "publish": {
+      "provider": "github",
+      "owner": "jaet65",
+      "repo": "TrackSIM-ZERO",
+      "releaseType": "release"
+    },
     "directories": {
       "output": "release"
     },
@@ -41,6 +39,7 @@
     ],
     "asar": true,
     "win": {
+      "artifactName": "TrackSIM-ZERO-Setup-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
