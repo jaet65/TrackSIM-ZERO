@@ -12,11 +12,20 @@
     "electron": "npm run build:electron && electron .",
     "electron:dev": "npm run build:electron && concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
     "dist:dir": "npm run build && npm run build:electron && electron-builder --dir",
-    "dist": "npm run build && npm run build:electron && electron-builder"
+    "dist": "npm run build && npm run build:electron && electron-builder",
+    "release": "npm run build && npm run build:electron && electron-builder --publish always"
   },
   "build": {
     "appId": "com.tracksim.zero",
     "productName": "TrackSIM ZERO",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "jaet65",
+        "repo": "TrackSIM-ZERO",
+        "releaseType": "release"
+      }
+    ],
     "directories": {
       "output": "release"
     },
