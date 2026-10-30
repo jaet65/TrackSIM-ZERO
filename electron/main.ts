@@ -746,6 +746,7 @@ function launchSilentInstaller(installerPath: string, restartAfterInstall: boole
 
   const escapedInstaller = installerPath.replace(/'/g, "''");
   const exePath = app.getPath("exe").replace(/'/g, "''");
+  const versionLabel = (downloadedVersion || "").replace(/[^0-9.a-zA-Z-]/g, "");
   const shouldRestart = restartAfterInstall && app.isPackaged ? "$true" : "$false";
   const tempDir = app.getPath("temp");
   const psScriptPath = path.join(tempDir, "tracksim-apply-update.ps1");
@@ -754,6 +755,7 @@ function launchSilentInstaller(installerPath: string, restartAfterInstall: boole
   const psScript = `\uFEFF$ErrorActionPreference = 'SilentlyContinue'
 $installer = '${escapedInstaller}'
 $appExe = '${exePath}'
+$verText = if ('${versionLabel}') { 'v${versionLabel}' } else { 'Nueva versión' }
 $restart = ${shouldRestart}
 
 # 1. Esperar a que todos los procesos de TrackSIM ZERO terminen y liberen archivos
@@ -766,53 +768,118 @@ for ($i = 0; $i -lt 30; $i++) {
   Start-Sleep -Milliseconds 300
 }
 
-# 2. Si el usuario solicitó reiniciar ahora, mostrar una ventana ligera de progreso mientras NSIS actualiza
-$form = $null
+# 2. Mostrar tarjeta moderna WPF sin bordes redondeada mientras NSIS actualiza
+$win = $null
+$barTranslate = $null
 if ($restart) {
-  Add-Type -AssemblyName System.Windows.Forms
-  Add-Type -AssemblyName System.Drawing
-  $form = New-Object System.Windows.Forms.Form
-  $form.Text = 'Actualizando TrackSIM ZERO'
-  $form.Size = New-Object System.Drawing.Size(400, 130)
-  $form.StartPosition = 'CenterScreen'
-  $form.FormBorderStyle = 'FixedDialog'
-  $form.ControlBox = $false
-  $form.TopMost = $true
-  $form.BackColor = [System.Drawing.Color]::White
+  Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+  $xamlStr = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Actualizando TrackSIM ZERO"
+        Width="440" Height="185"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowInTaskbar="True">
+  <Border Margin="16" Background="#FFFFFF" CornerRadius="16" BorderBrush="#E2E8F0" BorderThickness="1">
+    <Border.Effect>
+      <DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.18" Color="#0F172A"/>
+    </Border.Effect>
+    <Grid Margin="22,20,22,20">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
 
-  $lbl = New-Object System.Windows.Forms.Label
-  $lbl.Text = 'Aplicando actualización en segundo plano...' + [Environment]::NewLine + 'TrackSIM ZERO se abrirá automáticamente en unos segundos.'
-  $lbl.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
-  $lbl.AutoSize = $false
-  $lbl.Size = New-Object System.Drawing.Size(360, 48)
-  $lbl.Location = New-Object System.Drawing.Point(20, 18)
-  $form.Controls.Add($lbl)
+      <!-- Encabezado con icono degradado y badge de versión -->
+      <Grid Grid.Row="0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
 
-  $bar = New-Object System.Windows.Forms.ProgressBar
-  $bar.Style = 'Marquee'
-  $bar.MarqueeAnimationSpeed = 25
-  $bar.Size = New-Object System.Drawing.Size(345, 18)
-  $bar.Location = New-Object System.Drawing.Point(20, 72)
-  $form.Controls.Add($bar)
+        <Border Grid.Column="0" Width="44" Height="44" CornerRadius="12" Margin="0,0,14,0">
+          <Border.Background>
+            <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+              <GradientStop Color="#4F46E5" Offset="0"/>
+              <GradientStop Color="#2563EB" Offset="1"/>
+            </LinearGradientBrush>
+          </Border.Background>
+          <Canvas Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Path Data="M12,3 L12,15 M12,15 L8,11 M12,15 L16,11 M4,17 L4,19 C4,20.1 4.9,21 6,21 L18,21 C19.1,21 20,20.1 20,19 L20,17"
+                  Stroke="#FFFFFF" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+          </Canvas>
+        </Border>
 
-  $form.Show()
-  [System.Windows.Forms.Application]::DoEvents()
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Text="Actualizando TrackSIM ZERO" FontFamily="Segoe UI" FontSize="15" FontWeight="Bold" Foreground="#0F172A"/>
+          <TextBlock Text="Aplicando actualización en segundo plano..." FontFamily="Segoe UI" FontSize="12" Foreground="#64748B" Margin="0,2,0,0"/>
+        </StackPanel>
+
+        <Border Grid.Column="2" Background="#EEF2FF" BorderBrush="#C7D2FE" BorderThickness="1" CornerRadius="10" Padding="9,3" VerticalAlignment="Top">
+          <TextBlock x:Name="VerBadge" Text="v1.0" FontFamily="Segoe UI" FontSize="11" FontWeight="Bold" Foreground="#4F46E5"/>
+        </Border>
+      </Grid>
+
+      <!-- Texto informativo -->
+      <TextBlock Grid.Row="1"
+                 Text="Por favor espera unos segundos. La aplicación se abrirá automáticamente al finalizar."
+                 FontFamily="Segoe UI" FontSize="11.5" Foreground="#475569"
+                 VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,6"/>
+
+      <!-- Barra de progreso moderna -->
+      <Border Grid.Row="2" Height="8" Background="#F1F5F9" CornerRadius="4" ClipToBounds="True">
+        <Canvas HorizontalAlignment="Left" VerticalAlignment="Center" Height="8" Width="362">
+          <Border x:Name="IndigoBar" Width="130" Height="8" CornerRadius="4">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                <GradientStop Color="#4F46E5" Offset="0"/>
+                <GradientStop Color="#3B82F6" Offset="0.5"/>
+                <GradientStop Color="#4F46E5" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
+            <Border.RenderTransform>
+              <TranslateTransform x:Name="BarTranslate" X="-130" Y="0"/>
+            </Border.RenderTransform>
+          </Border>
+        </Canvas>
+      </Border>
+    </Grid>
+  </Border>
+</Window>
+'@
+  $win = [Windows.Markup.XamlReader]::Parse($xamlStr)
+  $verNode = $win.FindName('VerBadge')
+  if ($verNode) { $verNode.Text = $verText }
+  $barTranslate = $win.FindName('BarTranslate')
+  $win.Show()
 }
 
-# 3. Ejecutar el instalador NSIS en modo silencioso (/S)
+# 3. Ejecutar el instalador NSIS en modo silencioso (/S) animando la barra suavemente
 if (Test-Path -LiteralPath $installer) {
   $proc = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru
+  $pos = -130.0
   while ($proc -and -not $proc.HasExited) {
-    if ($form) { [System.Windows.Forms.Application]::DoEvents() }
-    Start-Sleep -Milliseconds 100
+    if ($win) {
+      $pos += 9.5
+      if ($pos -gt 365) { $pos = -130.0 }
+      if ($barTranslate) { $barTranslate.X = $pos }
+      $win.Dispatcher.Invoke([Action]{}, [System.Windows.Threading.DispatcherPriority]::Background)
+    }
+    Start-Sleep -Milliseconds 25
   }
-  Start-Sleep -Milliseconds 1000
+  Start-Sleep -Milliseconds 800
   Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
 }
 
-if ($form) {
-  $form.Close()
-  $form.Dispose()
+if ($win) {
+  $win.Close()
 }
 
 # 4. Relanzar TrackSIM ZERO si corresponde
@@ -823,7 +890,7 @@ if ($restart -and (Test-Path -LiteralPath $appExe)) {
 
   // wscript.exe es un proceso GUI nativo de Windows (no requiere consola al usar DETACHED_PROCESS)
   // y lanza powershell.exe con una consola oculta válida (0 = SW_HIDE) independiente del proceso padre.
-  const vbsScript = `CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & WScript.Arguments(0) & """", 0, False\r\n`;
+  const vbsScript = `CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -Sta -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & WScript.Arguments(0) & """", 0, False\r\n`;
 
   try {
     fs.writeFileSync(psScriptPath, psScript, "utf-8");
