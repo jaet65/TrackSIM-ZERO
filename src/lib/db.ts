@@ -6,6 +6,7 @@ import { classify } from "./catalog";
 import { loadCatalog } from "./catalogStore";
 import { CRITICAL_LIMIT, verdictFor } from "./config";
 import { exerciseKey, getExercises, loadExercises, resolveExerciseEnvironment } from "./exercises";
+import { listGroups } from "./groups";
 
 export type EvaluationDoc = {
   phase: number;
@@ -49,9 +50,14 @@ export function driverSlug(name: string): string {
     .replace(/^-|-$/g, "");
 }
 
-// ID determinista (fase + archivo) para que re-cargar el mismo CSV no duplique resultados.
-function evaluationId(phase: number, fileName: string) {
-  return `f${phase}_${fileName.replace(/[^\w.-]+/g, "_")}`;
+// ID determinista (grupo + fase + archivo) para que re-cargar el mismo CSV en el mismo grupo no duplique resultados,
+// pero permita cargar sesiones en grupos distintos de forma independiente.
+function evaluationId(phase: number, fileName: string, groupId?: string) {
+  const cleanFile = fileName.replace(/[^\w.-]+/g, "_");
+  if (groupId) {
+    return `${groupId}_f${phase}_${cleanFile}`;
+  }
+  return `f${phase}_${cleanFile}`;
 }
 
 export type Instructor = { name: string; email: string };
@@ -63,8 +69,18 @@ export async function saveEvaluation(
   instructor: Instructor,
   groupId?: string,
 ): Promise<"saved" | "duplicate"> {
-  const ref = doc(evaluations(), evaluationId(phase, fileName));
-  if ((await getDoc(ref)).exists()) return "duplicate";
+  // Verificar también el formato legado sin prefijo de grupo para evitar duplicar registros antiguos del mismo grupo
+  const legacyRef = doc(evaluations(), evaluationId(phase, fileName));
+  const legacySnap = await getDoc(legacyRef);
+  if (legacySnap.exists()) {
+    const existingGroup = (legacySnap.data() as EvaluationDoc).groupId || "";
+    if (existingGroup === (groupId || "")) {
+      return "duplicate";
+    }
+  }
+
+  const ref = doc(evaluations(), evaluationId(phase, fileName, groupId));
+  if (groupId && (await getDoc(ref)).exists()) return "duplicate";
 
   const data: EvaluationDoc = {
     phase,
@@ -194,7 +210,7 @@ export function withCurrentScore(d: EvaluationDoc): EvaluationView {
     telemetry = { ...telemetry, hasSlipperyRoad, slipperyCondition };
   }
 
-  const ev = evaluateMarks(d.marks, d.durationSec, telemetry, exerciseName);
+  const ev = evaluateMarks(d.marks, d.durationSec, telemetry, exerciseName, d.groupId);
   return {
     ...d,
     telemetry,
@@ -207,7 +223,7 @@ export function withCurrentScore(d: EvaluationDoc): EvaluationView {
   };
 }
 
-function summarize(docs: EvaluationView[]): PhaseSummary[] {
+function summarize(docs: EvaluationView[], fallbackGroupId?: string | null): PhaseSummary[] {
   const groups = new Map<string, EvaluationView[]>();
   for (const e of docs) {
     const key = `${e.driverId}|${e.phase}`;
@@ -215,8 +231,9 @@ function summarize(docs: EvaluationView[]): PhaseSummary[] {
   }
   return [...groups.values()]
     .map((g) => {
-      // Con catálogo de ejercicios, cada ejercicio esperado aporta su última evaluación y los faltantes valen 0.
-      const expectedList = getExercises()[String(g[0].phase)] ?? [];
+      // Con catálogo de ejercicios del grupo correspondiente, cada ejercicio esperado aporta su última evaluación y los faltantes valen 0.
+      const grpId = fallbackGroupId || g[0]?.groupId;
+      const expectedList = getExercises(grpId)[String(g[0].phase)] ?? [];
       let counted = g;
       let expected = g.length;
       let total = g.reduce((a, e) => a + e.score, 0);
@@ -264,7 +281,7 @@ function matchesDateRange(dateStr: string, filter?: DateFilter): boolean {
 }
 
 async function fetchEvaluations(field?: "phase" | "driverId", value?: number | string, filter?: DateFilter) {
-  await Promise.all([loadCatalog(), loadExercises()]);
+  await Promise.all([loadCatalog(), loadExercises(), listGroups()]);
   const q = field !== undefined && value !== undefined
     ? query(evaluations(), where(field, "==", value))
     : query(evaluations());
@@ -281,7 +298,7 @@ async function fetchEvaluations(field?: "phase" | "driverId", value?: number | s
 }
 
 export async function phaseSummaries(phase: number, dateFilter?: DateFilter) {
-  return summarize(await fetchEvaluations("phase", phase, dateFilter));
+  return summarize(await fetchEvaluations("phase", phase, dateFilter), dateFilter?.groupId);
 }
 
 // Devuelve los IDs de fases que tienen al menos una evaluación cargada en la BD (respetando filtros)
@@ -307,7 +324,7 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
   const results: DriverOverallSummary[] = [];
 
   for (const [driverId, docs] of driverMap.entries()) {
-    const pSummaries = summarize(docs);
+    const pSummaries = summarize(docs, dateFilter?.groupId);
     if (!pSummaries.length) continue;
 
     const totalScore = pSummaries.reduce((acc, p) => acc + p.avgScore, 0);
@@ -340,12 +357,11 @@ export async function driverData(driverId: string, filter?: DateFilter) {
   );
   if (!evals.length) return null;
 
-  // Agrupar incidencias considerando el entorno del ejercicio donde ocurrieron
-  type IncidentKey = { description: string; environment: string };
-  const incidentMap = new Map<string, { description: string; environment: string; count: number }>();
+  // Agrupar incidencias considerando el entorno del ejercicio donde ocurrieron y las reglas del grupo
+  const incidentMap = new Map<string, { description: string; environment: string; groupId?: string; count: number }>();
 
   for (const e of evals) {
-    const env = resolveExerciseEnvironment(e.exercise || e.unit);
+    const env = resolveExerciseEnvironment(e.exercise || e.unit, e.groupId);
     for (const m of e.marks) {
       if (m.type !== "ERROR") continue;
       const key = `${m.description}|${env}`;
@@ -353,14 +369,14 @@ export async function driverData(driverId: string, filter?: DateFilter) {
       if (existing) {
         existing.count++;
       } else {
-        incidentMap.set(key, { description: m.description, environment: env, count: 1 });
+        incidentMap.set(key, { description: m.description, environment: env, groupId: e.groupId, count: 1 });
       }
     }
   }
 
   const breakdown = [...incidentMap.values()]
     .map((item) => {
-      const cls = classify(item.description, item.environment);
+      const cls = classify(item.description, item.environment, filter?.groupId || item.groupId);
       const isOffRoad = item.description.toLowerCase().includes("salirse de la via");
       // Si es salida de vía, aclarar en el texto del desglose el contexto de peligro
       const displayDescription = isOffRoad
@@ -380,7 +396,7 @@ export async function driverData(driverId: string, filter?: DateFilter) {
     .sort((a, b) => b.weight * b.count - a.weight * a.count || b.count - a.count)
     .slice(0, 20);
 
-  const phases = summarize(evals);
+  const phases = summarize(evals, filter?.groupId);
   const rawOverall = Math.round((phases.reduce((a, p) => a + p.avgScore, 0) / phases.length) * 10) / 10;
   const criticalErrors = phases.reduce((a, p) => a + p.criticalErrors, 0);
   const overall = adjustScoreForCritical(rawOverall, criticalErrors);

@@ -43,9 +43,12 @@ export default function Home() {
     ? Number(phaseParam)
     : null;
 
-  // Filtro de grupo (desde URL param o local)
-  const groupParam = params.get("grupo") || "";
-  const [selectedGroupId, setSelectedGroupId] = useState<string>(groupParam);
+  // Filtro de grupo: por defecto toma el parámetro de URL o el grupo activo actual
+  const [selectedGroupId, setSelectedGroupId] = useState<string>(() => {
+    const fromUrl = params.get("grupo");
+    if (fromUrl !== null) return fromUrl === "ALL" ? "" : fromUrl;
+    return getActiveGroupId() || "";
+  });
   const [allGroups, setAllGroups] = useState<GroupDoc[]>([]);
 
   // Filtro de fechas (Desde / Hasta)
@@ -72,15 +75,28 @@ export default function Home() {
 
   const isAdmin = isAdminEmail(user?.email);
 
-  // Cargar grupos registrados
+  // Cargar grupos registrados y validar que el grupo seleccionado exista
   useEffect(() => {
-    listGroups().then(setAllGroups).catch(() => {});
+    listGroups()
+      .then((list) => {
+        setAllGroups(list);
+        setSelectedGroupId((prev) => {
+          if (prev && !list.some((g) => g.id === prev)) {
+            return getActiveGroupId() && list.some((g) => g.id === getActiveGroupId())
+              ? getActiveGroupId()!
+              : "";
+          }
+          return prev;
+        });
+      })
+      .catch(() => {});
   }, []);
 
-  // Sincronizar el estado del filtro con el param
+  // Sincronizar el estado del filtro con el param de la URL
   useEffect(() => {
-    if (params.get("grupo") !== null) {
-      setSelectedGroupId(params.get("grupo") || "");
+    const fromUrl = params.get("grupo");
+    if (fromUrl !== null) {
+      setSelectedGroupId(fromUrl === "ALL" ? "" : fromUrl);
     }
   }, [params]);
 
@@ -197,7 +213,12 @@ export default function Home() {
     if (newPhase !== null) next.fase = String(newPhase);
     if (start) next.desde = start;
     if (end) next.hasta = end;
-    if (newGroup) next.grupo = newGroup;
+    if (newGroup) {
+      next.grupo = newGroup;
+    } else if (getActiveGroupId()) {
+      // Si hay un grupo activo pero el usuario eligió explícitamente "Todos los Grupos"
+      next.grupo = "ALL";
+    }
     setParams(next);
   };
 
@@ -252,7 +273,8 @@ export default function Home() {
         },
         (current, total, name) => {
           setExportProgress({ current, total, name });
-        }
+        },
+        dateFilter
       );
     } catch (err: any) {
       console.error("Error al exportar lote PDF/ZIP:", err);
@@ -418,7 +440,18 @@ export default function Home() {
       </div>
 
       {/* Carga de Archivos */}
-      <UploadForm onDone={load} />
+      <UploadForm
+        onDone={() => {
+          listGroups().then(setAllGroups).catch(() => {});
+          const activeId = getActiveGroupId();
+          if (activeId && activeId !== selectedGroupId) {
+            setSelectedGroupId(activeId);
+            updateUrl(selectedPhase, startDate, endDate, activeId);
+          } else {
+            load();
+          }
+        }}
+      />
 
       {/* Tarjetas de métricas rápidas */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
@@ -591,7 +624,15 @@ export default function Home() {
                   <tr key={r.driverId} className="hover:bg-slate-50/60 transition group">
                     <td className="px-4 py-3.5">
                       <Link
-                        to={`/drivers/${r.driverId}`}
+                        to={`/drivers/${r.driverId}${
+                          selectedGroupId || startDate || endDate
+                            ? `?${new URLSearchParams({
+                                ...(selectedGroupId ? { grupo: selectedGroupId } : {}),
+                                ...(startDate ? { desde: startDate } : {}),
+                                ...(endDate ? { hasta: endDate } : {}),
+                              }).toString()}`
+                            : ""
+                        }`}
                         className="font-bold text-slate-900 group-hover:text-indigo-600 transition"
                       >
                         {r.driver}

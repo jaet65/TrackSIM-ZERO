@@ -132,7 +132,10 @@ export default function SimulatorSyncModal({
     setSyncLogs([]);
 
     try {
-      await Promise.all([loadCatalog(), loadExercises()]);
+      await Promise.all([
+        loadCatalog(false, activeGroup.id),
+        loadExercises(false, activeGroup.id),
+      ]);
       
       const extract = await extractSimulatorSessions(startDate, endDate, includeAnon);
       if (!extract.ok) throw new Error(extract.error || "Fallo en la extracción");
@@ -166,15 +169,15 @@ export default function SimulatorSyncModal({
         }
 
         try {
-          const report = parseReport(s.csv);
-          const phase = phaseForExercise(report.exercise);
+          const activeGrpId = activeGroup.id || getActiveGroupId() || undefined;
+          const report = parseReport(s.csv, activeGrpId);
+          const phase = phaseForExercise(report.exercise, activeGrpId);
           if (!phase) {
             failed++;
-            logs.push(`⚠️ Sesión #${s.id} (${report.driver}): Ejercicio «${report.exercise}» no catalogado.`);
+            logs.push(`⚠️ Sesión #${s.id} (${report.driver}): Ejercicio «${report.exercise}» no catalogado en el grupo «${activeGroup.name}».`);
             continue;
           }
 
-          const activeGrpId = getActiveGroupId() || undefined;
           const saveStatus = await saveEvaluation(
             phase,
             s.filename,

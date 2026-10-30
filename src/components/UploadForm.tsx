@@ -48,6 +48,8 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
   const [selectedExistingGroupId, setSelectedExistingGroupId] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
+  const [sourceGroupId, setSourceGroupId] = useState("");
+  const [allGroupsList, setAllGroupsList] = useState<GroupDoc[]>([]);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [modalBusy, setModalBusy] = useState(false);
   const [modalError, setModalError] = useState("");
@@ -101,6 +103,7 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
     setShowOpenGroupModal(true);
     try {
       const all = await listGroups();
+      setAllGroupsList(all);
       const openOnly = all.filter((g) => g.status === "open");
       setOpenGroupsList(openOnly);
       if (openOnly.length > 0) {
@@ -124,10 +127,15 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
     try {
       if (isCreatingNew) {
         if (!newGroupName.trim()) throw new Error("Ingresa el nombre del nuevo grupo.");
-        const created = await createGroup(newGroupName, newGroupDesc, {
-          name: user?.displayName || user?.email || "",
-          email: user?.email || "",
-        });
+        const created = await createGroup(
+          newGroupName,
+          newGroupDesc,
+          {
+            name: user?.displayName || user?.email || "",
+            email: user?.email || "",
+          },
+          sourceGroupId || null
+        );
         setActiveGroup(created);
       } else {
         if (!selectedExistingGroupId) throw new Error("Selecciona un grupo existente.");
@@ -140,6 +148,7 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
       setShowOpenGroupModal(false);
       setNewGroupName("");
       setNewGroupDesc("");
+      setSourceGroupId("");
       onDone();
     } catch (err) {
       setModalError((err as Error).message);
@@ -163,10 +172,13 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
     const out: Result[] = [];
     for (const f of files) {
       try {
-        await Promise.all([loadCatalog(), loadExercises()]);
-        const report = parseReport(decodeCsv(await f.arrayBuffer()));
-        const phase = phaseForExercise(report.exercise);
-        if (!phase) throw new Error(`La unidad «${report.exercise}» no está en el catálogo de ejercicios.`);
+        await Promise.all([
+          loadCatalog(false, activeGroup.id),
+          loadExercises(false, activeGroup.id),
+        ]);
+        const report = parseReport(decodeCsv(await f.arrayBuffer()), activeGroup.id);
+        const phase = phaseForExercise(report.exercise, activeGroup.id);
+        if (!phase) throw new Error(`La unidad «${report.exercise}» no está en el catálogo de ejercicios del grupo «${activeGroup.name}».`);
         
         const status = await saveEvaluation(
           phase,
@@ -322,6 +334,23 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
                         onChange={(e) => setNewGroupDesc(e.target.value)}
                         className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Reglas iniciales (Errores y Ejercicios)
+                      </label>
+                      <select
+                        value={sourceGroupId}
+                        onChange={(e) => setSourceGroupId(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      >
+                        <option value="">🌐 Copiar de Plantilla Global (Por defecto)</option>
+                        {allGroupsList.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            📋 Copiar reglas de «{g.name}»
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 )}

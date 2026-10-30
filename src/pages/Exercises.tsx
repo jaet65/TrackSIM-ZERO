@@ -1,22 +1,31 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../components/AuthProvider";
 import { PHASES, isAdminEmail } from "../lib/config";
 import {
   exerciseKey,
   loadExercises,
   saveExercises,
+  getExercises,
   getExerciseEnvironments,
   detectEnvironmentFromName,
-  resolveExerciseEnvironment,
   type ExerciseConfig,
   type ExerciseEnvironment,
   type ExerciseEnvironmentsMap,
 } from "../lib/exercises";
+import { listGroups, getActiveGroupId, type GroupDoc } from "../lib/groups";
 
 export default function Exercises() {
   const { user } = useAuth();
-  const canEdit = isAdminEmail(user?.email);
+  const [params, setParams] = useSearchParams();
+
+  const [groups, setGroups] = useState<GroupDoc[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>(() => {
+    const fromUrl = params.get("grupo");
+    if (fromUrl !== null) return fromUrl;
+    return getActiveGroupId() || "";
+  });
+
   const [cfg, setCfg] = useState<ExerciseConfig | null>(null);
   const [envs, setEnvs] = useState<ExerciseEnvironmentsMap>({});
   const [drafts, setDrafts] = useState<Record<number, string>>({});
@@ -24,17 +33,80 @@ export default function Exercises() {
   const [dirty, setDirty] = useState(false);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loadingRules, setLoadingRules] = useState(true);
+  const [copySourceId, setCopySourceId] = useState<string>("");
+
+  const selectedGroup = useMemo(
+    () => groups.find((g) => g.id === selectedGroupId) || null,
+    [groups, selectedGroupId]
+  );
+
+  const isClosedGroup = selectedGroup?.status === "closed";
+  const canEdit = selectedGroupId
+    ? !isClosedGroup
+    : isAdminEmail(user?.email);
 
   useEffect(() => {
-    loadExercises()
-      .then((c) => {
-        setCfg(structuredClone(c));
-        setEnvs(structuredClone(getExerciseEnvironments()));
+    listGroups()
+      .then((list) => {
+        setGroups(list);
+        if (selectedGroupId && !list.some((g) => g.id === selectedGroupId)) {
+          setSelectedGroupId("");
+        }
       })
-      .catch((e: Error) => setMsg(e.message));
+      .catch(() => {});
   }, []);
 
-  if (!cfg) {
+  useEffect(() => {
+    setLoadingRules(true);
+    setMsg("");
+    setDirty(false);
+    loadExercises(false, selectedGroupId || null)
+      .then((c) => {
+        setCfg(structuredClone(c));
+        setEnvs(structuredClone(getExerciseEnvironments(selectedGroupId || null)));
+      })
+      .catch((e: Error) => setMsg(e.message))
+      .finally(() => setLoadingRules(false));
+  }, [selectedGroupId]);
+
+  const handleGroupChange = (nextGroupId: string) => {
+    if (dirty && !window.confirm("Tienes cambios sin guardar. ¿Deseas cambiar de grupo y descartarlos?")) {
+      return;
+    }
+    setSelectedGroupId(nextGroupId);
+    if (nextGroupId) {
+      setParams({ grupo: nextGroupId });
+    } else {
+      setParams({});
+    }
+  };
+
+  const handleCopyFrom = async (sourceId: string) => {
+    if (!sourceId) return;
+    const targetId = sourceId === "__GLOBAL__" ? null : sourceId;
+    const sourceLabel =
+      sourceId === "__GLOBAL__"
+        ? "la Plantilla Global"
+        : `el grupo «${groups.find((g) => g.id === sourceId)?.name || sourceId}»`;
+
+    try {
+      await loadExercises(false, targetId);
+      setCfg(structuredClone(getExercises(targetId)));
+      setEnvs(structuredClone(getExerciseEnvironments(targetId)));
+      setDirty(true);
+      setCopySourceId("");
+      setMsg(
+        `Ejercicios copiados desde ${sourceLabel}. Haz clic en «Guardar Catálogo» para aplicarlos a ${
+          selectedGroup ? `«${selectedGroup.name}»` : "la Plantilla Global"
+        }.`
+      );
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  };
+
+  if (!cfg || loadingRules) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center text-slate-500">
         <div className="flex items-center gap-3">
@@ -57,7 +129,7 @@ export default function Exercises() {
     if (!name) return;
     const list = cfg[phase] ?? [];
     if (list.some((n) => exerciseKey(n) === exerciseKey(name))) return setMsg("Ese ejercicio ya está en la fase.");
-    
+
     const key = exerciseKey(name);
     const chosenEnv = draftEnvs[phase] || "AUTO";
     const nextEnvs = { ...envs, [key]: chosenEnv };
@@ -85,9 +157,13 @@ export default function Exercises() {
   const save = async () => {
     setBusy(true);
     try {
-      await saveExercises(cfg, user?.email ?? "", envs);
+      await saveExercises(cfg, user?.email ?? "", envs, selectedGroupId || null);
       setDirty(false);
-      setMsg("Guardado correctamente. Los cálculos de telemetría ahora usan este catálogo y sus entornos.");
+      setMsg(
+        selectedGroup
+          ? `Catálogo de ejercicios guardado para el grupo «${selectedGroup.name}».`
+          : "Plantilla global de ejercicios guardada correctamente."
+      );
     } catch (e) {
       setMsg((e as Error).message);
     } finally {
@@ -118,10 +194,10 @@ export default function Exercises() {
   };
 
   return (
-    <main className="mx-auto max-w-4xl space-y-6 px-4 py-8 sm:px-6">
+    <main className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
       <div>
         <Link
-          to="/"
+          to={selectedGroupId ? `/?grupo=${selectedGroupId}` : "/"}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition mb-3"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -133,16 +209,76 @@ export default function Exercises() {
           <div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">Catálogo de Ejercicios</h1>
             <p className="mt-1 text-xs text-slate-600 max-w-2xl leading-relaxed">
-              Define los ejercicios obligatorios por fase y el entorno operativo (<strong>Carretera</strong>, <strong>Montaña</strong> o <strong>Ciudad</strong>). El sistema detecta el entorno automáticamente por palabras clave o puedes fijarlo manualmente para calibrar las metas de RPM verde, freno auxiliar y consumo.
+              Define los ejercicios obligatorios por fase y el entorno operativo (<strong>Carretera</strong>, <strong>Montaña</strong> o <strong>Ciudad</strong>) para cada grupo de evaluación de forma independiente.
             </p>
           </div>
-          {!canEdit && (
+          {isClosedGroup ? (
+            <span className="rounded-full bg-slate-100 border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700">
+              🔒 Grupo Cerrado — Solo lectura
+            </span>
+          ) : !canEdit ? (
             <span className="rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-xs font-semibold text-amber-800">
               Modo solo lectura
             </span>
-          )}
+          ) : null}
         </div>
       </div>
+
+      {/* Selector de Grupo / Ámbito de Ejercicios */}
+      <section className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-white to-blue-50/50 p-4 shadow-xs">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs shrink-0">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <div>
+              <label htmlFor="exercises-group-select" className="block text-[11px] font-bold uppercase tracking-wider text-indigo-700">
+                Configurando Ejercicios por Fase para:
+              </label>
+              <select
+                id="exercises-group-select"
+                value={selectedGroupId}
+                onChange={(e) => handleGroupChange(e.target.value)}
+                className="mt-1 rounded-xl border border-indigo-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-900 shadow-xs focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">🌐 Plantilla Global (Base para nuevos grupos)</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.status === "closed" ? "🔒" : "🟢"} Grupo: {g.name}
+                    {g.id === getActiveGroupId() ? " (Activo)" : ""}
+                    {g.status === "closed" ? " (Cerrado)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {canEdit && (
+            <div className="flex flex-wrap items-center gap-2 border-t lg:border-t-0 pt-3 lg:pt-0 border-indigo-100">
+              <span className="text-xs font-semibold text-slate-600">Copiar ejercicios desde:</span>
+              <select
+                value={copySourceId}
+                onChange={(e) => handleCopyFrom(e.target.value)}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="">-- Seleccionar origen para importar --</option>
+                {selectedGroupId !== "" && (
+                  <option value="__GLOBAL__">🌐 Plantilla Global</option>
+                )}
+                {groups
+                  .filter((g) => g.id !== selectedGroupId)
+                  .map((g) => (
+                    <option key={g.id} value={g.id}>
+                      📋 Grupo: {g.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+        </div>
+      </section>
 
       <div className="grid gap-4">
         {PHASES.map((p) => {
@@ -258,14 +394,18 @@ export default function Exercises() {
       </div>
 
       {canEdit && (
-        <div className="sticky bottom-4 z-20 flex items-center justify-between rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur-md">
+        <div className="sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur-md">
           <div className="flex items-center gap-3">
             <button
               onClick={save}
               disabled={!dirty || busy}
               className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-indigo-600/20 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
-              {busy ? "Guardando…" : "Guardar Catálogo"}
+              {busy
+                ? "Guardando…"
+                : selectedGroup
+                ? `Guardar Ejercicios de «${selectedGroup.name}»`
+                : "Guardar Plantilla Global"}
             </button>
             {dirty && (
               <span className="text-xs text-amber-700 font-medium flex items-center gap-1.5">
@@ -274,7 +414,7 @@ export default function Exercises() {
               </span>
             )}
           </div>
-          {msg && <span className="text-xs text-slate-600">{msg}</span>}
+          {msg && <span className="text-xs text-emerald-700 font-medium">{msg}</span>}
         </div>
       )}
     </main>

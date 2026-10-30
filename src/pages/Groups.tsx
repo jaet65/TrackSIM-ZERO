@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   listGroups,
   createGroup,
@@ -25,6 +26,7 @@ export default function Groups() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
+  const [sourceGroupId, setSourceGroupId] = useState("");
   const [creating, setCreating] = useState(false);
 
   // Cerrar y congelar grupo
@@ -79,13 +81,19 @@ export default function Groups() {
     setCreating(true);
     setError("");
     try {
-      const created = await createGroup(newGroupName, newGroupDesc, {
-        name: user?.displayName || user?.email || "",
-        email: user?.email || "",
-      });
+      const created = await createGroup(
+        newGroupName,
+        newGroupDesc,
+        {
+          name: user?.displayName || user?.email || "",
+          email: user?.email || "",
+        },
+        sourceGroupId || null
+      );
       setShowCreateModal(false);
       setNewGroupName("");
       setNewGroupDesc("");
+      setSourceGroupId("");
       setActiveId(created.id);
       setSuccess(`Grupo «${created.name}» creado y fijado como grupo de trabajo activo.`);
       setTimeout(() => setSuccess(""), 4000);
@@ -242,6 +250,7 @@ export default function Groups() {
                 <tr>
                   <th className="py-3 px-4">Grupo</th>
                   <th className="py-3 px-4">Estado</th>
+                  <th className="py-3 px-4">Reglas del Grupo</th>
                   <th className="py-3 px-4">Creado</th>
                   <th className="py-3 px-4">Cierre & Congelación</th>
                   <th className="py-3 px-4 text-right">Acciones</th>
@@ -251,6 +260,10 @@ export default function Groups() {
                 {groups.map((g) => {
                   const isClosed = g.status === "closed";
                   const isActive = activeGroupId === g.id;
+                  const exerciseCount = g.exercises?.phases
+                    ? Object.values(g.exercises.phases).reduce((acc, list) => acc + (Array.isArray(list) ? list.length : 0), 0)
+                    : null;
+                  const errorRulesCount = g.catalog?.entries ? g.catalog.entries.length : null;
 
                   return (
                     <tr key={g.id} className="hover:bg-slate-50/60 transition">
@@ -281,6 +294,30 @@ export default function Groups() {
                             Abierto para carga
                           </span>
                         )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Link
+                            to={`/ejercicios?grupo=${g.id}`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/60 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition"
+                            title="Configurar ejercicios obligatorios y entornos de este grupo"
+                          >
+                            <span>📋 Ejercicios</span>
+                            {exerciseCount !== null && (
+                              <span className="font-mono text-[10px] text-indigo-500">({exerciseCount})</span>
+                            )}
+                          </Link>
+                          <Link
+                            to={`/catalogo?grupo=${g.id}`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/60 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 transition"
+                            title="Configurar catálogo de errores y ponderaciones de este grupo"
+                          >
+                            <span>⚖️ Errores</span>
+                            {errorRulesCount !== null && (
+                              <span className="font-mono text-[10px] text-blue-500">({errorRulesCount})</span>
+                            )}
+                          </Link>
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-[11px]">
                         <div>{new Date(g.createdAt).toLocaleDateString("es-MX", { dateStyle: "medium" })}</div>
@@ -379,6 +416,27 @@ export default function Groups() {
                   onChange={(e) => setNewGroupDesc(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Reglas Iniciales de Errores y Ejercicios
+                </label>
+                <select
+                  value={sourceGroupId}
+                  onChange={(e) => setSourceGroupId(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="">🌐 Copiar de Plantilla Global (Por defecto)</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      📋 Copiar reglas de «{g.name}»
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  El grupo tendrá su propia copia independiente de ejercicios y errores que podrás personalizar en cualquier momento.
+                </p>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">

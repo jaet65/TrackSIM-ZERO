@@ -19,7 +19,8 @@ export type PhaseRadarSummary = {
  */
 export function computeTelemetryAxes(
   telemetryList: (TelemetryMetrics | undefined)[],
-  exerciseName = ""
+  exerciseName = "",
+  groupId?: string | null
 ): PhaseRadarSummary {
   const valid = telemetryList.filter((t): t is TelemetryMetrics => Boolean(t && Object.keys(t).length > 0));
   if (valid.length === 0) {
@@ -37,7 +38,7 @@ export function computeTelemetryAxes(
     };
   }
 
-  const env = resolveExerciseEnvironment(exerciseName);
+  const env = resolveExerciseEnvironment(exerciseName, groupId);
   const n = valid.length;
 
   // Promediar métricas brutas

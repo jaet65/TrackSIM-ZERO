@@ -87,10 +87,11 @@ export type Evaluation = {
 export function calculateTelemetryScore(
   telemetry?: TelemetryMetrics,
   exerciseName?: string,
+  groupId?: string | null,
 ): number | undefined {
   if (!telemetry || telemetry.pctGreenZone === undefined) return undefined;
 
-  const env = resolveExerciseEnvironment(exerciseName);
+  const env = resolveExerciseEnvironment(exerciseName, groupId);
 
   // --- 1. Sub-puntaje RPM ---
   // Meta de zona verde según entorno
@@ -199,17 +200,18 @@ export function evaluateMarks(
   durationSec: number,
   telemetry?: TelemetryMetrics,
   exerciseName?: string,
+  groupId?: string | null,
 ): Evaluation {
   const bySeverity: Record<Severity, number> = { CRITICO: 0, GRAVE: 0, MODERADO: 0, LEVE: 0 };
   const uncataloged = new Set<string>();
   let points = 0;
   let errorCount = 0;
 
-  const env = resolveExerciseEnvironment(exerciseName);
+  const env = resolveExerciseEnvironment(exerciseName, groupId);
 
   for (const m of marks) {
     if (m.type !== "ERROR") continue;
-    const c = classify(m.description, env);
+    const c = classify(m.description, env, groupId);
     errorCount++;
     points += c.weight;
     bySeverity[c.severity]++;
@@ -220,7 +222,7 @@ export function evaluateMarks(
   const rawError = 100 - (points / minutes) * PENALTY_PER_ERROR_RATE;
   const errorScore = Math.round(Math.max(0, Math.min(100, rawError)) * 10) / 10;
 
-  const telemetryScore = calculateTelemetryScore(telemetry, exerciseName);
+  const telemetryScore = calculateTelemetryScore(telemetry, exerciseName, groupId);
 
   let finalScore = errorScore;
   if (telemetryScore !== undefined) {
@@ -240,7 +242,7 @@ export function evaluateMarks(
   };
 }
 
-export function parseReport(text: string): ParsedReport {
+export function parseReport(text: string, groupId?: string | null): ParsedReport {
   const lines = text.split(/\r?\n/);
   const cells = (i: number) => (lines[i] ?? "").split(";").map((c) => c.trim());
   const find = (re: RegExp) => lines.findIndex((l) => re.test(l));
@@ -324,7 +326,7 @@ export function parseReport(text: string): ParsedReport {
   }
 
   const durationSec = toSeconds(duration);
-  const ev = evaluateMarks(marks, durationSec, telemetry, exercise);
+  const ev = evaluateMarks(marks, durationSec, telemetry, exercise, groupId);
 
   return {
     driver,

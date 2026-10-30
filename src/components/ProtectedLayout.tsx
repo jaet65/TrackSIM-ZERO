@@ -48,7 +48,7 @@ export default function ProtectedLayout() {
             className="group relative flex w-full items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition duration-200 hover:from-indigo-700 hover:to-blue-700 hover:shadow-indigo-600/35 active:scale-[0.98]"
           >
             <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
-              <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/>
+              <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z" />
             </svg>
             Entrar con Google
           </button>
@@ -96,10 +96,9 @@ export default function ProtectedLayout() {
               to="/"
               end
               className={({ isActive }) =>
-                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
-                  isActive
-                    ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${isActive
+                  ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`
               }
             >
@@ -108,10 +107,9 @@ export default function ProtectedLayout() {
             <NavLink
               to="/grupos"
               className={({ isActive }) =>
-                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
-                  isActive
-                    ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${isActive
+                  ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`
               }
             >
@@ -120,10 +118,9 @@ export default function ProtectedLayout() {
             <NavLink
               to="/ejercicios"
               className={({ isActive }) =>
-                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
-                  isActive
-                    ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${isActive
+                  ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`
               }
             >
@@ -132,14 +129,13 @@ export default function ProtectedLayout() {
             <NavLink
               to="/catalogo"
               className={({ isActive }) =>
-                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
-                  isActive
-                    ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${isActive
+                  ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`
               }
             >
-              Catálogo de Errores
+              Errores
             </NavLink>
           </nav>
 

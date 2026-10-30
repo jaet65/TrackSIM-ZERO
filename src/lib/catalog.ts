@@ -129,6 +129,7 @@ export const DEFAULT_CONFIG: CatalogConfig = { weights: DEFAULT_WEIGHTS, entries
 
 let active: CatalogConfig = DEFAULT_CONFIG;
 let index = new Map<string, Entry>();
+const groupCatalogs = new Map<string, { cfg: CatalogConfig; index: Map<string, Entry> }>();
 
 function buildIndex(cfg: CatalogConfig) {
   const m = new Map<string, Entry>();
@@ -136,13 +137,42 @@ function buildIndex(cfg: CatalogConfig) {
   return m;
 }
 
-// Catálogo vigente en memoria; lo carga catalogStore desde Firestore antes de calcular calificaciones.
+export function sanitizeCatalog(raw: unknown): CatalogConfig {
+  const r = raw as Partial<CatalogConfig> | undefined;
+  const weights = { ...DEFAULT_WEIGHTS };
+  for (const s of SEVERITY_ORDER) {
+    const w = r?.weights?.[s];
+    if (typeof w === "number" && w >= 0) weights[s] = w;
+  }
+  const entries = Array.isArray(r?.entries)
+    ? (r.entries as Entry[]).filter((e) => e && typeof e.name === "string" && SEVERITY_ORDER.includes(e.severity))
+    : DEFAULT_CONFIG.entries;
+  return { weights, entries };
+}
+
+// Catálogo global vigente en memoria; lo carga catalogStore desde Firestore antes de calcular calificaciones.
 export function setCatalog(cfg: CatalogConfig) {
   active = cfg;
   index = buildIndex(cfg);
 }
 
-export function getCatalog(): CatalogConfig {
+// Registra o actualiza el catálogo específico de un grupo en memoria.
+export function setGroupCatalog(groupId: string, cfg: CatalogConfig) {
+  groupCatalogs.set(groupId, { cfg, index: buildIndex(cfg) });
+}
+
+export function removeGroupCatalog(groupId: string) {
+  groupCatalogs.delete(groupId);
+}
+
+export function hasGroupCatalog(groupId: string): boolean {
+  return groupCatalogs.has(groupId);
+}
+
+export function getCatalog(groupId?: string | null): CatalogConfig {
+  if (groupId && groupCatalogs.has(groupId)) {
+    return groupCatalogs.get(groupId)!.cfg;
+  }
   return active;
 }
 
@@ -155,9 +185,11 @@ export function isOffRoadError(description: string): boolean {
 
 export function classify(
   description: string,
-  environment?: string
+  environment?: string,
+  groupId?: string | null
 ): { severity: Severity; weight: number; cataloged: boolean } {
-  const entry = index.get(normalize(description));
+  const target = (groupId && groupCatalogs.get(groupId)) || { cfg: active, index };
+  const entry = target.index.get(normalize(description));
   let severity = entry?.severity ?? UNCATALOGED_SEVERITY;
 
   // Regla especial de seguridad: en montaña o pendientes pronunciadas,
@@ -167,5 +199,5 @@ export function classify(
     severity = "CRITICO";
   }
 
-  return { severity, weight: entry?.points ?? active.weights[severity], cataloged: !!entry };
+  return { severity, weight: entry?.points ?? target.cfg.weights[severity], cataloged: !!entry };
 }

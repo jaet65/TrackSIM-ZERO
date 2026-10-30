@@ -12,10 +12,25 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { firestore, getDb } from "./firebase";
-import type { EvaluationDoc, EvaluationView } from "./db";
+import type { EvaluationDoc } from "./db";
 import { withCurrentScore } from "./db";
-import { loadExercises } from "./exercises";
+import {
+  loadExercises,
+  getExercises,
+  getExerciseEnvironments,
+  sanitizeExercises,
+  setGroupExercises,
+  removeGroupExercises,
+  type ExerciseSettingsData,
+} from "./exercises";
 import { loadCatalog } from "./catalogStore";
+import {
+  getCatalog,
+  sanitizeCatalog,
+  setGroupCatalog,
+  removeGroupCatalog,
+  type CatalogConfig,
+} from "./catalog";
 
 export type GroupStatus = "open" | "closed";
 
@@ -32,6 +47,13 @@ export type GroupDoc = {
   closedByEmail?: string;
   evaluationCount?: number;
   driverCount?: number;
+  // Reglas independientes por grupo (catálogo de errores y catálogo de ejercicios)
+  catalog?: CatalogConfig;
+  catalogUpdatedAt?: number;
+  catalogUpdatedBy?: string;
+  exercises?: ExerciseSettingsData;
+  exercisesUpdatedAt?: number;
+  exercisesUpdatedBy?: string;
 };
 
 const groupsCol = () => collection(getDb(), "groups");
@@ -52,42 +74,84 @@ export function setActiveGroupId(id: string | null): void {
   }
 }
 
+/**
+ * Sincroniza en memoria las reglas propias de errores y ejercicios de un grupo
+ * para que los cálculos simultáneos de múltiples grupos usen siempre su configuración correspondiente.
+ */
+export function hydrateGroupRules(g: GroupDoc): void {
+  if (g.catalog) {
+    setGroupCatalog(g.id, sanitizeCatalog(g.catalog));
+  }
+  if (g.exercises) {
+    const { phases, environments } = sanitizeExercises(g.exercises);
+    setGroupExercises(g.id, phases, environments);
+  }
+}
+
 export async function listGroups(): Promise<GroupDoc[]> {
   const snap = await getDocs(query(groupsCol(), orderBy("createdAt", "desc")));
-  return snap.docs.map((d) => ({
+  const list = snap.docs.map((d) => ({
     id: d.id,
     ...(d.data() as Omit<GroupDoc, "id">),
   }));
+  for (const g of list) {
+    hydrateGroupRules(g);
+  }
+  return list;
 }
 
 export async function getGroup(groupId: string): Promise<GroupDoc | null> {
   const snap = await getDoc(doc(groupsCol(), groupId));
   if (!snap.exists()) return null;
-  return { id: snap.id, ...(snap.data() as Omit<GroupDoc, "id">) };
+  const g: GroupDoc = { id: snap.id, ...(snap.data() as Omit<GroupDoc, "id">) };
+  hydrateGroupRules(g);
+  return g;
 }
 
 export async function createGroup(
   name: string,
   description: string,
-  user: { name: string; email: string }
+  user: { name: string; email: string },
+  sourceGroupId?: string | null
 ): Promise<GroupDoc> {
   const trimmedName = name.trim();
   if (!trimmedName) throw new Error("El nombre del grupo no puede estar vacío.");
 
+  // Cargar reglas base o del grupo origen para inicializar las reglas propias del nuevo grupo
+  await Promise.all([
+    loadCatalog(false, sourceGroupId || null),
+    loadExercises(false, sourceGroupId || null),
+  ]);
+
+  const initialCatalog = JSON.parse(JSON.stringify(getCatalog(sourceGroupId || null))) as CatalogConfig;
+  const initialPhases = JSON.parse(JSON.stringify(getExercises(sourceGroupId || null)));
+  const initialEnvs = JSON.parse(JSON.stringify(getExerciseEnvironments(sourceGroupId || null)));
+
   const id = `grp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const now = Date.now();
   const groupData: GroupDoc = {
     id,
     name: trimmedName,
     description: description.trim(),
     status: "open",
-    createdAt: Date.now(),
+    createdAt: now,
     createdBy: user.name || user.email,
     createdByEmail: user.email,
     evaluationCount: 0,
     driverCount: 0,
+    catalog: initialCatalog,
+    catalogUpdatedAt: now,
+    catalogUpdatedBy: user.email,
+    exercises: {
+      phases: initialPhases,
+      environments: initialEnvs,
+    },
+    exercisesUpdatedAt: now,
+    exercisesUpdatedBy: user.email,
   };
 
   await setDoc(doc(groupsCol(), id), groupData);
+  hydrateGroupRules(groupData);
   // Se establece automáticamente como el grupo activo para nuevas subidas
   setActiveGroupId(id);
   return groupData;
@@ -96,19 +160,21 @@ export async function createGroup(
 /**
  * Cierra un grupo y congela todos los registros de evaluación asociados.
  * Calcula la instantánea final (calificaciones, dictámenes, errores y severidades)
- * y la guarda en cada documento con frozen = true.
+ * usando las reglas propias del grupo y la guarda en cada documento con frozen = true.
  */
 export async function closeAndFreezeGroup(
   groupId: string,
   user: { name: string; email: string }
 ): Promise<{ evaluationsFrozen: number }> {
-  await Promise.all([loadCatalog(), loadExercises()]);
+  await Promise.all([loadCatalog(false, groupId), loadExercises(false, groupId)]);
 
   const grpRef = doc(groupsCol(), groupId);
   const grpSnap = await getDoc(grpRef);
   if (!grpSnap.exists()) throw new Error("El grupo no existe.");
-  const grpData = grpSnap.data() as GroupDoc;
+  const grpData = { id: grpSnap.id, ...(grpSnap.data() as Omit<GroupDoc, "id">) };
   if (grpData.status === "closed") throw new Error("El grupo ya se encuentra cerrado y congelado.");
+
+  hydrateGroupRules(grpData);
 
   // Obtener todas las evaluaciones asociadas al grupo
   const q = query(evaluationsCol(), where("groupId", "==", groupId));
@@ -126,8 +192,8 @@ export async function closeAndFreezeGroup(
       const evalDoc = d.data() as EvaluationDoc;
       driversSet.add(evalDoc.driverId);
 
-      // Calcular el score congelado con los catálogos en su estado exacto actual
-      const computed = withCurrentScore(evalDoc);
+      // Calcular el score congelado con los catálogos del grupo en su estado exacto actual
+      const computed = withCurrentScore({ ...evalDoc, groupId });
 
       batch.update(d.ref, {
         frozen: true,
@@ -204,6 +270,8 @@ export async function deleteGroup(groupId: string): Promise<void> {
   await deleteGroupEvaluations(groupId);
   const grpRef = doc(groupsCol(), groupId);
   await deleteDoc(grpRef);
+  removeGroupCatalog(groupId);
+  removeGroupExercises(groupId);
   if (getActiveGroupId() === groupId) {
     setActiveGroupId(null);
   }

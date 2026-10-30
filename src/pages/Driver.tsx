@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { phaseName, CRITICAL_LIMIT, verdictFor } from "../lib/config";
 import { SEVERITIES, SEVERITY_ORDER, classify, type Severity } from "../lib/catalog";
-import { driverData, type EvaluationView } from "../lib/db";
+import { driverData, type DateFilter, type EvaluationView } from "../lib/db";
 import { resolveExerciseEnvironment } from "../lib/exercises";
 import { computeTelemetryAxes } from "../lib/telemetryRadar";
 import { downloadDriverPdf } from "../lib/pdfExport";
@@ -17,6 +17,20 @@ type SortDirection = "asc" | "desc";
 
 export default function Driver() {
   const { id = "" } = useParams();
+  const [searchParams] = useSearchParams();
+  const groupParam = searchParams.get("grupo") || "";
+  const startDateParam = searchParams.get("desde") || "";
+  const endDateParam = searchParams.get("hasta") || "";
+
+  const dateFilter = useMemo<DateFilter>(
+    () => ({
+      groupId: groupParam || undefined,
+      startDate: startDateParam || undefined,
+      endDate: endDateParam || undefined,
+    }),
+    [groupParam, startDateParam, endDateParam]
+  );
+
   const [data, setData] = useState<Data | null | undefined>(undefined);
   const [error, setError] = useState("");
   const [selectedEval, setSelectedEval] = useState<EvaluationView | null>(null);
@@ -31,8 +45,8 @@ export default function Driver() {
 
   useEffect(() => {
     setData(undefined);
-    driverData(id).then(setData).catch((e: Error) => setError(e.message));
-  }, [id]);
+    driverData(id, dateFilter).then(setData).catch((e: Error) => setError(e.message));
+  }, [id, dateFilter]);
 
   // Al cambiar de ejercicio seleccionado, reiniciar al orden por defecto cronológico
   useEffect(() => {
@@ -89,12 +103,13 @@ export default function Driver() {
       return { sortedErrorMarks: [], severityCounts: counts };
     }
 
-    const evalEnv = resolveExerciseEnvironment(selectedEval.exercise || selectedEval.unit);
+    const evalGroupId = selectedEval.groupId || groupParam || null;
+    const evalEnv = resolveExerciseEnvironment(selectedEval.exercise || selectedEval.unit, evalGroupId);
 
     const errors = selectedEval.marks
       .filter((m) => m.type === "ERROR")
       .map((m) => {
-        const cls = classify(m.description, evalEnv);
+        const cls = classify(m.description, evalEnv, evalGroupId);
         counts[cls.severity] = (counts[cls.severity] || 0) + 1;
         return {
           ...m,
@@ -165,7 +180,7 @@ export default function Driver() {
       {/* Top back & title */}
       <div>
         <Link
-          to="/"
+          to={groupParam ? `/?grupo=${groupParam}` : "/"}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition mb-3"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -189,7 +204,7 @@ export default function Driver() {
                 if (isExportingPdf || !data) return;
                 try {
                   setIsExportingPdf(true);
-                  await downloadDriverPdf(id, name);
+                  await downloadDriverPdf(id, name, dateFilter);
                 } catch (e: any) {
                   console.error("Error al exportar expediente PDF:", e);
                   window.print();
@@ -271,7 +286,8 @@ export default function Driver() {
             const phaseEvals = evals.filter((e) => e.phase === p.phase);
             const telemetries = phaseEvals.map((e) => e.telemetry);
             const firstExerciseName = phaseEvals[0]?.exercise || "";
-            const radarSummary = computeTelemetryAxes(telemetries, firstExerciseName);
+            const phaseGroupId = phaseEvals[0]?.groupId || groupParam || null;
+            const radarSummary = computeTelemetryAxes(telemetries, firstExerciseName, phaseGroupId);
             const axes = radarSummary.axes;
 
             // Coordenadas para radar en layout horizontal (size: 210x170, radius: 46)
@@ -788,7 +804,7 @@ export default function Driver() {
               {/* Indicadores Genéricos de Telemetría (con Gráfico de Radar) */}
               {selectedEval.telemetry && Object.keys(selectedEval.telemetry).length > 0 && (() => {
                 const tel = selectedEval.telemetry;
-                const env = resolveExerciseEnvironment(selectedEval.exercise);
+                const env = resolveExerciseEnvironment(selectedEval.exercise, selectedEval.groupId || groupParam || null);
 
                 // Ejes normalizados de 0 a 100 para el gráfico de radar según el entorno
                 // 1. Rango RPM (Zona verde vs meta del entorno)

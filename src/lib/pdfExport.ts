@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import JSZip from "jszip";
-import { driverData, type EvaluationView } from "./db";
+import { driverData, type DateFilter, type EvaluationView } from "./db";
 import { phaseName, CRITICAL_LIMIT } from "./config";
 import { SEVERITIES, SEVERITY_ORDER, type Severity } from "./catalog";
 import { computeTelemetryAxes } from "./telemetryRadar";
@@ -216,8 +216,8 @@ export function generateGlobalReportPdf(
 // -------------------------------------------------------------
 // 2. EXPEDIENTE INDIVIDUAL IDÉNTICO AL EXPEDIENTE DE PANTALLA
 // -------------------------------------------------------------
-export async function generateDriverReportPdf(driverId: string): Promise<Uint8Array | null> {
-  const data = await driverData(driverId);
+export async function generateDriverReportPdf(driverId: string, filter?: DateFilter): Promise<Uint8Array | null> {
+  const data = await driverData(driverId, filter);
   if (!data) return null;
 
   const doc = new jsPDF({ format: "a4", unit: "mm" });
@@ -367,7 +367,8 @@ export async function generateDriverReportPdf(driverId: string): Promise<Uint8Ar
     const phaseEvals = data.evals.filter((e) => e.phase === p.phase);
     const telemetries = phaseEvals.map((e) => e.telemetry);
     const firstExName = phaseEvals[0]?.exercise || "";
-    const radarData = computeTelemetryAxes(telemetries, firstExName);
+    const phaseGroupId = phaseEvals[0]?.groupId || filter?.groupId || null;
+    const radarData = computeTelemetryAxes(telemetries, firstExName, phaseGroupId);
     const axes = radarData.axes;
 
     doc.setFillColor(255, 255, 255);
@@ -738,8 +739,8 @@ export async function generateDriverReportPdf(driverId: string): Promise<Uint8Ar
 // -------------------------------------------------------------
 // 3. DESCARGA DIRECTA DEL EXPEDIENTE INDIVIDUAL EN PDF
 // -------------------------------------------------------------
-export async function downloadDriverPdf(driverId: string, driverName: string): Promise<void> {
-  const bytes = await generateDriverReportPdf(driverId);
+export async function downloadDriverPdf(driverId: string, driverName: string, filter?: DateFilter): Promise<void> {
+  const bytes = await generateDriverReportPdf(driverId, filter);
   if (!bytes) return;
 
   const blob = new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
@@ -761,7 +762,8 @@ export async function downloadBulkReportsZip(
   rows: DisplayRow[],
   filterSubtitle: string,
   metrics: { total: number; promedio: number; aptos: number; noAptos: number },
-  onProgress?: (current: number, total: number, currentName: string) => void
+  onProgress?: (current: number, total: number, currentName: string) => void,
+  filter?: DateFilter
 ): Promise<void> {
   const zip = new JSZip();
 
@@ -779,7 +781,7 @@ export async function downloadBulkReportsZip(
     count++;
     if (onProgress) onProgress(count, rows.length, row.driver);
     try {
-      const driverPdfBytes = await generateDriverReportPdf(row.driverId);
+      const driverPdfBytes = await generateDriverReportPdf(row.driverId, filter);
       if (driverPdfBytes && expedientesFolder) {
         const cleanName = row.driver.replace(/[^\w\s-]/gi, "").trim().replace(/\s+/g, "_");
         expedientesFolder.file(`Expediente_${cleanName}.pdf`, driverPdfBytes);
