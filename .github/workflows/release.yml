@@ -25,6 +25,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Sync version from Git tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          npm version $version --no-git-tag-version --allow-same-version
+
       - name: Build and Publish to GitHub Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
