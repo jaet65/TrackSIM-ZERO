@@ -1,17 +1,50 @@
 {
   "name": "tracksim-zero",
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "Sistema de Telemetria y Evaluacion de Simuladores Lander",
+  "main": "dist-electron/main.cjs",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "build:electron": "vite build --config vite.electron.config.ts && node -e \"require('fs').copyFileSync('electron/preload.cjs', 'dist-electron/preload.cjs')\"",
+    "electron": "npm run build:electron && electron .",
+    "electron:dev": "npm run build:electron && concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
+    "dist:dir": "npm run build && npm run build:electron && electron-builder --dir",
+    "dist": "npm run build && npm run build:electron && electron-builder"
+  },
+  "build": {
+    "appId": "com.tracksim.zero",
+    "productName": "TrackSIM ZERO",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
   },
   "dependencies": {
+    "@types/pg": "^8.23.1",
     "firebase": "^13.1.0",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.2",
+    "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-router-dom": "^7.18.4"
@@ -21,9 +54,13 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "electron": "^45.1.0",
+    "electron-builder": "^26.18.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "wait-on": "^9.5.1"
   },
   "allowScripts": {
     "@firebase/util@1.15.3": true,

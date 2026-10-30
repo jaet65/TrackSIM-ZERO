@@ -38,7 +38,24 @@ export type ExtractResult = {
 
 const STREAMDB_URL = "http://127.0.0.1:5005";
 
+// Detección de Electron (vía puente expuesto en preload)
+const getLanderBridge = () => {
+  return typeof window !== "undefined" && (window as any).landerBridge
+    ? (window as any).landerBridge
+    : null;
+};
+
 export async function checkStreamDBStatus(): Promise<StreamDBStatus> {
+  const bridge = getLanderBridge();
+  if (bridge) {
+    try {
+      return await bridge.checkStatus();
+    } catch (err: any) {
+      return { service: "stopped", db_connected: false, error: err.message };
+    }
+  }
+
+  // Fallback si corre en navegador web estándar consultando el puerto local
   try {
     const res = await fetch(`${STREAMDB_URL}/api/status`, {
       method: "GET",
@@ -62,6 +79,11 @@ export async function saveStreamDBConfig(config: {
   user?: string;
   password?: string;
 }): Promise<{ ok: boolean; message?: string; error?: string }> {
+  const bridge = getLanderBridge();
+  if (bridge) {
+    return await bridge.saveConfig(config);
+  }
+
   try {
     const res = await fetch(`${STREAMDB_URL}/api/config`, {
       method: "POST",
@@ -75,40 +97,45 @@ export async function saveStreamDBConfig(config: {
 }
 
 export async function countSimulatorSessions(
-  startDate: string,
-  endDate: string,
-  includeAnon: boolean = false
+  inicio: string,
+  fin: string,
+  anon = false
 ): Promise<SessionCountResult> {
-  const query = new URLSearchParams({
-    inicio: startDate,
-    fin: endDate,
-    anon: String(includeAnon),
-  });
-  const res = await fetch(`${STREAMDB_URL}/api/sessions/count?${query.toString()}`);
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(data.error || `HTTP ${res.status}`);
+  const bridge = getLanderBridge();
+  if (bridge) {
+    const res = await bridge.countSessions({ inicio, fin, anon });
+    if (!res.ok) throw new Error(res.error || "Error al contar sesiones");
+    return { ...res, fecha_inicio: inicio, fecha_fin: fin };
   }
-  return await res.json();
+
+  const params = new URLSearchParams({ inicio, fin, anon: String(anon) });
+  const res = await fetch(`${STREAMDB_URL}/api/sessions/count?${params.toString()}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "Error al contar sesiones");
+  return data;
 }
 
 export async function extractSimulatorSessions(
-  startDate: string,
-  endDate: string,
-  includeAnon: boolean = false
+  inicio: string,
+  fin: string,
+  anon = false,
+  limit = 200
 ): Promise<ExtractResult> {
+  const bridge = getLanderBridge();
+  if (bridge) {
+    const res = await bridge.extractSessions({ inicio, fin, anon, limit });
+    if (!res.ok) throw new Error(res.error || "Error al extraer sesiones");
+    return res;
+  }
+
   const res = await fetch(`${STREAMDB_URL}/api/sessions/extract`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      inicio: startDate,
-      fin: endDate,
-      anon: includeAnon,
-    }),
+    body: JSON.stringify({ inicio, fin, anon, limit }),
   });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(data.error || `HTTP ${res.status}`);
-  }
-  return await res.json();
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "Error al extraer sesiones");
+  return data;
 }

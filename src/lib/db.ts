@@ -1,5 +1,5 @@
 import { collection, doc, getDoc, getDocs, query, setDoc, where, writeBatch } from "firebase/firestore";
-import { firestore } from "./firebase";
+import { firestore, getDb } from "./firebase";
 import type { Mark, ParsedReport, TelemetryMetrics } from "./parse";
 import { evaluateMarks } from "./parse";
 import { classify } from "./catalog";
@@ -38,7 +38,7 @@ export type EvaluationDoc = {
   frozenMarks?: Mark[];
 };
 
-const evaluations = () => collection(firestore, "evaluations");
+const evaluations = () => collection(getDb(), "evaluations");
 
 export function driverSlug(name: string): string {
   return name

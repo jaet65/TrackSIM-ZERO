@@ -11,7 +11,7 @@ import {
   orderBy,
   deleteDoc,
 } from "firebase/firestore";
-import { firestore } from "./firebase";
+import { firestore, getDb } from "./firebase";
 import type { EvaluationDoc, EvaluationView } from "./db";
 import { withCurrentScore } from "./db";
 import { loadExercises } from "./exercises";
@@ -34,8 +34,8 @@ export type GroupDoc = {
   driverCount?: number;
 };
 
-const groupsCol = () => collection(firestore, "groups");
-const evaluationsCol = () => collection(firestore, "evaluations");
+const groupsCol = () => collection(getDb(), "groups");
+const evaluationsCol = () => collection(getDb(), "evaluations");
 
 // Clave en localStorage para recordar el grupo actualmente activo / seleccionado
 const ACTIVE_GROUP_KEY = "tracksim_active_group_id";

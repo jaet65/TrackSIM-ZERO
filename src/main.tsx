@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { HashRouter, Route, Routes } from "react-router-dom";
 import "./index.css";
 import Home from "./pages/Home";
 import Driver from "./pages/Driver";
@@ -13,7 +13,7 @@ import ProtectedLayout from "./components/ProtectedLayout";
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <AuthProvider>
-      <BrowserRouter>
+      <HashRouter>
         <Routes>
           <Route element={<ProtectedLayout />}>
             <Route path="/" element={<Home />} />
@@ -24,7 +24,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="*" element={<p className="p-6">Página no encontrada.</p>} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </HashRouter>
     </AuthProvider>
   </StrictMode>,
 );

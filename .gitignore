@@ -75,3 +75,4 @@ next-env.d.ts
 
 dist/
 config.ini
+release/
