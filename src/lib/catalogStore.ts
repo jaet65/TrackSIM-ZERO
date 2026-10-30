@@ -14,9 +14,15 @@ const ref = () => doc(firestore, "settings", "catalog");
 const groupRef = (groupId: string) => doc(firestore, "groups", groupId);
 
 let loading: Promise<CatalogConfig> | null = null;
+let savingPromise: Promise<void> = Promise.resolve();
+
+export function waitForCatalogSaves(): Promise<void> {
+  return savingPromise;
+}
 
 // Carga el catálogo base global y, si se indica groupId, el catálogo propio de ese grupo.
 export async function loadCatalog(force = false, groupId?: string | null): Promise<CatalogConfig> {
+  await savingPromise;
   if (!loading || force) {
     loading = getDoc(ref())
       .then((snap) => {
@@ -52,18 +58,26 @@ export async function saveCatalog(cfg: CatalogConfig, editorEmail: string, group
   const clean = JSON.parse(JSON.stringify(cfg)) as CatalogConfig;
 
   if (groupId) {
-    await updateDoc(groupRef(groupId), {
-      catalog: clean,
-      catalogUpdatedAt: Date.now(),
-      catalogUpdatedBy: editorEmail,
-    });
     setGroupCatalog(groupId, clean);
+    const writeOp = savingPromise.then(() =>
+      updateDoc(groupRef(groupId), {
+        catalog: clean,
+        catalogUpdatedAt: Date.now(),
+        catalogUpdatedBy: editorEmail,
+      })
+    );
+    savingPromise = writeOp.catch(() => {});
+    await writeOp;
     return;
   }
 
-  await setDoc(ref(), { ...clean, updatedAt: Date.now(), updatedBy: editorEmail });
   setCatalog(clean);
   loading = Promise.resolve(clean);
+  const writeOp = savingPromise.then(() =>
+    setDoc(ref(), { ...clean, updatedAt: Date.now(), updatedBy: editorEmail })
+  );
+  savingPromise = writeOp.catch(() => {});
+  await writeOp;
 }
 
 export type { Severity };

@@ -64,7 +64,7 @@ export default function Exercises() {
     setMsg("");
     setDirty(false);
     Promise.all([
-      loadExercises(false, selectedGroupId || null),
+      loadExercises(true, selectedGroupId || null),
       listUploadedExerciseNames(selectedGroupId || null).catch(() => [] as string[]),
     ])
       .then(([c, detected]) => {

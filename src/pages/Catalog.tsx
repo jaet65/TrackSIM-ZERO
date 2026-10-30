@@ -63,7 +63,7 @@ export default function Catalog() {
   useEffect(() => {
     setLoadingRules(true);
     setMsg(null);
-    loadCatalog(false, selectedGroupId || null)
+    loadCatalog(true, selectedGroupId || null)
       .then((c) => {
         setSaved(clone(c));
         setDraft(clone(c));

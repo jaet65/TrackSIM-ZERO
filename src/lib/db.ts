@@ -351,8 +351,8 @@ function matchesDateRange(dateStr: string, filter?: DateFilter): boolean {
 
 async function fetchEvaluations(field?: "phase" | "driverId", value?: number | string, filter?: DateFilter) {
   await Promise.all([
-    loadCatalog(false, filter?.groupId),
-    loadExercises(false, filter?.groupId),
+    loadCatalog(true, filter?.groupId),
+    loadExercises(true, filter?.groupId),
     listGroups(),
   ]);
   const q = field !== undefined && value !== undefined
