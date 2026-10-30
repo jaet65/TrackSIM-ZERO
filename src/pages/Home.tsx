@@ -125,9 +125,9 @@ export default function Home() {
             data.map((d) => ({
               driverId: d.driverId,
               driver: d.driver,
-              badgeText: `${d.phasesEvaluated} de 6 fases`,
-              exercisesText: `${d.totalExercises} ejercicio(s)`,
-              progressValue: d.phasesEvaluated * 1000 + d.totalExercises,
+              badgeText: `${d.phasesEvaluated} de ${d.expectedPhases} fases`,
+              exercisesText: `${d.totalExercises}/${d.expectedExercises} ejercicio(s)`,
+              progressValue: d.totalExercises,
               errors: d.totalErrors,
               criticalErrors: d.criticalErrors,
               avgScore: d.avgScore,

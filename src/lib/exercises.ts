@@ -77,14 +77,22 @@ export function hasGroupExercises(groupId: string): boolean {
 
 export const getExercises = (groupId?: string | null): ExerciseConfig => {
   if (groupId && groupExercises.has(groupId)) {
-    return groupExercises.get(groupId)!.phases;
+    const grpPhases = groupExercises.get(groupId)!.phases;
+    const hasAny = Object.values(grpPhases).some((list) => Array.isArray(list) && list.length > 0);
+    if (hasAny) {
+      return grpPhases;
+    }
   }
   return current;
 };
 
 export const getExerciseEnvironments = (groupId?: string | null): ExerciseEnvironmentsMap => {
   if (groupId && groupExercises.has(groupId)) {
-    return groupExercises.get(groupId)!.environments;
+    const grp = groupExercises.get(groupId)!;
+    const hasAny = Object.values(grp.phases).some((list) => Array.isArray(list) && list.length > 0);
+    if (hasAny || Object.keys(grp.environments).length > 0) {
+      return { ...currentEnvs, ...grp.environments };
+    }
   }
   return currentEnvs;
 };

@@ -169,7 +169,8 @@ export default function Driver() {
     );
   }
 
-  const { name, evals, phases, overall, criticalErrors, verdict, color } = data;
+  const { name, evals, phases, overall, completedExercises, expectedExercises, criticalErrors, verdict, color } = data;
+  const phasesWithActivity = phases.filter((p) => p.exercises > 0).length;
 
   const displayedSeverities = activeSeverityTab === "ALL"
     ? SEVERITY_ORDER
@@ -244,7 +245,7 @@ export default function Driver() {
               <span className="text-sm text-slate-500">/ 100 pts</span>
             </div>
             <p className="mt-2 text-xs text-slate-600">
-              Calculada sobre {phases.length} fase(s) registradas con ponderación compuesta (70% seguridad y errores + 30% eficiencia y telemetría).
+              Calculada sobre {expectedExercises} ejercicio(s) esperados en {phases.length} fase(s) configuradas (70% seguridad y errores + 30% eficiencia y telemetría).
             </p>
           </div>
 
@@ -268,11 +269,14 @@ export default function Driver() {
 
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm flex flex-col justify-center">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Total de Ejercicios
+            Ejercicios Realizados
           </span>
-          <div className="mt-2 text-3xl font-extrabold text-slate-900">{evals.length}</div>
+          <div className="mt-2 flex items-baseline gap-1.5">
+            <span className="text-3xl font-extrabold text-slate-900">{completedExercises}</span>
+            <span className="text-base font-semibold text-slate-400">/ {expectedExercises}</span>
+          </div>
           <span className="mt-3 text-xs text-slate-600">
-            Fases evaluadas: <strong className="text-slate-900">{phases.length} de 6</strong>
+            Fases con avance: <strong className="text-slate-900">{phasesWithActivity} de {phases.length}</strong>
           </span>
         </div>
       </div>

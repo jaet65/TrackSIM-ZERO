@@ -293,7 +293,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
 
   doc.setFontSize(7);
   doc.text(
-    `Calculada sobre ${data.phases.length} fase(s) registradas con ponderación compuesta (70% destreza + 30% eco).`,
+    `Calculada sobre ${data.expectedExercises} ejercicio(s) esperados en ${data.phases.length} fase(s) (70% destreza + 30% eco).`,
     20,
     y + 26
   );
@@ -327,20 +327,21 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   doc.setFontSize(7.5);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text("TOTAL DE EJERCICIOS", 146, y + 7);
+  doc.text("EJERCICIOS REALIZADOS", 146, y + 7);
 
-  doc.setFontSize(22);
+  doc.setFontSize(20);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text(String(data.evals.length), 146, y + 19);
+  doc.text(`${data.completedExercises} / ${data.expectedExercises}`, 146, y + 19);
 
+  const phasesWithActivity = data.phases.filter((p) => p.exercises > 0).length;
   doc.setFontSize(7.5);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
   doc.text(`Fases evaluadas: `, 146, y + 28);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text(`${data.phases.length} de 6`, 172, y + 28);
+  doc.text(`${phasesWithActivity} de ${data.phases.length}`, 172, y + 28);
 
   y += 40;
 
