@@ -26,7 +26,9 @@ export default defineConfig({
         "string_decoder",
         "buffer",
         "os",
-        "http"
+        "http",
+        "https",
+        "child_process"
       ],
     },
   },

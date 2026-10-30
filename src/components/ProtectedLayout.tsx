@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "./AuthProvider";
 import { ALLOWED_DOMAIN } from "../lib/config";
+import UpdateNotifier from "./UpdateNotifier";
 
 export default function ProtectedLayout() {
   const { user, loading, error, signIn, logout } = useAuth();
@@ -57,6 +58,10 @@ export default function ProtectedLayout() {
               {error}
             </div>
           )}
+
+          <div className="pt-2 flex justify-center">
+            <UpdateNotifier />
+          </div>
         </main>
       </div>
     );
@@ -67,21 +72,24 @@ export default function ProtectedLayout() {
       {/* Top Header */}
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <Link to="/" className="flex items-center gap-3 group">
-            <img
-              src="/Logo.png"
-              alt="TrackSIM Logo"
-              className="h-9 w-9 object-contain rounded-full shadow-sm group-hover:scale-105 transition"
-            />
-            <div>
-              <span className="font-bold tracking-tight text-slate-900 group-hover:text-indigo-600 transition">
-                TrackSIM
-              </span>
-              <span className="ml-1.5 rounded-md bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
-                PRO
-              </span>
-            </div>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-3 group">
+              <img
+                src="/Logo.png"
+                alt="TrackSIM Logo"
+                className="h-9 w-9 object-contain rounded-full shadow-sm group-hover:scale-105 transition"
+              />
+              <div>
+                <span className="font-bold tracking-tight text-slate-900 group-hover:text-indigo-600 transition">
+                  TrackSIM
+                </span>
+                <span className="ml-1.5 rounded-md bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                  PRO
+                </span>
+              </div>
+            </Link>
+            <UpdateNotifier />
+          </div>
 
           <nav className="flex items-center gap-1 sm:gap-2">
             <NavLink

@@ -1,8 +1,13 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import * as http from "http";
+import * as https from "https";
+import { spawn } from "child_process";
 import { Client } from "pg";
+
+const GITHUB_OWNER = "jaet65";
+const GITHUB_REPO = "TrackSIM-ZERO";
 
 // Ruta del archivo de configuración (config.json en el userData de la app o local)
 function getConfigPath() {
@@ -518,6 +523,235 @@ ipcMain.handle("lander:extractSessions", async (_, { inicio, fin, anon, limit })
   } finally {
     if (client) await client.end().catch(() => {});
   }
+});
+
+// --------------------------------------------------------
+// Auto-Updater contra GitHub Releases
+// --------------------------------------------------------
+function parseSemver(v: string): number[] {
+  const clean = (v || "").trim().replace(/^[vV]/, "").split("-")[0];
+  return clean.split(".").map((n) => parseInt(n, 10) || 0);
+}
+
+function isNewerVersion(current: string, latest: string): boolean {
+  const c = parseSemver(current);
+  const l = parseSemver(latest);
+  const len = Math.max(c.length, l.length, 3);
+  for (let i = 0; i < len; i++) {
+    const lv = l[i] || 0;
+    const cv = c[i] || 0;
+    if (lv > cv) return true;
+    if (lv < cv) return false;
+  }
+  return false;
+}
+
+function fetchJsonFromGitHub(apiPath: string): Promise<{ status: number; data: any }> {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      `https://api.github.com${apiPath}`,
+      {
+        headers: {
+          "User-Agent": "TrackSIM-ZERO-Updater",
+          Accept: "application/vnd.github+json",
+        },
+        timeout: 10000,
+      },
+      (res) => {
+        let raw = "";
+        res.on("data", (chunk) => (raw += chunk));
+        res.on("end", () => {
+          try {
+            const parsed = raw ? JSON.parse(raw) : {};
+            resolve({ status: res.statusCode || 500, data: parsed });
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }
+    );
+    req.on("error", reject);
+    req.on("timeout", () => {
+      req.destroy(new Error("Tiempo de espera agotado al consultar GitHub Releases"));
+    });
+  });
+}
+
+function downloadFileWithProgress(
+  url: string,
+  destPath: string,
+  onProgress: (info: { percent: number; transferredMB: number; totalMB: number }) => void,
+  redirectsLeft = 5
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (redirectsLeft <= 0) {
+      return reject(new Error("Demasiadas redirecciones al descargar el instalador"));
+    }
+
+    const req = https.get(
+      url,
+      {
+        headers: {
+          "User-Agent": "TrackSIM-ZERO-Updater",
+          Accept: "application/octet-stream",
+        },
+      },
+      (res) => {
+        const status = res.statusCode || 0;
+        if ([301, 302, 303, 307, 308].includes(status) && res.headers.location) {
+          res.resume();
+          downloadFileWithProgress(res.headers.location, destPath, onProgress, redirectsLeft - 1)
+            .then(resolve)
+            .catch(reject);
+          return;
+        }
+
+        if (status < 200 || status >= 300) {
+          res.resume();
+          return reject(new Error(`Error HTTP ${status} al descargar la actualización`));
+        }
+
+        const totalBytes = parseInt(res.headers["content-length"] || "0", 10);
+        let receivedBytes = 0;
+
+        const fileStream = fs.createWriteStream(destPath);
+        res.on("data", (chunk: Buffer) => {
+          receivedBytes += chunk.length;
+          if (totalBytes > 0) {
+            const percent = Math.min(100, Math.round((receivedBytes / totalBytes) * 100));
+            onProgress({
+              percent,
+              transferredMB: Number((receivedBytes / (1024 * 1024)).toFixed(1)),
+              totalMB: Number((totalBytes / (1024 * 1024)).toFixed(1)),
+            });
+          }
+        });
+
+        res.pipe(fileStream);
+
+        fileStream.on("finish", () => {
+          fileStream.close(() => resolve());
+        });
+
+        fileStream.on("error", (err) => {
+          fs.unlink(destPath, () => {});
+          reject(err);
+        });
+      }
+    );
+
+    req.on("error", (err) => {
+      fs.unlink(destPath, () => {});
+      reject(err);
+    });
+  });
+}
+
+ipcMain.handle("updater:check", async () => {
+  const currentVersion = app.getVersion();
+  try {
+    let { status, data } = await fetchJsonFromGitHub(
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`
+    );
+
+    // Si /releases/latest devuelve 404 (p. ej. solo hay pre-releases o ningún release aún), consultamos /releases
+    if (status === 404) {
+      const listRes = await fetchJsonFromGitHub(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`);
+      if (listRes.status === 200 && Array.isArray(listRes.data) && listRes.data.length > 0) {
+        status = 200;
+        data = listRes.data[0];
+      } else {
+        return {
+          ok: true,
+          currentVersion,
+          latestVersion: currentVersion,
+          updateAvailable: false,
+          noReleasesYet: true,
+        };
+      }
+    }
+
+    if (status !== 200 || !data || !data.tag_name) {
+      return {
+        ok: false,
+        currentVersion,
+        error: data?.message || `Respuesta inesperada de GitHub (HTTP ${status})`,
+      };
+    }
+
+    const latestVersion = String(data.tag_name).replace(/^[vV]/, "");
+    const updateAvailable = isNewerVersion(currentVersion, latestVersion);
+
+    // Buscar el instalador .exe entre los assets del release
+    const assets: any[] = Array.isArray(data.assets) ? data.assets : [];
+    const exeAsset =
+      assets.find(
+        (a) =>
+          typeof a.name === "string" &&
+          a.name.toLowerCase().endsWith(".exe") &&
+          !a.name.toLowerCase().endsWith(".blockmap")
+      ) || null;
+
+    return {
+      ok: true,
+      currentVersion,
+      latestVersion,
+      updateAvailable,
+      releaseName: data.name || `v${latestVersion}`,
+      releaseNotes: data.body || "",
+      releaseUrl:
+        data.html_url || `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
+      publishedAt: data.published_at || null,
+      downloadUrl: exeAsset ? exeAsset.browser_download_url : null,
+      fileName: exeAsset ? exeAsset.name : `TrackSIM-ZERO-Setup-${latestVersion}.exe`,
+      assetSizeMB: exeAsset?.size ? Number((exeAsset.size / (1024 * 1024)).toFixed(1)) : null,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      currentVersion,
+      error: err.message || "No se pudo verificar actualizaciones en GitHub",
+    };
+  }
+});
+
+ipcMain.handle("updater:downloadAndInstall", async (_, { downloadUrl, fileName }) => {
+  try {
+    if (!downloadUrl) {
+      throw new Error("No se encontró el archivo instalador (.exe) en el Release de GitHub.");
+    }
+    const safeName = (fileName || "TrackSIM-ZERO-Setup.exe").replace(/[^a-zA-Z0-9._ -]/g, "_");
+    const destPath = path.join(app.getPath("temp"), safeName);
+
+    await downloadFileWithProgress(downloadUrl, destPath, (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("updater:downloadProgress", progress);
+      }
+    });
+
+    // Ejecutar el instalador NSIS en proceso separado y cerrar la app actual
+    const child = spawn(destPath, [], {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+
+    setTimeout(() => {
+      app.quit();
+    }, 600);
+
+    return { ok: true, filePath: destPath };
+  } catch (err: any) {
+    return { ok: false, error: err.message || "Error al descargar o iniciar el instalador" };
+  }
+});
+
+ipcMain.handle("updater:openExternal", async (_, url: string) => {
+  if (url && /^https?:\/\//i.test(url)) {
+    await shell.openExternal(url);
+    return { ok: true };
+  }
+  return { ok: false, error: "URL no válida" };
 });
 
 app.whenReady().then(() => {
