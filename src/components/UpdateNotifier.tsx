@@ -139,10 +139,11 @@ export default function UpdateNotifier() {
   }, []);
 
   useEffect(() => {
+    if (!isElectron) return;
     checkUpdates(false);
     const interval = setInterval(() => checkUpdates(false), 30 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [checkUpdates]);
+  }, [checkUpdates, isElectron]);
 
   useEffect(() => {
     const bridge = getLanderBridge();
@@ -154,6 +155,8 @@ export default function UpdateNotifier() {
       if (typeof unsubscribe === "function") unsubscribe();
     };
   }, []);
+
+  if (!isElectron) return null;
 
   const handleInstall = async () => {
     if (!info) return;

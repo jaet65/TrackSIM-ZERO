@@ -36,14 +36,16 @@ export type ExtractResult = {
   error?: string;
 };
 
-const STREAMDB_URL = "http://127.0.0.1:5005";
-
 // Detección de Electron (vía puente expuesto en preload)
 const getLanderBridge = () => {
   return typeof window !== "undefined" && (window as any).landerBridge
     ? (window as any).landerBridge
     : null;
 };
+
+export function isElectronApp(): boolean {
+  return Boolean(getLanderBridge());
+}
 
 export async function checkStreamDBStatus(): Promise<StreamDBStatus> {
   const bridge = getLanderBridge();
@@ -55,21 +57,11 @@ export async function checkStreamDBStatus(): Promise<StreamDBStatus> {
     }
   }
 
-  // Fallback si corre en navegador web estándar consultando el puerto local
-  try {
-    const res = await fetch(`${STREAMDB_URL}/api/status`, {
-      method: "GET",
-      signal: AbortSignal.timeout(3500),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    return {
-      service: "stopped",
-      db_connected: false,
-      error: "El servicio local de TrackSIM no está activo o no responde en el puerto 5005.",
-    };
-  }
+  return {
+    service: "stopped",
+    db_connected: false,
+    error: "La sincronización directa con Lander DB solo está disponible en la aplicación de escritorio.",
+  };
 }
 
 export async function saveStreamDBConfig(config: {
@@ -83,17 +75,7 @@ export async function saveStreamDBConfig(config: {
   if (bridge) {
     return await bridge.saveConfig(config);
   }
-
-  try {
-    const res = await fetch(`${STREAMDB_URL}/api/config`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(config),
-    });
-    return await res.json();
-  } catch (err) {
-    return { ok: false, error: (err as Error).message };
-  }
+  return { ok: false, error: "Solo disponible en la aplicación de escritorio." };
 }
 
 export async function countSimulatorSessions(
@@ -102,18 +84,12 @@ export async function countSimulatorSessions(
   anon = false
 ): Promise<SessionCountResult> {
   const bridge = getLanderBridge();
-  if (bridge) {
-    const res = await bridge.countSessions({ inicio, fin, anon });
-    if (!res.ok) throw new Error(res.error || "Error al contar sesiones");
-    return { ...res, fecha_inicio: inicio, fecha_fin: fin };
+  if (!bridge) {
+    throw new Error("Solo disponible en la aplicación de escritorio.");
   }
-
-  const params = new URLSearchParams({ inicio, fin, anon: String(anon) });
-  const res = await fetch(`${STREAMDB_URL}/api/sessions/count?${params.toString()}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.error || "Error al contar sesiones");
-  return data;
+  const res = await bridge.countSessions({ inicio, fin, anon });
+  if (!res.ok) throw new Error(res.error || "Error al contar sesiones");
+  return { ...res, fecha_inicio: inicio, fecha_fin: fin };
 }
 
 export async function extractSimulatorSessions(
@@ -123,19 +99,10 @@ export async function extractSimulatorSessions(
   limit = 200
 ): Promise<ExtractResult> {
   const bridge = getLanderBridge();
-  if (bridge) {
-    const res = await bridge.extractSessions({ inicio, fin, anon, limit });
-    if (!res.ok) throw new Error(res.error || "Error al extraer sesiones");
-    return res;
+  if (!bridge) {
+    throw new Error("Solo disponible en la aplicación de escritorio.");
   }
-
-  const res = await fetch(`${STREAMDB_URL}/api/sessions/extract`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ inicio, fin, anon, limit }),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.error || "Error al extraer sesiones");
-  return data;
+  const res = await bridge.extractSessions({ inicio, fin, anon, limit });
+  if (!res.ok) throw new Error(res.error || "Error al extraer sesiones");
+  return res;
 }

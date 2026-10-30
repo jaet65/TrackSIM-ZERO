@@ -304,9 +304,8 @@ export default function SimulatorSyncModal({
 
             {status?.service === "stopped" && (
               <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50/80 p-3 text-xs text-rose-800">
-                <p className="font-semibold">El servicio local no está respondiendo en el puerto 5005.</p>
-                <p className="mt-1 text-[11px] text-rose-700">
-                  Para iniciarlo, ejecuta el archivo <span className="font-mono font-bold">iniciar_servicio_lander.bat</span> en la carpeta del proyecto o <span className="font-mono">python local_server.py</span>.
+                <p className="font-semibold">
+                  {status.error || "El puente nativo con la base de datos no está disponible."}
                 </p>
               </div>
             )}

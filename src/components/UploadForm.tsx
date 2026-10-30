@@ -14,6 +14,11 @@ import {
 } from "../lib/groups";
 import { useAuth } from "./AuthProvider";
 import SimulatorSyncModal from "./SimulatorSyncModal";
+import { isElectronApp } from "../lib/streamdbClient";
+
+const GITHUB_OWNER = "jaet65";
+const GITHUB_REPO = "TrackSIM-ZERO";
+const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
 
 type Result = {
   file: string;
@@ -32,8 +37,10 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
   const [results, setResults] = useState<Result[]>([]);
   const [fileCount, setFileCount] = useState<number>(0);
   const [showSyncModal, setShowSyncModal] = useState(false);
+  const [showDesktopModal, setShowDesktopModal] = useState(false);
   const [activeGroup, setActiveGroup] = useState<GroupDoc | null>(null);
   const [loadingGroup, setLoadingGroup] = useState(true);
+  const isDesktop = isElectronApp();
 
   // Modal para abrir / crear grupo directamente
   const [showOpenGroupModal, setShowOpenGroupModal] = useState(false);
@@ -68,6 +75,25 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     refreshActiveGroup();
   }, []);
+
+  const handleLaunchDesktopApp = () => {
+    let appLaunched = false;
+    const onBlur = () => {
+      appLaunched = true;
+    };
+    window.addEventListener("blur", onBlur, { once: true });
+
+    // Invoca el protocolo personalizado registrado por el instalador NSIS
+    window.location.href = "tracksim://open";
+
+    // Si tras 1.2s la ventana no perdió el foco, el protocolo no está instalado -> mostramos el modal de descarga
+    setTimeout(() => {
+      window.removeEventListener("blur", onBlur);
+      if (!appLaunched && document.visibilityState === "visible") {
+        setShowDesktopModal(true);
+      }
+    }, 1200);
+  };
 
   const handleOpenModal = async () => {
     setModalError("");
@@ -382,17 +408,32 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setShowSyncModal(true)}
-            className="flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-xs"
-          >
-            <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3V7M4 7c0-2 1.5-3 3.5-3h9c2 0 3.5 1 3.5 3M4 7h16m-5 4h.01M9 15h6" />
-            </svg>
-            <span>Sincronizar Lander DB</span>
-          </button>
+          {isDesktop ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setShowSyncModal(true)}
+              className="flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-xs"
+            >
+              <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3V7M4 7c0-2 1.5-3 3.5-3h9c2 0 3.5 1 3.5 3M4 7h16m-5 4h.01M9 15h6" />
+              </svg>
+              <span>Sincronizar Lander DB</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleLaunchDesktopApp}
+              className="flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-xs"
+              title="Abrir la versión de escritorio para sincronizar con Lander DB o descargar el instalador"
+            >
+              <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <span>Abrir App de Escritorio</span>
+            </button>
+          )}
 
           <button
             type="submit"
@@ -416,13 +457,95 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
         </div>
       </form>
 
-      <SimulatorSyncModal
-        isOpen={showSyncModal}
-        onClose={() => setShowSyncModal(false)}
-        onSyncComplete={() => {
-          onDone();
-        }}
-      />
+      {isDesktop && (
+        <SimulatorSyncModal
+          isOpen={showSyncModal}
+          onClose={() => setShowSyncModal(false)}
+          onSyncComplete={() => {
+            onDone();
+          }}
+        />
+      )}
+
+      {/* Modal para versión Web: Abrir App de Escritorio o Descargar Instalador */}
+      {!isDesktop && showDesktopModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white shadow-md shadow-indigo-600/25">
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">TrackSIM ZERO para Escritorio</h3>
+                  <p className="text-xs text-slate-500">
+                    Conexión directa a Lander DB sin depender de Python
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDesktopModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3.5 text-xs text-slate-700 space-y-2">
+              <p className="font-semibold text-indigo-950">
+                1. ¿Ya tienes instalada la aplicación en esta PC?
+              </p>
+              <p className="text-slate-600">
+                Si tu navegador mostró el aviso <strong>«¿Abrir TrackSIM ZERO?»</strong>, confírmalo para iniciar la aplicación.
+              </p>
+              <a
+                href="tracksim://open"
+                className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-2xs hover:bg-indigo-50 transition"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Volver a intentar abrir TrackSIM ZERO
+              </a>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs space-y-3">
+              <div>
+                <p className="font-semibold text-slate-900">
+                  2. ¿No tienes instalado TrackSIM ZERO en esta PC?
+                </p>
+                <p className="mt-0.5 text-slate-500">
+                  Descarga e instala la versión de escritorio para Windows (incluye sincronización nativa con PostgreSQL Lander DB y actualizaciones automáticas).
+                </p>
+              </div>
+
+              <a
+                href={GITHUB_RELEASES_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/25 hover:from-indigo-700 hover:to-blue-700 transition"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>Descargar Instalador para Windows (.exe)</span>
+              </a>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowDesktopModal(false)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Directo: Cambiar / Abrir Grupo */}
       {showOpenGroupModal && (

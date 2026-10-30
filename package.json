@@ -18,6 +18,12 @@
   "build": {
     "appId": "com.tracksim.zero",
     "productName": "TrackSIM ZERO",
+    "protocols": [
+      {
+        "name": "TrackSIM ZERO",
+        "schemes": ["tracksim"]
+      }
+    ],
     "publish": [
       {
         "provider": "github",
