@@ -656,7 +656,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
       const pIncomplete = p.verdict === "INCOMPLETO";
       const pNotDone = p.verdict === "NO REALIZADO";
       const pCol = pApto ? [16, 185, 129] : pObs || pIncomplete ? [217, 119, 6] : pNotDone ? COLOR_MUTED : [225, 29, 72];
-      
+
       const vText = p.verdict;
       doc.setFontSize(vText.length > 12 ? 5.2 : 6.5);
       doc.setFont("helvetica", "bold");
@@ -754,7 +754,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
       for (let i = 0; i < 5; i++) {
         const p1 = getPdfCoord(i, groupAxes[i].value);
         const p2 = getPdfCoord((i + 1) % 5, groupAxes[(i + 1) % 5].value);
-        
+
         // Trazar línea punteada manual
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
@@ -1219,7 +1219,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
       doc.setFontSize(6.5);
       doc.setFont("helvetica", "normal");
       const descLines = doc.splitTextToSize(rec.description, 172) as string[];
-      
+
       const actLines = doc.splitTextToSize(rec.actionItem, 142) as string[];
 
       const baseHeaderH = 5.5;
@@ -1281,30 +1281,6 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   }
 
   // Firmas y Validación Oficial al pie de la última sección
-  if (y > 235) {
-    doc.addPage();
-    y = drawHeader(doc, `Expediente: ${data.name} (Validación)`, "Acreditación y firmas oficiales");
-  } else {
-    y += 8;
-  }
-
-  const sigY = y + 15;
-  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
-  doc.line(25, sigY, 85, sigY);
-  doc.line(125, sigY, 185, sigY);
-
-  doc.setFontSize(7);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text("FIRMA DEL INSTRUCTOR EVALUADOR", 55, sigY + 4, { align: "center" });
-  doc.text("FIRMA DEL OPERADOR EVALUADO", 155, sigY + 4, { align: "center" });
-
-  doc.setFontSize(6);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text("Certifica la veracidad de la simulación", 55, sigY + 7.5, { align: "center" });
-  doc.text("Declara conocer los resultados obtenidos", 155, sigY + 7.5, { align: "center" });
-
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);

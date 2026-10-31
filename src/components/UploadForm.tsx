@@ -15,6 +15,7 @@ import {
 import { useAuth } from "./AuthProvider";
 import SimulatorSyncModal from "./SimulatorSyncModal";
 import ConfigureExercisesModal from "./ConfigureExercisesModal";
+import BackupRestoreModal from "./BackupRestoreModal";
 import { isElectronApp } from "../lib/streamdbClient";
 
 const GITHUB_OWNER = "jaet65";
@@ -26,6 +27,8 @@ type Result = {
   phase?: number;
   status: string;
   driver?: string;
+  exercise?: string;
+  date?: string;
   errors?: number;
   score?: number;
   message?: string;
@@ -70,6 +73,7 @@ export default function UploadForm({
 
   // Modal para configurar ejercicios si no han sido definidos
   const [showConfigExercisesModal, setShowConfigExercisesModal] = useState(false);
+  const [showBackupModal, setShowBackupModal] = useState(false);
 
   const refreshActiveGroup = async (explicitGroupId?: string) => {
     setLoadingGroup(true);
@@ -235,6 +239,8 @@ export default function UploadForm({
           phase,
           status,
           driver: report.driver,
+          exercise: report.exercise,
+          date: report.date,
           errors: report.errorCount,
           score: report.score,
           uncataloged: report.uncataloged,
@@ -480,6 +486,15 @@ export default function UploadForm({
             </span>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowBackupModal(true)}
+              className="text-[11px] font-semibold text-slate-600 hover:text-indigo-600 flex items-center gap-1 transition"
+              title="Descargar copia de seguridad o restaurar datos JSON"
+            >
+              <span>💾</span>
+              <span>Respaldar / Restaurar</span>
+            </button>
             {results.length > 0 && (
               <button
                 type="button"
@@ -600,6 +615,16 @@ export default function UploadForm({
           if (activeGroup) {
             await loadExercises(true, activeGroup.id);
           }
+        }}
+      />
+
+      {/* Modal de Respaldo y Restauración de Base de Datos */}
+      <BackupRestoreModal
+        isOpen={showBackupModal}
+        onClose={() => setShowBackupModal(false)}
+        onRestored={() => {
+          onDone();
+          refreshActiveGroup();
         }}
       />
 
@@ -893,8 +918,9 @@ export default function UploadForm({
                           </span>
                         )}
                         {r.status === "duplicate" && (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200/80 px-2.5 py-0.5 text-[11px] text-slate-600">
-                            Ya cargado previamente (omitido)
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                            Duplicado omitido {r.driver ? `(${r.driver} · ${r.exercise || ""} · ${r.date ? r.date.slice(0, 16) : ""})` : ""}
                           </span>
                         )}
                         {r.status === "error" && (

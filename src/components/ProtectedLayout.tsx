@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "./AuthProvider";
 import { ALLOWED_DOMAIN } from "../lib/config";
 import UpdateNotifier from "./UpdateNotifier";
 import NetworkStatusBadge from "./NetworkStatusBadge";
+import BackupRestoreModal from "./BackupRestoreModal";
 
 export default function ProtectedLayout() {
   const { user, loading, error, signIn, logout } = useAuth();
+  const [showBackupModal, setShowBackupModal] = useState(false);
 
   if (loading) {
     return (
@@ -139,6 +142,16 @@ export default function ProtectedLayout() {
             >
               Errores
             </NavLink>
+
+            <button
+              type="button"
+              onClick={() => setShowBackupModal(true)}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:border-indigo-300 hover:bg-indigo-50/70 hover:text-indigo-700 transition"
+              title="Copia de Seguridad y Restauración de Base de Datos"
+            >
+              <span>💾</span>
+              <span>Respaldo</span>
+            </button>
           </nav>
 
           <div className="flex items-center gap-2.5 sm:gap-3">
@@ -161,6 +174,15 @@ export default function ProtectedLayout() {
       <div className="flex-1">
         <Outlet />
       </div>
+
+      {/* Modal Global de Respaldo y Restauración de Base de Datos */}
+      <BackupRestoreModal
+        isOpen={showBackupModal}
+        onClose={() => setShowBackupModal(false)}
+        onRestored={() => {
+          window.location.reload();
+        }}
+      />
     </div>
   );
 }

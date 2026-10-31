@@ -82,7 +82,7 @@ export async function saveEvaluation(
   instructor: Instructor,
   groupId?: string,
 ): Promise<"saved" | "duplicate"> {
-  // Verificar también el formato legado sin prefijo de grupo para evitar duplicar registros antiguos del mismo grupo
+  // 1. Verificación por nombre de archivo / ID
   const legacyRef = doc(evaluations(), evaluationId(phase, fileName));
   const legacySnap = await safeGetDoc(legacyRef, 1500);
   if (legacySnap.exists()) {
@@ -94,6 +94,28 @@ export async function saveEvaluation(
 
   const ref = doc(evaluations(), evaluationId(phase, fileName, groupId));
   if (groupId && (await safeGetDoc(ref, 1500)).exists()) return "duplicate";
+
+  // 2. Detección Inteligente de duplicados por contenido:
+  // Si ya existe una evaluación del mismo conductor + misma fecha/hora + misma ruta/ejercicio
+  try {
+    const dSlug = driverSlug(r.driver);
+    const exKeyVal = exerciseKey(r.exercise || r.unit);
+    const duplicateContentQ = groupId
+      ? query(evaluations(), where("groupId", "==", groupId), where("driverId", "==", dSlug), where("date", "==", r.date))
+      : query(evaluations(), where("driverId", "==", dSlug), where("date", "==", r.date));
+    
+    const duplicateSnap = await safeGetDocs(duplicateContentQ);
+    const isSameExercise = duplicateSnap.docs.some((d) => {
+      const data = d.data() as EvaluationDoc;
+      return exerciseKey(data.exercise || data.unit) === exKeyVal;
+    });
+
+    if (isSameExercise) {
+      return "duplicate";
+    }
+  } catch (err) {
+    console.warn("No se pudo completar la verificación extendida de duplicados:", err);
+  }
 
   const data: EvaluationDoc = {
     phase,
