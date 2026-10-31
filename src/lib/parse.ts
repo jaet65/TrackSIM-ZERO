@@ -31,6 +31,7 @@ export type TelemetryMetrics = {
   pctGreenZone?: number;            // %
   pctYellowZone?: number;           // %
   pctRedZone?: number;              // %
+  pctLowRpmZone?: number;           // % (zona de bajas revoluciones por debajo de la zona verde)
   coastDistanceMeters?: number;     // m sin freno ni acelerador
   auxBrakeTimeSec?: number;         // s (retarder / freno motor)
   hasSlipperyRoad?: boolean;        // Lluvia, nieve o hielo detectados
@@ -67,6 +68,45 @@ function toSeconds(t: string): number {
   const p = t.split(":").map(Number);
   if (p.some(Number.isNaN)) return 0;
   return p.reduce((acc, n) => acc * 60 + n, 0);
+}
+
+/**
+ * Normaliza las zonas de RPM de la telemetría para corregir conteos anómalos del simulador:
+ * - Las 4 zonas (Bajas RPM + Verde + Amarilla + Roja) deben sumar el 100%.
+ * - La suma de verde + amarilla + roja nunca debe sobrepasar el 100%. Si el simulador reporta
+ *   un acumulado mayor, se normalizan proporcionalmente respetando la relación entre ellas.
+ * - Calcula automáticamente el % de zona de bajas revoluciones (calado o sub-régimen).
+ */
+export function normalizeRpmZones(telemetry: TelemetryMetrics): TelemetryMetrics {
+  const green = Math.max(0, telemetry.pctGreenZone ?? 0);
+  const yellow = Math.max(0, telemetry.pctYellowZone ?? 0);
+  const red = Math.max(0, telemetry.pctRedZone ?? 0);
+
+  const sumReported = green + yellow + red;
+
+  let normGreen = green;
+  let normYellow = yellow;
+  let normRed = red;
+
+  if (sumReported > 100 && sumReported > 0) {
+    // Escalar proporcionalmente al 100% como tope máximo
+    const scale = 100 / sumReported;
+    normGreen = Math.round(green * scale * 10) / 10;
+    normYellow = Math.round(yellow * scale * 10) / 10;
+    normRed = Math.round(red * scale * 10) / 10;
+  }
+
+  // La zona de bajas revoluciones corresponde al tiempo restante del motor
+  const sumUpper = normGreen + normYellow + normRed;
+  const lowRpm = Math.max(0, Math.round((100 - sumUpper) * 10) / 10);
+
+  return {
+    ...telemetry,
+    pctGreenZone: normGreen,
+    pctYellowZone: normYellow,
+    pctRedZone: normRed,
+    pctLowRpmZone: lowRpm,
+  };
 }
 
 export type Evaluation = {
@@ -108,23 +148,46 @@ export function calculateTelemetryScore(
   const greenTarget = env === "MONTANA" ? 48 : env === "CIUDAD" ? 58 : 75;
   let rpmScore = Math.min(100, (telemetry.pctGreenZone / greenTarget) * 100);
 
-  // Penalización severa por zona roja (nunca permitida en ningún entorno)
+  // 1.1 Penalización severa por zona roja (nunca permitida; sobrerégimen destructivo del motor)
   if (telemetry.pctRedZone && telemetry.pctRedZone > 0) {
     rpmScore -= telemetry.pctRedZone * 25;
   }
 
-  // Zona amarilla: en montaña es tolerada para retención en bajada siempre que no haya aceleración a fondo
-  if (telemetry.pctYellowZone && telemetry.pctYellowZone > 0) {
-    if (env === "MONTANA") {
-      // En montaña solo penaliza levemente si es excesiva (> 20%)
-      if (telemetry.pctYellowZone > 20) {
-        rpmScore -= (telemetry.pctYellowZone - 20) * 3;
+  // 1.2 Regla de Zona Amarilla:
+  // - En condiciones normales (piso seco): solo está justificada cuando se utiliza para retención con freno motor.
+  //   Si hay amarilla SIN freno motor, castiga severamente por forzar el motor acelerando o en marchas cortas.
+  // - En condiciones climáticas adversas (LLUVIA / NIEVE / HIELO): NO se debe usar el freno auxiliar por riesgo de tijera.
+  //   El operador debe retener el vehículo con la compresión natural del motor (cambio bajo), lo cual eleva las RPM
+  //   hacia la zona amarilla de forma segura y controlada. Por ende, en clima resbaladizo se es altamente permisivo
+  //   con la zona amarilla y NO se exige freno motor.
+  const yellowZone = telemetry.pctYellowZone || 0;
+  const auxBrakeSec = telemetry.auxBrakeTimeSec || 0;
+  const hasSlippery = Boolean(telemetry.hasSlipperyRoad);
+
+  if (yellowZone > 0) {
+    if (hasSlippery) {
+      // En lluvia/nieve: permisivo porque la retención por marcha (compresión sin retarder) es la técnica correcta.
+      // Solo penaliza si es excesiva (> 25%) y con tasa leve (-1.5 pts)
+      if (yellowZone > 25) {
+        rpmScore -= (yellowZone - 25) * 1.5;
       }
+    } else if (auxBrakeSec <= 1) {
+      // Pavimento seco SIN freno motor: castigo directo e íntegro (-5 pts por cada 1% en amarilla)
+      rpmScore -= yellowZone * 5;
     } else {
-      rpmScore -= telemetry.pctYellowZone * 4;
+      // Pavimento seco CON freno motor: admitida para disipar energía en bajada
+      if (env === "MONTANA") {
+        if (yellowZone > 20) {
+          rpmScore -= (yellowZone - 20) * 3;
+        }
+      } else {
+        if (yellowZone > 8) {
+          rpmScore -= (yellowZone - 8) * 3;
+        }
+      }
     }
   }
-  rpmScore = Math.max(0, Math.min(100, rpmScore));
+  rpmScore = Math.max(0, Math.min(100, Math.round(rpmScore)));
 
   // --- 2. Sub-puntaje Frenado & Retarder ---
   // Escala diferenciada por entorno:
@@ -341,8 +404,11 @@ export function parseReport(text: string, groupId?: string | null): ParsedReport
     }
   }
 
+  // Normalizar las zonas de RPM para evitar que la suma exceda el 100% y calcular zona de bajas RPM
+  const normalizedTelemetry = normalizeRpmZones(telemetry);
+
   const durationSec = toSeconds(duration);
-  const ev = evaluateMarks(marks, durationSec, telemetry, exercise, groupId);
+  const ev = evaluateMarks(marks, durationSec, normalizedTelemetry, exercise, groupId);
 
   return {
     driver,
@@ -353,7 +419,7 @@ export function parseReport(text: string, groupId?: string | null): ParsedReport
     exercise,
     vehicle,
     marks,
-    telemetry,
+    telemetry: normalizedTelemetry,
     errorCount: ev.errorCount,
     criticalCount: ev.criticalCount,
     errorScore: ev.errorScore,

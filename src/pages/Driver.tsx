@@ -1057,10 +1057,28 @@ export default function Driver() {
                 const env = resolveExerciseEnvironment(selectedEval.exercise, selectedEval.groupId || groupParam || null);
 
                 // Ejes normalizados de 0 a 100 para el gráfico de radar según el entorno
-                // 1. Rango RPM (Zona verde vs meta del entorno)
+                // 1. Rango RPM (Zona verde vs meta del entorno, penalizado por zona roja y zona amarilla sin freno de motor)
                 const greenTarget = env === "MONTANA" ? 48 : env === "CIUDAD" ? 58 : 75;
                 const rawRpmRatio = ((tel.pctGreenZone || 0) / greenTarget) * 100;
-                const axisRpm = Math.max(0, Math.min(100, Math.round(rawRpmRatio - ((tel.pctRedZone || 0) * 20))));
+                let rpmPenalty = (tel.pctRedZone || 0) * 25;
+                const yellowZone = tel.pctYellowZone || 0;
+                const auxBrakeSec = tel.auxBrakeTimeSec || 0;
+                const hasSlippery = Boolean(tel.hasSlipperyRoad);
+                if (yellowZone > 0) {
+                  if (hasSlippery) {
+                    // En lluvia/nieve: permisivo por técnica de retención por marcha/compresión (sin retarder para evitar tijera)
+                    if (yellowZone > 25) rpmPenalty += (yellowZone - 25) * 1.5;
+                  } else if (auxBrakeSec <= 1) {
+                    rpmPenalty += yellowZone * 5; // Castigo en seco por amarilla sin freno de motor
+                  } else {
+                    if (env === "MONTANA") {
+                      if (yellowZone > 20) rpmPenalty += (yellowZone - 20) * 3;
+                    } else {
+                      if (yellowZone > 8) rpmPenalty += (yellowZone - 8) * 3;
+                    }
+                  }
+                }
+                const axisRpm = Math.max(0, Math.min(100, Math.round(rawRpmRatio - rpmPenalty)));
 
                 // 2. Control de Frenado Suave con escala diferenciada por entorno:
                 const harshBrakes = tel.brakeAbove60Uses || 0;
@@ -1123,11 +1141,24 @@ export default function Driver() {
                 }
 
                 const axes = [
-                  { label: "Zona Verde", value: axisRpm, raw: `${tel.pctGreenZone || 0}% (meta ${greenTarget}%)` },
-                  { label: "Freno Suave", value: axisBrake, raw: `${harshBrakes} f. bruscas (${brakeTargetLabel})` },
+                  { 
+                    label: "Zona Verde", 
+                    value: axisRpm, 
+                    raw: `${tel.pctGreenZone || 0}%`,
+                    meta: `meta ≥${greenTarget}%`,
+                    breakdown: {
+                      green: tel.pctGreenZone || 0,
+                      yellow: yellowZone,
+                      red: tel.pctRedZone || 0,
+                      low: tel.pctLowRpmZone ?? Math.max(0, 100 - (tel.pctGreenZone || 0) - yellowZone - (tel.pctRedZone || 0)),
+                      isSlippery: hasSlippery,
+                      penalty: rpmPenalty > 0 ? Math.round(rpmPenalty) : 0,
+                    }
+                  },
+                  { label: "Freno Suave", value: axisBrake, raw: `${harshBrakes} f. bruscas`, meta: brakeTargetLabel },
                   { label: tel.hasSlipperyRoad ? "Retarder Seguro" : "Retarder", value: axisRetarder, raw: retarderRaw },
-                  { label: "Inercia", value: axisInertia, raw: `${inRatioPct}% (${Math.round(tel.coastDistanceMeters || 0)}m, meta ≥${optInertiaPct}%)` },
-                  { label: "Acel. Suave", value: axisAccel, raw: accelRaw },
+                  { label: "Inercia", value: axisInertia, raw: `${inRatioPct}%`, meta: `meta ≥${optInertiaPct}%` },
+                  { label: "Acel. Suave", value: axisAccel, raw: accelRaw, meta: "meta 0s" },
                 ];
 
                 const totalAxes = axes.length;
@@ -1278,27 +1309,88 @@ export default function Driver() {
 
                       {/* Tarjetas complementarias con los valores reales */}
                       <div className="md:col-span-6 grid grid-cols-2 gap-2 text-xs">
-                        {axes.map((axis, idx) => (
-                          <div key={idx} className="rounded-lg bg-white p-2.5 border border-slate-200/80">
-                            <div className="flex items-center justify-between text-[10px] text-slate-400">
-                              <span className="truncate">{axis.label}</span>
-                              <span className="font-bold text-slate-600">{axis.value}%</span>
+                        {axes.map((axis, idx) => {
+                          const isGreenAxis = axis.label === "Zona Verde" && "breakdown" in axis;
+                          return (
+                            <div key={idx} className={`rounded-lg bg-white p-2.5 border border-slate-200/80 ${isGreenAxis ? "col-span-2" : ""}`}>
+                              <div className="flex items-center justify-between text-[10px] text-slate-400">
+                                <span className="font-semibold text-slate-700">{axis.label}</span>
+                                <div className="flex items-center gap-1.5">
+                                  {axis.meta && (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      ({axis.meta})
+                                    </span>
+                                  )}
+                                  <span className={`font-bold font-mono ${axis.value >= 75 ? "text-emerald-600" : axis.value >= 50 ? "text-amber-600" : "text-rose-600"}`}>
+                                    {axis.value}%
+                                  </span>
+                                </div>
+                              </div>
+
+                              {isGreenAxis && axis.breakdown ? (
+                                <div className="mt-1.5 space-y-1.5">
+                                  {/* Desglose de las 4 Zonas de RPM con colores diferenciados */}
+                                  <div className="grid grid-cols-4 gap-1.5 text-center">
+                                    <div className="rounded bg-slate-50 border border-slate-100 p-1">
+                                      <span className="block text-[9px] text-slate-400 uppercase font-medium">Bajas RPM</span>
+                                      <strong className="block text-[11px] font-mono text-slate-700 font-bold">{axis.breakdown.low}%</strong>
+                                    </div>
+                                    <div className="rounded bg-emerald-50 border border-emerald-200/60 p-1">
+                                      <span className="block text-[9px] text-emerald-700 uppercase font-medium">Verde (Óptima)</span>
+                                      <strong className="block text-[11px] font-mono text-emerald-800 font-bold">{axis.breakdown.green}%</strong>
+                                    </div>
+                                    <div className="rounded bg-amber-50 border border-amber-200/60 p-1">
+                                      <span className="block text-[9px] text-amber-700 uppercase font-medium">Amarilla</span>
+                                      <strong className="block text-[11px] font-mono text-amber-800 font-bold">{axis.breakdown.yellow}%</strong>
+                                    </div>
+                                    <div className="rounded bg-rose-50 border border-rose-200/60 p-1">
+                                      <span className="block text-[9px] text-rose-700 uppercase font-medium">Roja</span>
+                                      <strong className="block text-[11px] font-mono text-rose-800 font-bold">{axis.breakdown.red}%</strong>
+                                    </div>
+                                  </div>
+
+                                  {/* Explicación de la condición y penalización */}
+                                  <div className="text-[10px] flex items-center justify-between px-1 text-slate-500">
+                                    <span>
+                                      {axis.breakdown.isSlippery ? (
+                                        <span className="text-sky-700 font-medium">
+                                          ❄️ Clima adverso: se permite zona amarilla hasta 25% para retención por compresión segura.
+                                        </span>
+                                      ) : (
+                                        <span>
+                                          Retención en seco: la zona amarilla solo se admite con freno motor activo.
+                                        </span>
+                                      )}
+                                    </span>
+                                    {axis.breakdown.penalty > 0 ? (
+                                      <span className="text-rose-600 font-bold font-mono">
+                                        Penalización: -{axis.breakdown.penalty}%
+                                      </span>
+                                    ) : (
+                                      <span className="text-emerald-600 font-semibold font-mono">
+                                        ✓ Sin penalización
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="mt-1 flex items-baseline justify-between gap-1">
+                                  <strong className="text-slate-800 font-mono text-sm">
+                                    {axis.raw}
+                                  </strong>
+                                </div>
+                              )}
+
+                              {/* Barra de progreso miniatura */}
+                              <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${axis.value >= 75 ? "bg-emerald-500" : axis.value >= 50 ? "bg-amber-500" : "bg-rose-500"}`}
+                                  style={{ width: `${axis.value}%` }}
+                                />
+                              </div>
                             </div>
-                            <div className="mt-1 flex items-baseline justify-between">
-                              <strong className="text-slate-800 font-mono text-sm">
-                                {axis.raw}
-                              </strong>
-                            </div>
-                            {/* Barra de progreso miniatura */}
-                            <div className="mt-1.5 h-1 w-full rounded-full bg-slate-100 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${axis.value >= 75 ? "bg-emerald-500" : axis.value >= 50 ? "bg-amber-500" : "bg-rose-500"
-                                  }`}
-                                style={{ width: `${axis.value}%` }}
-                              />
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
 
                         <div className="rounded-lg bg-white p-2.5 border border-slate-200/80 col-span-2 grid grid-cols-3 gap-2 text-center">
                           <div>

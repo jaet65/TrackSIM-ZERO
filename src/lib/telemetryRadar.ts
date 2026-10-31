@@ -43,6 +43,7 @@ export function computeTelemetryAxes(
 
   // Promediar métricas brutas
   const avgPctGreen = valid.reduce((acc, t) => acc + (t.pctGreenZone || 0), 0) / n;
+  const avgPctYellow = valid.reduce((acc, t) => acc + (t.pctYellowZone || 0), 0) / n;
   const avgPctRed = valid.reduce((acc, t) => acc + (t.pctRedZone || 0), 0) / n;
   const avgHarshBrakes = valid.reduce((acc, t) => acc + (t.brakeAbove60Uses || 0), 0) / n;
   const avgAuxBrakeSec = valid.reduce((acc, t) => acc + (t.auxBrakeTimeSec || 0), 0) / n;
@@ -67,10 +68,30 @@ export function computeTelemetryAxes(
   });
   const avgThrottleSec = totalThrottleAbove60Sec / n;
 
-  // 1. Rango RPM (Zona verde vs meta)
+  // 1. Rango RPM (Zona verde vs meta, castigada por zona roja y zona amarilla sin freno de motor)
   const greenTarget = env === "MONTANA" ? 48 : env === "CIUDAD" ? 58 : 75;
   const rawRpmRatio = (avgPctGreen / greenTarget) * 100;
-  const axisRpm = Math.max(0, Math.min(100, Math.round(rawRpmRatio - (avgPctRed * 20))));
+  
+  // Penalización por zona roja
+  let rpmPenalty = avgPctRed * 25;
+  
+  // Penalización por zona amarilla:
+  // En lluvia/nieve es permisivo porque no se debe usar retarder y la retención se hace con marcha baja
+  if (avgPctYellow > 0) {
+    if (hasSlippery) {
+      if (avgPctYellow > 25) rpmPenalty += (avgPctYellow - 25) * 1.5;
+    } else if (avgAuxBrakeSec <= 1) {
+      rpmPenalty += avgPctYellow * 5;
+    } else {
+      if (env === "MONTANA") {
+        if (avgPctYellow > 20) rpmPenalty += (avgPctYellow - 20) * 3;
+      } else {
+        if (avgPctYellow > 8) rpmPenalty += (avgPctYellow - 8) * 3;
+      }
+    }
+  }
+
+  const axisRpm = Math.max(0, Math.min(100, Math.round(rawRpmRatio - rpmPenalty)));
 
   // 2. Control de Frenado Suave
   const brakeTolerance = env === "CIUDAD" ? 3 : env === "MONTANA" ? 1 : 0;

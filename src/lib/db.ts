@@ -1,7 +1,7 @@
 import { collection, doc, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { firestore, getDb, safeGetDoc, safeGetDocs, fastWrite } from "./firebase";
 import type { Mark, ParsedReport, TelemetryMetrics } from "./parse";
-import { evaluateMarks } from "./parse";
+import { evaluateMarks, normalizeRpmZones } from "./parse";
 import { classify } from "./catalog";
 import { loadCatalog } from "./catalogStore";
 import { CRITICAL_LIMIT, verdictFor } from "./config";
@@ -230,7 +230,7 @@ export function withCurrentScore(
         }
       }
     }
-    telemetry = { ...telemetry, hasSlipperyRoad, slipperyCondition };
+    telemetry = normalizeRpmZones({ ...telemetry, hasSlipperyRoad, slipperyCondition });
   }
 
   const ev = evaluateMarks(d.marks, d.durationSec, telemetry, exerciseName, effectiveGroupId);
