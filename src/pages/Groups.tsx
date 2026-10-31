@@ -5,9 +5,12 @@ import {
   createGroup,
   closeAndFreezeGroup,
   deleteGroup,
+  updateGroupType,
+  updateGroupDetails,
   getActiveGroupId,
   setActiveGroupId,
   type GroupDoc,
+  type GroupType,
 } from "../lib/groups";
 import { useAuth } from "../components/AuthProvider";
 import { isAdminEmail } from "../lib/config";
@@ -26,12 +29,19 @@ export default function Groups() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
+  const [newGroupType, setNewGroupType] = useState<GroupType>("escuela");
   const [sourceGroupId, setSourceGroupId] = useState("");
   const [creating, setCreating] = useState(false);
 
   // Cerrar y congelar grupo
   const [closingGroup, setClosingGroup] = useState<GroupDoc | null>(null);
   const [closing, setClosing] = useState(false);
+
+  // Editar nombre del grupo
+  const [editingGroup, setEditingGroup] = useState<GroupDoc | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Eliminar grupo
   const [deletingGroup, setDeletingGroup] = useState<GroupDoc | null>(null);
@@ -88,11 +98,13 @@ export default function Groups() {
           name: user?.displayName || user?.email || "",
           email: user?.email || "",
         },
-        sourceGroupId || null
+        sourceGroupId || null,
+        newGroupType
       );
       setShowCreateModal(false);
       setNewGroupName("");
       setNewGroupDesc("");
+      setNewGroupType("escuela");
       setSourceGroupId("");
       setActiveId(created.id);
       setSuccess(`Grupo «${created.name}» creado y fijado como grupo de trabajo activo.`);
@@ -122,6 +134,31 @@ export default function Groups() {
       setError((err as Error).message);
     } finally {
       setClosing(false);
+    }
+  };
+
+  const handleStartEdit = (g: GroupDoc) => {
+    setEditingGroup(g);
+    setEditName(g.name);
+    setEditDesc(g.description || "");
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingGroup || !editName.trim()) return;
+
+    setSavingEdit(true);
+    setError("");
+    try {
+      await updateGroupDetails(editingGroup.id, editName, editDesc);
+      setSuccess(`Grupo actualizado a «${editName.trim()}» correctamente.`);
+      setTimeout(() => setSuccess(""), 4000);
+      setEditingGroup(null);
+      await loadData();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -270,6 +307,27 @@ export default function Groups() {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-slate-900 text-sm">{g.name}</span>
+                          {!isClosed && (
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(g)}
+                              className="text-slate-400 hover:text-indigo-600 transition p-1 rounded-md hover:bg-slate-100"
+                              title="Cambiar nombre o descripción del grupo"
+                            >
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                            </button>
+                          )}
+                          {g.type === "curso" ? (
+                            <span className="rounded-md bg-purple-50 border border-purple-200 px-1.5 py-0.5 text-[10px] font-bold text-purple-700">
+                              🎯 Curso
+                            </span>
+                          ) : (
+                            <span className="rounded-md bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                              🏫 Escuela
+                            </span>
+                          )}
                           {isActive && (
                             <span className="rounded-md bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
                               Activo
@@ -339,6 +397,14 @@ export default function Groups() {
                         <div className="flex items-center justify-end gap-2">
                           {!isClosed && (
                             <>
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit(g)}
+                                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition shadow-xs"
+                                title="Editar nombre o descripción"
+                              >
+                                Editar
+                              </button>
                               {!isActive && (
                                 <button
                                   type="button"
@@ -419,6 +485,47 @@ export default function Groups() {
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Modalidad del Catálogo *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewGroupType("escuela")}
+                    className={`flex flex-col items-start p-3 rounded-xl border text-left transition ${
+                      newGroupType === "escuela"
+                        ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-600"
+                        : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                    }`}
+                  >
+                    <span className="text-xs font-bold flex items-center gap-1.5">
+                      🏫 Escuela
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-0.5">
+                      Estructura de 6 Fases progresivas
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewGroupType("curso")}
+                    className={`flex flex-col items-start p-3 rounded-xl border text-left transition ${
+                      newGroupType === "curso"
+                        ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-600"
+                        : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                    }`}
+                  >
+                    <span className="text-xs font-bold flex items-center gap-1.5">
+                      🎯 Curso
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-0.5">
+                      Sin fases: lista directa de ejercicios
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Reglas Iniciales de Errores y Ejercicios
                 </label>
@@ -454,6 +561,63 @@ export default function Groups() {
                   className="rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 transition"
                 >
                   {creating ? "Creando..." : "Crear y Activar"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar Nombre y Descripción de Grupo */}
+      {editingGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <h3 className="text-base font-bold text-slate-900 mb-1">Editar Información del Grupo</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Modifica el nombre o la descripción del grupo.
+            </p>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nombre del Grupo *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Descripción / Observaciones (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={savingEdit}
+                  onClick={() => setEditingGroup(null)}
+                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit || !editName.trim()}
+                  className="rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 transition"
+                >
+                  {savingEdit ? "Guardando..." : "Guardar Cambios"}
                 </button>
               </div>
             </form>

@@ -491,23 +491,27 @@ export default function Driver() {
                   key={p.phase}
                   className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm space-y-4"
                 >
-                  {/* Encabezado Principal de la Fase */}
+                  {/* Encabezado Principal de la Fase o del Curso */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 font-black text-sm">
-                        F{p.phase}
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black text-sm ${
+                        p.phase === 0 ? "bg-purple-100 text-purple-700" : "bg-indigo-50 text-indigo-600"
+                      }`}>
+                        {p.phase === 0 ? "🎯" : `F${p.phase}`}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
-                            Fase {p.phase}
+                          <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                            p.phase === 0 ? "text-purple-700" : "text-indigo-600"
+                          }`}>
+                            {p.phase === 0 ? "Curso Completo" : `Fase ${p.phase}`}
                           </span>
                           <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${p.color}`}>
                             {p.verdict}
                           </span>
                         </div>
                         <h3 className="text-base font-bold text-slate-900 leading-snug">
-                          {phaseName(p.phase)}
+                          {p.phase === 0 ? "Evaluación Integral del Curso" : phaseName(p.phase)}
                         </h3>
                       </div>
                     </div>

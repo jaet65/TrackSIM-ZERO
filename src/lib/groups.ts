@@ -18,6 +18,7 @@ import {
   getExerciseEnvironments,
   sanitizeExercises,
   setGroupExercises,
+  setGroupTypeMemory,
   removeGroupExercises,
   waitForExerciseSaves,
   type ExerciseSettingsData,
@@ -33,10 +34,13 @@ import {
 
 export type GroupStatus = "open" | "closed";
 
+export type GroupType = "escuela" | "curso";
+
 export type GroupDoc = {
   id: string;
   name: string;
   description?: string;
+  type?: GroupType; // "escuela" (con 6 fases) | "curso" (evaluación directa sin fases)
   status: GroupStatus;
   createdAt: number;
   createdBy: string;
@@ -78,6 +82,9 @@ export function setActiveGroupId(id: string | null): void {
  * para que los cálculos simultáneos de múltiples grupos usen siempre su configuración correspondiente.
  */
 export function hydrateGroupRules(g: GroupDoc): void {
+  if (g.type) {
+    setGroupTypeMemory(g.id, g.type);
+  }
   if (g.catalog) {
     setGroupCatalog(g.id, sanitizeCatalog(g.catalog));
   }
@@ -113,7 +120,8 @@ export async function createGroup(
   name: string,
   description: string,
   user: { name: string; email: string },
-  sourceGroupId?: string | null
+  sourceGroupId?: string | null,
+  type: GroupType = "escuela"
 ): Promise<GroupDoc> {
   const trimmedName = name.trim();
   if (!trimmedName) throw new Error("El nombre del grupo no puede estar vacío.");
@@ -134,6 +142,7 @@ export async function createGroup(
     id,
     name: trimmedName,
     description: description.trim(),
+    type,
     status: "open",
     createdAt: now,
     createdBy: user.name || user.email,
@@ -269,8 +278,34 @@ export async function deleteGroupEvaluations(groupId: string): Promise<number> {
 }
 
 /**
- * Elimina un grupo y sus evaluaciones asociadas.
+ * Actualiza el tipo de un grupo existente ("escuela" o "curso").
  */
+export async function updateGroupType(groupId: string, type: GroupType): Promise<void> {
+  if (!groupId) return;
+  setGroupTypeMemory(groupId, type);
+  const grpRef = doc(groupsCol(), groupId);
+  await fastWrite(updateDoc(grpRef, { type }));
+}
+
+/**
+ * Actualiza el nombre y opcionalmente la descripción de un grupo.
+ */
+export async function updateGroupDetails(
+  groupId: string,
+  name: string,
+  description?: string
+): Promise<void> {
+  if (!groupId) return;
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("El nombre del grupo no puede estar vacío.");
+  const grpRef = doc(groupsCol(), groupId);
+  await fastWrite(
+    updateDoc(grpRef, {
+      name: trimmed,
+      ...(description !== undefined ? { description: description.trim() } : {}),
+    })
+  );
+}
 export async function deleteGroup(groupId: string): Promise<void> {
   await deleteGroupEvaluations(groupId);
   const grpRef = doc(groupsCol(), groupId);

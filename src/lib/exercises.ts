@@ -63,6 +63,18 @@ export function waitForExerciseSaves(): Promise<void> {
 }
 
 const groupExercises = new Map<string, { phases: ExerciseConfig; environments: ExerciseEnvironmentsMap }>();
+const groupTypes = new Map<string, "escuela" | "curso">();
+
+export function setGroupTypeMemory(groupId: string, type: "escuela" | "curso") {
+  groupTypes.set(groupId, type);
+}
+
+export function getGroupType(groupId?: string | null): "escuela" | "curso" {
+  if (groupId && groupTypes.has(groupId)) {
+    return groupTypes.get(groupId)!;
+  }
+  return "escuela";
+}
 
 export function setGroupExercises(
   groupId: string,
@@ -74,6 +86,7 @@ export function setGroupExercises(
 
 export function removeGroupExercises(groupId: string) {
   groupExercises.delete(groupId);
+  groupTypes.delete(groupId);
 }
 
 export function hasGroupExercises(groupId: string): boolean {

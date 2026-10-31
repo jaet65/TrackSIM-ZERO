@@ -13,7 +13,14 @@ import {
   type ExerciseEnvironment,
   type ExerciseEnvironmentsMap,
 } from "../lib/exercises";
-import { listGroups, getActiveGroupId, setActiveGroupId, type GroupDoc } from "../lib/groups";
+import {
+  listGroups,
+  getActiveGroupId,
+  setActiveGroupId,
+  updateGroupType,
+  type GroupDoc,
+  type GroupType,
+} from "../lib/groups";
 import { listUploadedExerciseNames } from "../lib/db";
 
 export default function Exercises() {
@@ -44,9 +51,24 @@ export default function Exercises() {
   );
 
   const isClosedGroup = selectedGroup?.status === "closed";
+  const groupType: GroupType = selectedGroup?.type || "escuela";
+  const isCurso = groupType === "curso";
   const canEdit = selectedGroupId
     ? !isClosedGroup
     : isAdminEmail(user?.email);
+
+  const toggleGroupType = async (newType: GroupType) => {
+    if (!selectedGroupId || isClosedGroup || newType === groupType) return;
+    try {
+      await updateGroupType(selectedGroupId, newType);
+      setGroups((prev) =>
+        prev.map((g) => (g.id === selectedGroupId ? { ...g, type: newType } : g))
+      );
+      setMsg(`Modalidad cambiada a «${newType === "curso" ? "Curso (Sin Fases)" : "Escuela (6 Fases)"}».`);
+    } catch (err) {
+      setMsg((err as Error).message);
+    }
+  };
 
   useEffect(() => {
     listGroups()
@@ -124,22 +146,11 @@ export default function Exercises() {
     );
   }
 
-  const persistImmediately = async (nextCfg: ExerciseConfig, nextEnvs: ExerciseEnvironmentsMap) => {
-    try {
-      await saveExercises(nextCfg, user?.email ?? "", nextEnvs, selectedGroupId || null);
-      setDirty(false);
-    } catch {
-      setDirty(true);
-    }
-  };
-
   const update = (next: ExerciseConfig, nextEnvs?: ExerciseEnvironmentsMap) => {
-    const targetEnvs = nextEnvs ?? envs;
     setCfg(next);
     if (nextEnvs) setEnvs(nextEnvs);
     setDirty(true);
     setMsg("");
-    void persistImmediately(next, targetEnvs);
   };
 
   const add = (phase: number, explicitName?: string) => {
@@ -190,7 +201,6 @@ export default function Exercises() {
     setEnvs(nextEnvs);
     setDirty(true);
     setMsg("");
-    void persistImmediately(cfg, nextEnvs);
   };
 
   const save = async () => {
@@ -274,7 +284,7 @@ export default function Exercises() {
             </div>
             <div>
               <label htmlFor="exercises-group-select" className="block text-[11px] font-bold uppercase tracking-wider text-indigo-700">
-                Configurando Ejercicios por Fase para:
+                Configurando Ejercicios para:
               </label>
               <select
                 id="exercises-group-select"
@@ -285,7 +295,7 @@ export default function Exercises() {
                 <option value="">🌐 Plantilla Global (Base para nuevos grupos)</option>
                 {groups.map((g) => (
                   <option key={g.id} value={g.id}>
-                    {g.status === "closed" ? "🔒" : "🟢"} Grupo: {g.name}
+                    {g.status === "closed" ? "🔒" : "🟢"} {g.type === "curso" ? "[Curso]" : "[Escuela]"} Grupo: {g.name}
                     {g.id === getActiveGroupId() ? " (Activo)" : ""}
                     {g.status === "closed" ? " (Cerrado)" : ""}
                   </option>
@@ -293,6 +303,36 @@ export default function Exercises() {
               </select>
             </div>
           </div>
+
+          {selectedGroupId && !isClosedGroup && (
+            <div className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-white p-1">
+              <span className="text-[11px] font-bold text-slate-500 px-2 uppercase tracking-wider">
+                Modalidad:
+              </span>
+              <button
+                type="button"
+                onClick={() => toggleGroupType("escuela")}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
+                  !isCurso
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                🏫 Escuela (6 Fases)
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleGroupType("curso")}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
+                  isCurso
+                    ? "bg-purple-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                🎯 Curso (Sin Fases)
+              </button>
+            </div>
+          )}
 
           {canEdit && (
             <div className="flex flex-wrap items-center gap-2 border-t lg:border-t-0 pt-3 lg:pt-0 border-indigo-100">
@@ -319,164 +359,304 @@ export default function Exercises() {
         </div>
       </section>
 
-      <div className="grid gap-4">
-        {PHASES.map((p) => {
-          const list = cfg[p.id] ?? [];
-          return (
-            <section
-              key={p.id}
-              className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-3"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold">
-                    {p.id}
-                  </span>
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Fase {p.id}: {p.name}
-                  </h2>
-                </div>
-                <span className="text-[11px] text-slate-500 font-mono">
-                  {list.length} ejercicio(s)
-                </span>
-              </div>
-
-              {list.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500 bg-slate-50/50">
-                  Sin ejercicios asignados a esta fase.
+      {/* Listado de Ejercicios: 6 Fases (Escuela) o Lista Directa (Curso) */}
+      {isCurso ? (
+        <section className="rounded-2xl border border-purple-200/80 bg-white p-5 shadow-sm space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-100 border border-purple-200 text-purple-700 text-sm font-bold">
+                🎯
+              </span>
+              <div>
+                <h2 className="text-base font-bold text-slate-900">
+                  Ejercicios Obligatorios del Curso
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Modalidad Curso: Evaluación directa de ejercicios sin separación de fases.
                 </p>
-              ) : (
-                <ul className="space-y-2">
-                  {list.map((n) => {
-                    const key = exerciseKey(n);
-                    const rawSetting = envs[key] ?? "AUTO";
-                    const isAuto = rawSetting === "AUTO";
-                    const effective = isAuto ? detectEnvironmentFromName(n) : rawSetting;
+              </div>
+            </div>
+            <span className="rounded-full bg-purple-50 border border-purple-200 px-3 py-1 text-xs font-bold text-purple-700 font-mono">
+              {(cfg[1] ?? []).length} ejercicio(s) configurado(s)
+            </span>
+          </div>
 
-                    return (
-                      <li
-                        key={n}
-                        className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 text-xs text-slate-800"
+          {(() => {
+            const list = cfg[1] ?? [];
+            return (
+              <div className="space-y-3">
+                {list.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-purple-200 p-4 text-xs text-slate-500 bg-purple-50/30 text-center">
+                    No hay ejercicios configurados para este curso. Agrega los ejercicios que componen la evaluación abajo.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {list.map((n) => {
+                      const key = exerciseKey(n);
+                      const rawSetting = envs[key] ?? "AUTO";
+                      const isAuto = rawSetting === "AUTO";
+                      const effective = isAuto ? detectEnvironmentFromName(n) : rawSetting;
+
+                      return (
+                        <li
+                          key={n}
+                          className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 text-xs text-slate-800"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="font-semibold text-slate-900 truncate text-sm">{n}</span>
+                            {envBadge(effective, isAuto)}
+                          </div>
+
+                          <div className="flex items-center gap-2 ml-auto">
+                            {canEdit ? (
+                              <select
+                                value={rawSetting}
+                                onChange={(e) => setEnvForExercise(n, e.target.value as ExerciseEnvironment)}
+                                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-xs focus:border-indigo-500 focus:outline-none"
+                                title="Configurar tipo de entorno para telemetría"
+                              >
+                                <option value="AUTO">⚡ Auto-detectar</option>
+                                <option value="CARRETERA">🛣️ Carretera / Plano</option>
+                                <option value="MONTANA">🏔️ Montaña / Sierra</option>
+                                <option value="CIUDAD">🏙️ Ciudad / Maniobras</option>
+                              </select>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-medium">
+                                {rawSetting === "AUTO" ? "Automático" : rawSetting}
+                              </span>
+                            )}
+
+                            {canEdit && (
+                              <button
+                                onClick={() => remove(1, n)}
+                                className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition"
+                                title="Quitar ejercicio del curso"
+                              >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {canEdit && (
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <div className="flex flex-wrap sm:flex-nowrap gap-2">
+                      <input
+                        value={drafts[1] ?? ""}
+                        onChange={(e) => setDrafts({ ...drafts, [1]: e.target.value })}
+                        onKeyDown={(e) => e.key === "Enter" && add(1)}
+                        placeholder="Nombre exacto del ejercicio (ej. 01 - Control Inicial)"
+                        className="flex-1 min-w-[200px] rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+                      />
+                      <select
+                        value={draftEnvs[1] ?? "AUTO"}
+                        onChange={(e) => setDraftEnvs({ ...draftEnvs, [1]: e.target.value as ExerciseEnvironment })}
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 focus:border-indigo-500 focus:outline-none"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="font-semibold text-slate-900 truncate">{n}</span>
-                          {envBadge(effective, isAuto)}
-                        </div>
+                        <option value="AUTO">⚡ Auto-detectar</option>
+                        <option value="CARRETERA">🛣️ Carretera</option>
+                        <option value="MONTANA">🏔️ Montaña</option>
+                        <option value="CIUDAD">🏙️ Ciudad</option>
+                      </select>
+                      <button
+                        onClick={() => add(1)}
+                        className="rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-700 transition shadow-xs"
+                      >
+                        Agregar Ejercicio
+                      </button>
+                    </div>
 
-                        <div className="flex items-center gap-2 ml-auto">
-                          {canEdit && (
-                            <select
-                              value={p.id}
-                              onChange={(e) => movePhase(p.id, Number(e.target.value), n)}
-                              className="rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 py-1 text-[11px] font-bold text-indigo-700 shadow-xs focus:border-indigo-500 focus:outline-none"
-                              title="Mover ejercicio a otra fase"
-                            >
-                              {PHASES.map((ph) => (
-                                <option key={ph.id} value={ph.id}>
-                                  Fase {ph.id}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-
-                          {canEdit ? (
-                            <select
-                              value={rawSetting}
-                              onChange={(e) => setEnvForExercise(n, e.target.value as ExerciseEnvironment)}
-                              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 shadow-xs focus:border-indigo-500 focus:outline-none"
-                              title="Configurar tipo de entorno para telemetría"
-                            >
-                              <option value="AUTO">⚡ Auto-detectar</option>
-                              <option value="CARRETERA">🛣️ Carretera / Plano</option>
-                              <option value="MONTANA">🏔️ Montaña / Sierra</option>
-                              <option value="CIUDAD">🏙️ Ciudad / Maniobras</option>
-                            </select>
-                          ) : (
-                            <span className="text-[11px] text-slate-400 font-medium">
-                              {rawSetting === "AUTO" ? "Automático" : rawSetting}
-                            </span>
-                          )}
-
-                          {canEdit && (
-                            <button
-                              onClick={() => remove(p.id, n)}
-                              className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-rose-600 transition"
-                              title="Quitar ejercicio"
-                            >
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-
-              {canEdit && (
-                <div className="space-y-2 pt-1">
-                  <div className="flex flex-wrap sm:flex-nowrap gap-2">
-                    <input
-                      value={drafts[p.id] ?? ""}
-                      onChange={(e) => setDrafts({ ...drafts, [p.id]: e.target.value })}
-                      onKeyDown={(e) => e.key === "Enter" && add(p.id)}
-                      placeholder="Ej. 02 - Montaña o 03C - Autopista"
-                      className="flex-1 min-w-[200px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
-                    />
-                    <select
-                      value={draftEnvs[p.id] ?? "AUTO"}
-                      onChange={(e) => setDraftEnvs({ ...draftEnvs, [p.id]: e.target.value as ExerciseEnvironment })}
-                      className="rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-700 focus:border-indigo-500 focus:outline-none"
-                    >
-                      <option value="AUTO">⚡ Auto-detectar</option>
-                      <option value="CARRETERA">🛣️ Carretera</option>
-                      <option value="MONTANA">🏔️ Montaña</option>
-                      <option value="CIUDAD">🏙️ Ciudad</option>
-                    </select>
-                    <button
-                      onClick={() => add(p.id)}
-                      className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition"
-                    >
-                      Agregar
-                    </button>
-                  </div>
-
-                  {uploadedNames.filter((u) => !list.some((n) => exerciseKey(n) === exerciseKey(u))).length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                      <span className="text-[11px] font-medium text-slate-400">
-                        Ejercicios detectados en reportes (clic para asignar a Fase {p.id}):
-                      </span>
-                      {uploadedNames
-                        .filter((u) => !list.some((n) => exerciseKey(n) === exerciseKey(u)))
-                        .map((u) => {
-                          const assignedPhase = Object.entries(cfg).find(
-                            ([ph, phList]) => Number(ph) !== p.id && (phList ?? []).some((n) => exerciseKey(n) === exerciseKey(u))
-                          )?.[0];
-                          return (
+                    {uploadedNames.filter((u) => !list.some((n) => exerciseKey(n) === exerciseKey(u))).length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                        <span className="text-[11px] font-medium text-slate-400">
+                          Detectados en evaluaciones de simulador (clic para agregar):
+                        </span>
+                        {uploadedNames
+                          .filter((u) => !list.some((n) => exerciseKey(n) === exerciseKey(u)))
+                          .map((u) => (
                             <button
                               key={u}
                               type="button"
-                              onClick={() => add(p.id, u)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/60 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer"
-                              title={assignedPhase ? `Mover de Fase ${assignedPhase} a Fase ${p.id}` : `Agregar a Fase ${p.id}`}
+                              onClick={() => add(1, u)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50/70 px-2.5 py-1 text-[11px] font-semibold text-purple-700 hover:bg-purple-100 transition cursor-pointer"
                             >
                               <span>+ {u}</span>
-                              {assignedPhase && (
-                                <span className="text-[9px] font-normal text-indigo-500">(en F{assignedPhase})</span>
-                              )}
                             </button>
-                          );
-                        })}
-                    </div>
-                  )}
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </section>
+      ) : (
+        <div className="grid gap-4">
+          {PHASES.map((p) => {
+            const list = cfg[p.id] ?? [];
+            return (
+              <section
+                key={p.id}
+                className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-3"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold">
+                      {p.id}
+                    </span>
+                    <h2 className="text-sm font-bold text-slate-900">
+                      Fase {p.id}: {p.name}
+                    </h2>
+                  </div>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    {list.length} ejercicio(s)
+                  </span>
                 </div>
-              )}
-            </section>
-          );
-        })}
-      </div>
+
+                {list.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500 bg-slate-50/50">
+                    Sin ejercicios asignados a esta fase.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {list.map((n) => {
+                      const key = exerciseKey(n);
+                      const rawSetting = envs[key] ?? "AUTO";
+                      const isAuto = rawSetting === "AUTO";
+                      const effective = isAuto ? detectEnvironmentFromName(n) : rawSetting;
+
+                      return (
+                        <li
+                          key={n}
+                          className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 text-xs text-slate-800"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="font-semibold text-slate-900 truncate">{n}</span>
+                            {envBadge(effective, isAuto)}
+                          </div>
+
+                          <div className="flex items-center gap-2 ml-auto">
+                            {canEdit && (
+                              <select
+                                value={p.id}
+                                onChange={(e) => movePhase(p.id, Number(e.target.value), n)}
+                                className="rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 py-1 text-[11px] font-bold text-indigo-700 shadow-xs focus:border-indigo-500 focus:outline-none"
+                                title="Mover ejercicio a otra fase"
+                              >
+                                {PHASES.map((ph) => (
+                                  <option key={ph.id} value={ph.id}>
+                                    Fase {ph.id}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+
+                            {canEdit ? (
+                              <select
+                                value={rawSetting}
+                                onChange={(e) => setEnvForExercise(n, e.target.value as ExerciseEnvironment)}
+                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 shadow-xs focus:border-indigo-500 focus:outline-none"
+                                title="Configurar tipo de entorno para telemetría"
+                              >
+                                <option value="AUTO">⚡ Auto-detectar</option>
+                                <option value="CARRETERA">🛣️ Carretera / Plano</option>
+                                <option value="MONTANA">🏔️ Montaña / Sierra</option>
+                                <option value="CIUDAD">🏙️ Ciudad / Maniobras</option>
+                              </select>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-medium">
+                                {rawSetting === "AUTO" ? "Automático" : rawSetting}
+                              </span>
+                            )}
+
+                            {canEdit && (
+                              <button
+                                onClick={() => remove(p.id, n)}
+                                className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-rose-600 transition"
+                                title="Quitar ejercicio"
+                              >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {canEdit && (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex flex-wrap sm:flex-nowrap gap-2">
+                      <input
+                        value={drafts[p.id] ?? ""}
+                        onChange={(e) => setDrafts({ ...drafts, [p.id]: e.target.value })}
+                        onKeyDown={(e) => e.key === "Enter" && add(p.id)}
+                        placeholder="Ej. 02 - Montaña o 03C - Autopista"
+                        className="flex-1 min-w-[200px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+                      />
+                      <select
+                        value={draftEnvs[p.id] ?? "AUTO"}
+                        onChange={(e) => setDraftEnvs({ ...draftEnvs, [p.id]: e.target.value as ExerciseEnvironment })}
+                        className="rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-700 focus:border-indigo-500 focus:outline-none"
+                      >
+                        <option value="AUTO">⚡ Auto-detectar</option>
+                        <option value="CARRETERA">🛣️ Carretera</option>
+                        <option value="MONTANA">🏔️ Montaña</option>
+                        <option value="CIUDAD">🏙️ Ciudad</option>
+                      </select>
+                      <button
+                        onClick={() => add(p.id)}
+                        className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition"
+                      >
+                        Agregar
+                      </button>
+                    </div>
+
+                    {uploadedNames.filter((u) => !list.some((n) => exerciseKey(n) === exerciseKey(u))).length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="text-[11px] font-medium text-slate-400">
+                          Ejercicios detectados en reportes (clic para asignar a Fase {p.id}):
+                        </span>
+                        {uploadedNames
+                          .filter((u) => !list.some((n) => exerciseKey(n) === exerciseKey(u)))
+                          .map((u) => {
+                            const assignedPhase = Object.entries(cfg).find(
+                              ([ph, phList]) => Number(ph) !== p.id && (phList ?? []).some((n) => exerciseKey(n) === exerciseKey(u))
+                            )?.[0];
+                            return (
+                              <button
+                                key={u}
+                                type="button"
+                                onClick={() => add(p.id, u)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/60 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer"
+                                title={assignedPhase ? `Mover de Fase ${assignedPhase} a Fase ${p.id}` : `Agregar a Fase ${p.id}`}
+                              >
+                                <span>+ {u}</span>
+                                {assignedPhase && (
+                                  <span className="text-[9px] font-normal text-indigo-500">(en F{assignedPhase})</span>
+                                )}
+                              </button>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      )}
 
       {canEdit && (
         <div className="sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur-md">

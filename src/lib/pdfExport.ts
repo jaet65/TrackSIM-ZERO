@@ -551,6 +551,8 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     doc.text("Sin faltas críticas en su historial", 26, y + 32);
   }
 
+  const isCursoGroup = data.phases.length === 1 && data.phases[0].phase === 0;
+
   // Tarjeta 2: Total de Ejercicios
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(140, y, 56, 34, 3, 3, "F");
@@ -570,10 +572,17 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   doc.setFontSize(7.5);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text(`Fases evaluadas: `, 146, y + 28);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text(`${phasesWithActivity} de ${data.phases.length}`, 172, y + 28);
+  if (isCursoGroup) {
+    doc.text(`Modalidad: `, 146, y + 28);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(147, 51, 234); // Purple 600
+    doc.text("Curso (Sin Fases)", 165, y + 28);
+  } else {
+    doc.text(`Fases evaluadas: `, 146, y + 28);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+    doc.text(`${phasesWithActivity} de ${data.phases.length}`, 172, y + 28);
+  }
 
   y += 40;
 
@@ -583,7 +592,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   doc.setFontSize(10.5);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text("Progreso por Fase", 14, y);
+  doc.text(isCursoGroup ? "Evaluación Integral del Curso" : "Progreso por Fase", 14, y);
   y += 4;
 
   const cardW = 182; // Ancho completo (1 columna)
@@ -614,15 +623,20 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
     doc.roundedRect(cardX, cardY, cardW, cardH, 2.5, 2.5, "S");
 
-    // ENCABEZADO DE LA FASE:
+    // ENCABEZADO DE LA FASE O DEL CURSO:
     doc.setFontSize(6.5);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-    doc.text(`FASE ${p.phase}`, cardX + 3.5, cardY + 4.5);
+    if (p.phase === 0) {
+      doc.setTextColor(147, 51, 234);
+      doc.text("EVALUACIÓN DEL CURSO", cardX + 3.5, cardY + 4.5);
+    } else {
+      doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+      doc.text(`FASE ${p.phase}`, cardX + 3.5, cardY + 4.5);
+    }
 
     doc.setFontSize(8);
     doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-    const pName = phaseName(p.phase);
+    const pName = p.phase === 0 ? "Ejercicios Directos del Curso" : phaseName(p.phase);
     doc.text(pName.length > 28 ? `${pName.substring(0, 26)}…` : pName, cardX + 3.5, cardY + 9);
 
     // Badge fase

@@ -5,7 +5,14 @@ import { evaluateMarks, normalizeRpmZones } from "./parse";
 import { classify } from "./catalog";
 import { loadCatalog } from "./catalogStore";
 import { CRITICAL_LIMIT, verdictFor } from "./config";
-import { exerciseKey, getExercises, loadExercises, phaseForExercise, resolveExerciseEnvironment } from "./exercises";
+import {
+  exerciseKey,
+  getExercises,
+  getGroupType,
+  loadExercises,
+  phaseForExercise,
+  resolveExerciseEnvironment,
+} from "./exercises";
 import { listGroups } from "./groups";
 import {
   computeGroupBenchmarks,
@@ -269,7 +276,72 @@ function summarizeDriverPhases(
   onlyPhase?: number
 ): PhaseSummary[] {
   const grpId = fallbackGroupId || docs[0]?.groupId;
+  const isCurso = getGroupType(grpId) === "curso";
   const exercisesMap = getExercises(grpId);
+
+  // En modalidad "curso", agrupamos todos los ejercicios en un único bloque sin fases (id 0)
+  if (isCurso) {
+    const expectedList = Object.values(exercisesMap).flat();
+    const latestAll = [...docs].sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
+    const usedDocs = new Set<EvaluationView>();
+    let counted: EvaluationView[] = [];
+    let expected = latestAll.length;
+    const unmatchedNames: string[] = [];
+
+    if (expectedList.length > 0) {
+      expected = expectedList.length;
+      for (const expectedName of expectedList) {
+        const candidates = latestAll.filter(
+          (e) => !usedDocs.has(e) && exerciseKey(e.exercise) === exerciseKey(expectedName)
+        );
+        const match = candidates.pop();
+        if (match) {
+          usedDocs.add(match);
+          counted.push({ ...match, phase: 0 });
+        } else {
+          unmatchedNames.push(expectedName);
+        }
+      }
+    } else {
+      const uniqueByKey = new Map<string, EvaluationView>();
+      for (const e of latestAll) {
+        uniqueByKey.set(exerciseKey(e.exercise), e);
+      }
+      counted = [...uniqueByKey.values()];
+      expected = Math.max(1, counted.length);
+    }
+
+    const totalScore = counted.reduce((a, e) => a + e.score, 0);
+    const rawAvg = expected > 0 ? Math.round((totalScore / expected) * 10) / 10 : 0;
+    const criticalErrors = counted.reduce((a, e) => a + e.criticalCount, 0);
+    const avgScore = adjustScoreForCritical(rawAvg, criticalErrors);
+    const isNotDone = counted.length === 0;
+    const isIncomplete = counted.length > 0 && counted.length < expected;
+    const v = isNotDone
+      ? { label: "NO REALIZADO", color: "bg-slate-100 text-slate-600 border border-slate-300" }
+      : isIncomplete
+        ? { label: "INCOMPLETO", color: "bg-amber-50 text-amber-700 border border-amber-200" }
+        : dictamen(avgScore, criticalErrors);
+
+    return [
+      {
+        driverId,
+        driver: driverName,
+        phase: 0,
+        exercises: counted.length,
+        expected,
+        countedEvals: counted,
+        missingExercises: unmatchedNames,
+        errors: counted.reduce((a, e) => a + e.errorCount, 0),
+        criticalErrors,
+        totalScore,
+        avgScore,
+        verdict: v.label,
+        color: v.color,
+      },
+    ];
+  }
+
   const configuredPhases = Object.entries(exercisesMap)
     .filter(([, list]) => Array.isArray(list) && list.length > 0)
     .map(([p]) => Number(p))
@@ -440,6 +512,11 @@ export async function phaseSummaries(phase: number, dateFilter?: DateFilter) {
 // Devuelve los IDs de fases que tienen ejercicios configurados en el grupo
 export async function getPhasesWithEvaluations(dateFilter?: DateFilter): Promise<number[]> {
   await fetchEvaluations(undefined, undefined, dateFilter);
+  // Si el grupo es de tipo "curso", no maneja fases
+  if (dateFilter?.groupId && getGroupType(dateFilter.groupId) === "curso") {
+    return [];
+  }
+
   const exercisesMap = getExercises(dateFilter?.groupId);
   const configuredPhases = Object.entries(exercisesMap)
     .filter(([, list]) => Array.isArray(list) && list.length > 0)
@@ -608,6 +685,8 @@ export async function driverData(driverId: string, filter?: DateFilter) {
         ? { label: "NO REALIZADO", color: "bg-slate-100 text-slate-600 border border-slate-300" }
         : dictamen(overall, criticalErrors);
 
+  const isCurso = getGroupType(filter?.groupId || rawEvals[0].groupId) === "curso";
+
   return {
     name: rawEvals[0].driverName,
     evals,
@@ -620,6 +699,7 @@ export async function driverData(driverId: string, filter?: DateFilter) {
     criticalErrors,
     verdict: v.label,
     color: v.color,
+    groupType: isCurso ? ("curso" as const) : ("escuela" as const),
   };
 }
 

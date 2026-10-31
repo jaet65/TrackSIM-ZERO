@@ -374,29 +374,37 @@ export default function Home() {
             </select>
           </div>
 
-          {/* Selector de Fase */}
-          <div className="flex items-center gap-2">
-            <label htmlFor="phase-select" className="text-xs font-bold uppercase tracking-wider text-slate-700 whitespace-nowrap">
-              Fase:
-            </label>
-            <select
-              id="phase-select"
-              value={selectedPhase === null ? "ALL" : String(selectedPhase)}
-              onChange={(e) => {
-                const val = e.target.value;
-                const nextPhase = val === "ALL" ? null : Number(val);
-                updateUrl(nextPhase, startDate, endDate, selectedGroupId);
-              }}
-              className="w-full sm:w-56 rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm focus:border-indigo-600 focus:bg-white focus:outline-none transition cursor-pointer"
-            >
-              <option value="ALL">🌐 Promedio General (Todas)</option>
-              {PHASES.filter((p) => availablePhases.includes(p.id)).map((p) => (
-                <option key={p.id} value={String(p.id)}>
-                  Fase {p.id}: {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Selector de Fase (Solo si no es modalidad Curso) */}
+          {currentGroupObj?.type !== "curso" ? (
+            <div className="flex items-center gap-2">
+              <label htmlFor="phase-select" className="text-xs font-bold uppercase tracking-wider text-slate-700 whitespace-nowrap">
+                Fase:
+              </label>
+              <select
+                id="phase-select"
+                value={selectedPhase === null ? "ALL" : String(selectedPhase)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const nextPhase = val === "ALL" ? null : Number(val);
+                  updateUrl(nextPhase, startDate, endDate, selectedGroupId);
+                }}
+                className="w-full sm:w-56 rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm focus:border-indigo-600 focus:bg-white focus:outline-none transition cursor-pointer"
+              >
+                <option value="ALL">🌐 Promedio General (Todas)</option>
+                {PHASES.filter((p) => availablePhases.includes(p.id)).map((p) => (
+                  <option key={p.id} value={String(p.id)}>
+                    Fase {p.id}: {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="rounded-xl bg-purple-50 border border-purple-200 px-3 py-1.5 text-xs font-bold text-purple-700 flex items-center gap-1.5">
+                🎯 Modalidad Curso (Sin Fases)
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Selector de Rango de Fechas */}
