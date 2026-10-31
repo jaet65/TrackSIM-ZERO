@@ -2,7 +2,17 @@ import { PENALTY_PER_ERROR_RATE } from "./config";
 import { classify, type Severity } from "./catalog";
 import { resolveExerciseEnvironment, type ExerciseEnvironment } from "./exercises";
 
-export type Mark = { time: string; type: string; description: string };
+export type Mark = {
+  time: string;
+  type: string;
+  description: string;
+  ignored?: boolean;     // true si se anuló como falso positivo del simulador
+  ignoredBy?: string;    // usuario que anuló el error
+  ignoredAt?: number;    // fecha de anulación
+  manual?: boolean;      // true si fue agregado manualmente por un instructor
+  addedBy?: string;      // usuario que agregó el error
+  addedAt?: number;      // fecha de adición
+};
 
 export type TelemetryMetrics = {
   distanceMeters?: number;
@@ -204,22 +214,28 @@ export function evaluateMarks(
 ): Evaluation {
   const bySeverity: Record<Severity, number> = { CRITICO: 0, GRAVE: 0, MODERADO: 0, LEVE: 0 };
   const uncataloged = new Set<string>();
-  let points = 0;
+  let ratePoints = 0;
+  let directPoints = 0;
   let errorCount = 0;
 
   const env = resolveExerciseEnvironment(exerciseName, groupId);
 
   for (const m of marks) {
-    if (m.type !== "ERROR") continue;
+    if (m.type !== "ERROR" || m.ignored) continue;
     const c = classify(m.description, env, groupId);
     errorCount++;
-    points += c.weight;
+    // Los errores críticos (o con penalización de 100 pts) restan su valor íntegro de forma directa sin diluirse por la duración
+    if (c.severity === "CRITICO" || c.weight >= 100) {
+      directPoints += c.weight;
+    } else {
+      ratePoints += c.weight;
+    }
     bySeverity[c.severity]++;
     if (!c.cataloged) uncataloged.add(m.description);
   }
 
   const minutes = Math.max(durationSec / 60, 1);
-  const rawError = (100 - (points / minutes) * PENALTY_PER_ERROR_RATE) / 10;
+  const rawError = (100 - directPoints - (ratePoints / minutes) * PENALTY_PER_ERROR_RATE) / 10;
   const errorScore = Math.round(Math.max(0, Math.min(10, rawError)) * 10) / 10;
 
   const telemetryScore = calculateTelemetryScore(telemetry, exerciseName, groupId);
@@ -233,7 +249,7 @@ export function evaluateMarks(
   return {
     errorCount,
     criticalCount: bySeverity.CRITICO,
-    penaltyPoints: points,
+    penaltyPoints: directPoints + ratePoints,
     errorScore,
     telemetryScore,
     score: finalScore,

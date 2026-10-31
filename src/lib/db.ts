@@ -1,4 +1,4 @@
-import { collection, doc, query, setDoc, where, writeBatch } from "firebase/firestore";
+import { collection, doc, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { firestore, getDb, safeGetDoc, safeGetDocs, fastWrite } from "./firebase";
 import type { Mark, ParsedReport, TelemetryMetrics } from "./parse";
 import { evaluateMarks } from "./parse";
@@ -167,14 +167,16 @@ export function adjustScoreForCritical(score: number, criticalErrors: number): n
 
 // Calificación calculada desde las marcas y telemetría, o respetando la congelada si el grupo está cerrado
 export type EvaluationView = EvaluationDoc & {
+  docId?: string;
   criticalCount: number;
   errorScore: number;
   telemetryScore?: number;
 };
 
-export function withCurrentScore(d: EvaluationDoc, fallbackGroupId?: string | null): EvaluationView {
+export function withCurrentScore(d: EvaluationDoc, fallbackGroupId?: string | null, docId?: string): EvaluationView {
   const exerciseName = d.unit || d.exercise;
   const effectiveGroupId = d.groupId || fallbackGroupId || undefined;
+  const resolvedDocId = docId || evaluationId(d.phase, d.fileName, d.groupId);
   
   // Si la evaluación ya fue congelada, sus métricas son inalterables (normalizando a escala 0-10 si se congeló en escala 0-100)
   if (d.frozen && typeof d.frozenScore === "number") {
@@ -182,6 +184,7 @@ export function withCurrentScore(d: EvaluationDoc, fallbackGroupId?: string | nu
       val !== undefined ? (val > 10 ? Math.round((val / 10) * 10) / 10 : val) : undefined;
     return {
       ...d,
+      docId: resolvedDocId,
       exercise: exerciseName,
       errorCount: d.frozenErrorCount ?? d.errorCount,
       criticalCount: d.frozenCriticalCount ?? 0,
@@ -222,6 +225,7 @@ export function withCurrentScore(d: EvaluationDoc, fallbackGroupId?: string | nu
   const resolvedPhase = phaseForExercise(exerciseName, effectiveGroupId) ?? d.phase;
   return {
     ...d,
+    docId: resolvedDocId,
     phase: resolvedPhase,
     telemetry,
     exercise: exerciseName,
@@ -358,7 +362,9 @@ async function fetchEvaluations(field?: "phase" | "driverId", value?: number | s
   const q = field !== undefined && value !== undefined
     ? query(evaluations(), where(field, "==", value))
     : query(evaluations());
-  const docs = (await safeGetDocs(q)).docs.map((d) => withCurrentScore(d.data() as EvaluationDoc, filter?.groupId));
+  const docs = (await safeGetDocs(q)).docs.map((d) =>
+    withCurrentScore(d.data() as EvaluationDoc, filter?.groupId, d.id)
+  );
   
   return docs.filter((d) => {
     if (!matchesDateRange(d.date, filter)) return false;
@@ -498,7 +504,7 @@ export async function driverData(driverId: string, filter?: DateFilter) {
   for (const e of evals) {
     const env = resolveExerciseEnvironment(e.exercise || e.unit, filter?.groupId || e.groupId);
     for (const m of e.marks) {
-      if (m.type !== "ERROR") continue;
+      if (m.type !== "ERROR" || m.ignored) continue;
       const key = `${m.description}|${env}`;
       const existing = incidentMap.get(key);
       if (existing) {
@@ -565,6 +571,56 @@ export async function driverData(driverId: string, filter?: DateFilter) {
     verdict: v.label,
     color: v.color,
   };
+}
+
+/**
+ * Actualiza las marcas de una evaluación (ej. al anular falsos positivos o agregar errores manuales)
+ * y recalcula su calificación y conteo de errores en Firestore.
+ */
+export async function updateEvaluationMarks(
+  evalView: EvaluationView,
+  newMarks: Mark[],
+  fallbackGroupId?: string | null
+): Promise<EvaluationView> {
+  if (evalView.frozen) {
+    throw new Error("Esta evaluación pertenece a un grupo cerrado y congelado, por lo que no puede modificarse.");
+  }
+
+  const docId = evalView.docId || evaluationId(evalView.phase, evalView.fileName, evalView.groupId);
+  const ref = doc(evaluations(), docId);
+
+  // Limpiar claves undefined de cada marca para cumplir con Firestore
+  const cleanMarks: Mark[] = newMarks.map((m) => {
+    const clean: Mark = {
+      time: m.time,
+      type: m.type,
+      description: m.description,
+    };
+    if (m.ignored !== undefined) clean.ignored = m.ignored;
+    if (m.ignoredBy !== undefined) clean.ignoredBy = m.ignoredBy;
+    if (m.ignoredAt !== undefined) clean.ignoredAt = m.ignoredAt;
+    if (m.manual !== undefined) clean.manual = m.manual;
+    if (m.addedBy !== undefined) clean.addedBy = m.addedBy;
+    if (m.addedAt !== undefined) clean.addedAt = m.addedAt;
+    return clean;
+  });
+
+  const updatedView = withCurrentScore(
+    { ...evalView, marks: cleanMarks },
+    fallbackGroupId,
+    docId
+  );
+
+  await fastWrite(
+    updateDoc(ref, {
+      marks: cleanMarks,
+      errorCount: updatedView.errorCount,
+      score: updatedView.score,
+    }),
+    2000
+  );
+
+  return updatedView;
 }
 
 // Elimina todas las evaluaciones en lotes de hasta 400 documentos por batch.

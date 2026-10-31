@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { phaseName, CRITICAL_LIMIT, verdictFor } from "../lib/config";
-import { SEVERITIES, SEVERITY_ORDER, classify, type Severity } from "../lib/catalog";
-import { driverData, type DateFilter, type EvaluationView } from "../lib/db";
+import { phaseName, CRITICAL_LIMIT } from "../lib/config";
+import { SEVERITIES, SEVERITY_ORDER, classify, getCatalog, type Severity } from "../lib/catalog";
+import { driverData, updateEvaluationMarks, type DateFilter, type EvaluationView } from "../lib/db";
 import { resolveExerciseEnvironment } from "../lib/exercises";
 import { computeTelemetryAxes } from "../lib/telemetryRadar";
 import { downloadDriverPdf } from "../lib/pdfExport";
+import { useAuth } from "../components/AuthProvider";
+import type { Mark } from "../lib/parse";
 
 type Data = NonNullable<Awaited<ReturnType<typeof driverData>>>;
 type BreakdownItem = Data["breakdown"][number];
@@ -43,6 +45,15 @@ export default function Driver() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [isExportingPdf, setIsExportingPdf] = useState(false);
 
+  // Estados para agregar o anular errores manualmente
+  const { user } = useAuth();
+  const [isSavingMarks, setIsSavingMarks] = useState(false);
+  const [marksActionError, setMarksActionError] = useState("");
+  const [showAddErrorForm, setShowAddErrorForm] = useState(false);
+  const [selectedCatalogError, setSelectedCatalogError] = useState<string>("");
+  const [customErrorText, setCustomErrorText] = useState<string>("");
+  const [manualErrorTime, setManualErrorTime] = useState<string>("00:00:00");
+
   useEffect(() => {
     setData(undefined);
     driverData(id, dateFilter).then(setData).catch((e: Error) => setError(e.message));
@@ -52,7 +63,11 @@ export default function Driver() {
   useEffect(() => {
     setSortField("time");
     setSortDirection("asc");
-  }, [selectedEval]);
+    setMarksActionError("");
+    setShowAddErrorForm(false);
+    setCustomErrorText("");
+    setManualErrorTime("00:00:00");
+  }, [selectedEval?.docId, selectedEval?.fileName]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -91,7 +106,7 @@ export default function Driver() {
   }, [breakdownList]);
 
   // Filtrar exclusivamente los eventos de tipo ERROR y calcular conteos por severidad para el modal
-  const { sortedErrorMarks, severityCounts } = useMemo(() => {
+  const { sortedErrorMarks, severityCounts, ignoredErrorCount } = useMemo(() => {
     const counts: Record<Severity, number> = {
       CRITICO: 0,
       GRAVE: 0,
@@ -100,17 +115,23 @@ export default function Driver() {
     };
 
     if (!selectedEval) {
-      return { sortedErrorMarks: [], severityCounts: counts };
+      return { sortedErrorMarks: [], severityCounts: counts, ignoredErrorCount: 0 };
     }
 
     const evalGroupId = selectedEval.groupId || groupParam || null;
     const evalEnv = resolveExerciseEnvironment(selectedEval.exercise || selectedEval.unit, evalGroupId);
+    let ignoredCount = 0;
 
     const errors = selectedEval.marks
+      .map((m, markIndex) => ({ ...m, markIndex }))
       .filter((m) => m.type === "ERROR")
       .map((m) => {
         const cls = classify(m.description, evalEnv, evalGroupId);
-        counts[cls.severity] = (counts[cls.severity] || 0) + 1;
+        if (m.ignored) {
+          ignoredCount++;
+        } else {
+          counts[cls.severity] = (counts[cls.severity] || 0) + 1;
+        }
         return {
           ...m,
           severity: cls.severity,
@@ -119,6 +140,10 @@ export default function Driver() {
       });
 
     const sorted = [...errors].sort((a, b) => {
+      // Mostrar primero los errores activos y al final los anulados como falso positivo
+      if (Boolean(a.ignored) !== Boolean(b.ignored)) {
+        return a.ignored ? 1 : -1;
+      }
       let comparison = 0;
       if (sortField === "time") {
         comparison = a.time.localeCompare(b.time);
@@ -132,8 +157,116 @@ export default function Driver() {
       return sortDirection === "asc" ? comparison : -comparison;
     });
 
-    return { sortedErrorMarks: sorted, severityCounts: counts };
-  }, [selectedEval, sortField, sortDirection]);
+    return { sortedErrorMarks: sorted, severityCounts: counts, ignoredErrorCount: ignoredCount };
+  }, [selectedEval, sortField, sortDirection, groupParam]);
+
+  // Catálogo de errores agrupado por severidad para el selector de error manual
+  const catalogEntriesBySeverity = useMemo(() => {
+    const evalGroupId = selectedEval?.groupId || groupParam || null;
+    const evalEnv = selectedEval
+      ? resolveExerciseEnvironment(selectedEval.exercise || selectedEval.unit, evalGroupId)
+      : "CARRETERA";
+    const cfg = getCatalog(evalGroupId);
+    const grouped: Record<Severity, { name: string; severity: Severity }[]> = {
+      CRITICO: [],
+      GRAVE: [],
+      MODERADO: [],
+      LEVE: [],
+    };
+    for (const entry of cfg.entries) {
+      const resolved = classify(entry.name, evalEnv, evalGroupId);
+      grouped[resolved.severity].push({ name: entry.name, severity: resolved.severity });
+    }
+    return grouped;
+  }, [selectedEval, groupParam]);
+
+  // Normaliza formato de tiempo (ej. "03:15" -> "0:03:15" o "0:05:10")
+  const formatMarkTime = (raw: string): string => {
+    const clean = raw.trim();
+    if (!clean) return "0:00:00";
+    const parts = clean.split(":").map((p) => p.trim());
+    if (parts.length === 2) {
+      const m = String(Math.max(0, parseInt(parts[0], 10) || 0)).padStart(2, "0");
+      const s = String(Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0))).padStart(2, "0");
+      return `0:${m}:${s}`;
+    }
+    if (parts.length === 3) {
+      const h = String(Math.max(0, parseInt(parts[0], 10) || 0));
+      const m = String(Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0))).padStart(2, "0");
+      const s = String(Math.min(59, Math.max(0, parseInt(parts[2], 10) || 0))).padStart(2, "0");
+      return `${h}:${m}:${s}`;
+    }
+    return "0:00:00";
+  };
+
+  const applyMarksUpdate = async (newMarks: Mark[]) => {
+    if (!selectedEval || isSavingMarks) return;
+    setIsSavingMarks(true);
+    setMarksActionError("");
+    try {
+      const evalGroupId = selectedEval.groupId || groupParam || null;
+      const updatedEval = await updateEvaluationMarks(selectedEval, newMarks, evalGroupId);
+      setSelectedEval(updatedEval);
+      const refreshedData = await driverData(id, dateFilter);
+      if (refreshedData) {
+        setData(refreshedData);
+      }
+    } catch (e: unknown) {
+      setMarksActionError(e instanceof Error ? e.message : "No se pudieron guardar los cambios.");
+    } finally {
+      setIsSavingMarks(false);
+    }
+  };
+
+  const handleToggleIgnoreMark = async (markIndex: number) => {
+    if (!selectedEval || selectedEval.frozen) return;
+    const actor = user?.displayName || user?.email || "Instructor";
+    const nextMarks = selectedEval.marks.map((m, idx) => {
+      if (idx !== markIndex) return m;
+      const nextIgnored = !m.ignored;
+      return {
+        ...m,
+        ignored: nextIgnored,
+        ignoredBy: nextIgnored ? actor : undefined,
+        ignoredAt: nextIgnored ? Date.now() : undefined,
+      };
+    });
+    await applyMarksUpdate(nextMarks);
+  };
+
+  const handleDeleteManualMark = async (markIndex: number) => {
+    if (!selectedEval || selectedEval.frozen) return;
+    const nextMarks = selectedEval.marks.filter((_, idx) => idx !== markIndex);
+    await applyMarksUpdate(nextMarks);
+  };
+
+  const handleAddManualError = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEval || selectedEval.frozen) return;
+    const desc =
+      selectedCatalogError === "__CUSTOM__"
+        ? customErrorText.trim()
+        : selectedCatalogError.trim();
+
+    if (!desc) {
+      setMarksActionError("Selecciona o escribe la descripción del error a agregar.");
+      return;
+    }
+
+    const actor = user?.displayName || user?.email || "Instructor";
+    const newMark: Mark = {
+      time: formatMarkTime(manualErrorTime),
+      type: "ERROR",
+      description: desc,
+      manual: true,
+      addedBy: actor,
+      addedAt: Date.now(),
+    };
+
+    await applyMarksUpdate([...selectedEval.marks, newMark]);
+    setCustomErrorText("");
+    setShowAddErrorForm(false);
+  };
 
   if (error) {
     return (
@@ -1195,13 +1328,137 @@ export default function Driver() {
               {/* Registro exclusivo de Errores cometidos en la prueba */}
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Registro de Errores ({sortedErrorMarks.length})
-                  </h4>
-                  <span className="text-[11px] text-slate-400">
-                    Haz clic en los encabezados para ordenar
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Registro de Errores ({selectedEval.errorCount} vigentes
+                      {ignoredErrorCount > 0 ? ` · ${ignoredErrorCount} falso(s) positivo(s) anulado(s)` : ""})
+                    </h4>
+                    {selectedEval.frozen && (
+                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                        🔒 Grupo congelado (solo lectura)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="no-print flex items-center gap-2">
+                    {!selectedEval.frozen && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMarksActionError("");
+                          setShowAddErrorForm((prev) => !prev);
+                        }}
+                        disabled={isSavingMarks}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 transition cursor-pointer"
+                      >
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                        </svg>
+                        <span>{showAddErrorForm ? "Cancelar" : "Agregar error manual"}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {marksActionError && (
+                  <div className="no-print rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs text-rose-700">
+                    {marksActionError}
+                  </div>
+                )}
+
+                {/* Formulario para agregar un error manualmente */}
+                {showAddErrorForm && !selectedEval.frozen && (() => {
+                  const evalGroupId = selectedEval.groupId || groupParam || null;
+                  const evalEnv = resolveExerciseEnvironment(selectedEval.exercise || selectedEval.unit, evalGroupId);
+                  const previewDesc =
+                    selectedCatalogError === "__CUSTOM__" ? customErrorText.trim() : selectedCatalogError.trim();
+                  const previewCls = previewDesc ? classify(previewDesc, evalEnv, evalGroupId) : null;
+
+                  return (
+                    <form
+                      onSubmit={handleAddManualError}
+                      className="no-print rounded-xl border border-indigo-200 bg-indigo-50/40 p-3.5 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-indigo-950">
+                          Registrar infracción o error manual en la prueba
+                        </span>
+                        {previewCls && (
+                          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${SEVERITIES[previewCls.severity].badge}`}>
+                            Gravedad: {SEVERITIES[previewCls.severity].label} (-{previewCls.weight} pts)
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
+                        <div className="sm:col-span-7 space-y-1">
+                          <label className="block text-[11px] font-semibold text-slate-700">
+                            Error del catálogo del grupo
+                          </label>
+                          <select
+                            value={selectedCatalogError}
+                            onChange={(e) => setSelectedCatalogError(e.target.value)}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                          >
+                            <option value="">— Selecciona un error del catálogo —</option>
+                            {SEVERITY_ORDER.map((sev) => {
+                              const items = catalogEntriesBySeverity[sev];
+                              if (!items.length) return null;
+                              return (
+                                <optgroup key={sev} label={`Nivel ${SEVERITIES[sev].label}`}>
+                                  {items.map((it) => (
+                                    <option key={it.name} value={it.name}>
+                                      {it.name}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              );
+                            })}
+                            <option value="__CUSTOM__">✏️ Escribir otro error personalizado...</option>
+                          </select>
+                        </div>
+
+                        <div className="sm:col-span-2 space-y-1">
+                          <label className="block text-[11px] font-semibold text-slate-700">
+                            Minuto (H:MM:SS)
+                          </label>
+                          <input
+                            type="text"
+                            value={manualErrorTime}
+                            onChange={(e) => setManualErrorTime(e.target.value)}
+                            placeholder="0:00:00"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-3 flex items-end">
+                          <button
+                            type="submit"
+                            disabled={isSavingMarks}
+                            className="w-full rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50 transition cursor-pointer"
+                          >
+                            {isSavingMarks ? "Guardando..." : "Guardar y Recalcular"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {selectedCatalogError === "__CUSTOM__" && (
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-semibold text-slate-700">
+                            Descripción personalizada del error
+                          </label>
+                          <input
+                            type="text"
+                            value={customErrorText}
+                            onChange={(e) => setCustomErrorText(e.target.value)}
+                            placeholder="Ej. Invadir carril contrario en curva cerrada"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+                      )}
+                    </form>
+                  );
+                })()}
 
                 {sortedErrorMarks.length === 0 ? (
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-6 text-center text-xs text-emerald-800">
@@ -1262,28 +1519,97 @@ export default function Driver() {
                               </span>
                             </div>
                           </th>
+
+                          {/* Columna Acciones (solo en grupos abiertos y oculta al imprimir) */}
+                          {!selectedEval.frozen && (
+                            <th className="no-print px-3.5 py-2.5 text-right">
+                              Acción
+                            </th>
+                          )}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {sortedErrorMarks.map((m, idx) => (
+                        {sortedErrorMarks.map((m) => (
                           <tr
-                            key={idx}
-                            className="bg-rose-50/20 hover:bg-rose-50/40 transition"
+                            key={m.markIndex}
+                            className={
+                              m.ignored
+                                ? "no-print bg-slate-50/80 text-slate-400 transition"
+                                : "bg-rose-50/20 hover:bg-rose-50/40 transition"
+                            }
                           >
                             <td className="px-3.5 py-2.5 font-mono text-slate-600 font-medium whitespace-nowrap">
-                              {m.time}
+                              <span className={m.ignored ? "line-through text-slate-400" : ""}>{m.time}</span>
                             </td>
                             <td className="px-3.5 py-2.5 font-medium text-slate-800">
-                              {m.description}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={m.ignored ? "line-through text-slate-400" : ""}>
+                                  {m.description}
+                                </span>
+                                {m.manual && (
+                                  <span
+                                    className="rounded-md bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700"
+                                    title={m.addedBy ? `Agregado manualmente por ${m.addedBy}` : "Agregado manualmente"}
+                                  >
+                                    Manual
+                                  </span>
+                                )}
+                                {m.ignored && (
+                                  <span
+                                    className="rounded-md bg-slate-200/80 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600"
+                                    title={m.ignoredBy ? `Anulado como falso positivo por ${m.ignoredBy}` : "Anulado como falso positivo"}
+                                  >
+                                    Falso positivo anulado
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-3.5 py-2.5 text-right whitespace-nowrap">
                               <span
-                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${SEVERITIES[m.severity].badge
-                                  }`}
+                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
+                                  m.ignored
+                                    ? "bg-slate-100 text-slate-400 border border-slate-200 line-through"
+                                    : SEVERITIES[m.severity].badge
+                                }`}
                               >
                                 {SEVERITIES[m.severity].label}
                               </span>
                             </td>
+                            {!selectedEval.frozen && (
+                              <td className="no-print px-3.5 py-2.5 text-right whitespace-nowrap">
+                                {m.manual ? (
+                                  <button
+                                    type="button"
+                                    disabled={isSavingMarks}
+                                    onClick={() => handleDeleteManualMark(m.markIndex)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50 transition cursor-pointer"
+                                    title="Eliminar este error agregado manualmente"
+                                  >
+                                    Eliminar
+                                  </button>
+                                ) : m.ignored ? (
+                                  <button
+                                    type="button"
+                                    disabled={isSavingMarks}
+                                    onClick={() => handleToggleIgnoreMark(m.markIndex)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 transition cursor-pointer"
+                                    title="Restaurar este error para que vuelva a contar en la calificación"
+                                  >
+                                    Restaurar
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={isSavingMarks}
+                                    onClick={() => handleToggleIgnoreMark(m.markIndex)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800 disabled:opacity-50 transition cursor-pointer"
+                                    title="Anular este evento como falso positivo del simulador (no afectará la calificación)"
+                                  >
+                                    Falso positivo
+                                  </button>
+                                )}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
