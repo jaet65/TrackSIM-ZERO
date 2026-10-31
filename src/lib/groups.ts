@@ -1,8 +1,6 @@
 import {
   collection,
   doc,
-  getDoc,
-  getDocs,
   query,
   setDoc,
   updateDoc,
@@ -11,7 +9,7 @@ import {
   orderBy,
   deleteDoc,
 } from "firebase/firestore";
-import { firestore, getDb } from "./firebase";
+import { firestore, getDb, safeGetDoc, safeGetDocs, fastWrite } from "./firebase";
 import type { EvaluationDoc } from "./db";
 import { withCurrentScore } from "./db";
 import {
@@ -91,7 +89,7 @@ export function hydrateGroupRules(g: GroupDoc): void {
 
 export async function listGroups(): Promise<GroupDoc[]> {
   await Promise.all([waitForExerciseSaves(), waitForCatalogSaves()]);
-  const snap = await getDocs(query(groupsCol(), orderBy("createdAt", "desc")));
+  const snap = await safeGetDocs(query(groupsCol(), orderBy("createdAt", "desc")));
   const list = snap.docs.map((d) => ({
     id: d.id,
     ...(d.data() as Omit<GroupDoc, "id">),
@@ -104,7 +102,7 @@ export async function listGroups(): Promise<GroupDoc[]> {
 
 export async function getGroup(groupId: string): Promise<GroupDoc | null> {
   await Promise.all([waitForExerciseSaves(), waitForCatalogSaves()]);
-  const snap = await getDoc(doc(groupsCol(), groupId));
+  const snap = await safeGetDoc(doc(groupsCol(), groupId));
   if (!snap.exists()) return null;
   const g: GroupDoc = { id: snap.id, ...(snap.data() as Omit<GroupDoc, "id">) };
   hydrateGroupRules(g);
@@ -153,7 +151,7 @@ export async function createGroup(
     exercisesUpdatedBy: user.email,
   };
 
-  await setDoc(doc(groupsCol(), id), groupData);
+  await fastWrite(setDoc(doc(groupsCol(), id), groupData));
   hydrateGroupRules(groupData);
   // Se establece automáticamente como el grupo activo para nuevas subidas
   setActiveGroupId(id);
@@ -172,7 +170,7 @@ export async function closeAndFreezeGroup(
   await Promise.all([loadCatalog(false, groupId), loadExercises(false, groupId)]);
 
   const grpRef = doc(groupsCol(), groupId);
-  const grpSnap = await getDoc(grpRef);
+  const grpSnap = await safeGetDoc(grpRef);
   if (!grpSnap.exists()) throw new Error("El grupo no existe.");
   const grpData = { id: grpSnap.id, ...(grpSnap.data() as Omit<GroupDoc, "id">) };
   if (grpData.status === "closed") throw new Error("El grupo ya se encuentra cerrado y congelado.");
@@ -181,7 +179,7 @@ export async function closeAndFreezeGroup(
 
   // Obtener todas las evaluaciones asociadas al grupo
   const q = query(evaluationsCol(), where("groupId", "==", groupId));
-  const snap = await getDocs(q);
+  const snap = await safeGetDocs(q);
 
   const chunkSize = 400;
   const docs = snap.docs;
@@ -212,18 +210,20 @@ export async function closeAndFreezeGroup(
       });
     }
 
-    await batch.commit();
+    await fastWrite(batch.commit());
   }
 
   // Actualizar el estado del grupo a "closed"
-  await updateDoc(grpRef, {
-    status: "closed",
-    closedAt: Date.now(),
-    closedBy: user.name || user.email,
-    closedByEmail: user.email,
-    evaluationCount: docs.length,
-    driverCount: driversSet.size,
-  });
+  await fastWrite(
+    updateDoc(grpRef, {
+      status: "closed",
+      closedAt: Date.now(),
+      closedBy: user.name || user.email,
+      closedByEmail: user.email,
+      evaluationCount: docs.length,
+      driverCount: driversSet.size,
+    })
+  );
 
   return { evaluationsFrozen: docs.length };
 }
@@ -236,7 +236,7 @@ export async function deleteGroupEvaluations(groupId: string): Promise<number> {
   if (!groupId) throw new Error("Debe indicarse un ID de grupo válido.");
 
   const q = query(evaluationsCol(), where("groupId", "==", groupId));
-  const snap = await getDocs(q);
+  const snap = await safeGetDocs(q);
   if (snap.empty) return 0;
 
   let totalDeleted = 0;
@@ -249,18 +249,20 @@ export async function deleteGroupEvaluations(groupId: string): Promise<number> {
     for (const d of chunk) {
       batch.delete(d.ref);
     }
-    await batch.commit();
+    await fastWrite(batch.commit());
     totalDeleted += chunk.length;
   }
 
   // Actualizar contadores del grupo
   const grpRef = doc(groupsCol(), groupId);
-  const grpSnap = await getDoc(grpRef);
+  const grpSnap = await safeGetDoc(grpRef);
   if (grpSnap.exists()) {
-    await updateDoc(grpRef, {
-      evaluationCount: 0,
-      driverCount: 0,
-    });
+    await fastWrite(
+      updateDoc(grpRef, {
+        evaluationCount: 0,
+        driverCount: 0,
+      })
+    );
   }
 
   return totalDeleted;
@@ -272,7 +274,7 @@ export async function deleteGroupEvaluations(groupId: string): Promise<number> {
 export async function deleteGroup(groupId: string): Promise<void> {
   await deleteGroupEvaluations(groupId);
   const grpRef = doc(groupsCol(), groupId);
-  await deleteDoc(grpRef);
+  await fastWrite(deleteDoc(grpRef));
   removeGroupCatalog(groupId);
   removeGroupExercises(groupId);
   if (getActiveGroupId() === groupId) {

@@ -38,3 +38,10 @@ createRoot(document.getElementById("root")!).render(
     </AuthProvider>
   </StrictMode>,
 );
+
+// Registrar Service Worker en producción (Web / localhost) para carga instantánea sin conexión
+if (import.meta.env.PROD && !isFileProtocol && typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}

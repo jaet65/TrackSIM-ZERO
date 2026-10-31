@@ -1,5 +1,5 @@
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
-import { firestore } from "./firebase";
+import { doc, setDoc, updateDoc } from "firebase/firestore";
+import { firestore, safeGetDoc, fastWrite } from "./firebase";
 
 export type ExerciseEnvironment = "AUTO" | "CARRETERA" | "MONTANA" | "CIUDAD";
 
@@ -156,7 +156,7 @@ export async function loadExercises(force = false, groupId?: string | null): Pro
   await savingPromise;
 
   if (!loading || force) {
-    loading = getDoc(ref())
+    loading = safeGetDoc(ref())
       .then((snap) => {
         const { phases, environments } = sanitizeExercises(snap.exists() ? snap.data() : undefined);
         current = phases;
@@ -171,7 +171,7 @@ export async function loadExercises(force = false, groupId?: string | null): Pro
   const basePhases = await loading;
 
   if (groupId) {
-    const grpSnap = await getDoc(groupRef(groupId));
+    const grpSnap = await safeGetDoc(groupRef(groupId));
     if (grpSnap.exists()) {
       const grpData = grpSnap.data();
       if (grpData?.exercises) {
@@ -199,14 +199,16 @@ export async function saveExercises(
     // Actualizar en memoria de inmediato para evitar lecturas obsoletas al cambiar de pestaña
     setGroupExercises(groupId, clean.phases, clean.environments);
     const task = savingPromise.then(() =>
-      updateDoc(groupRef(groupId), {
-        exercises: {
-          phases: clean.phases,
-          environments: clean.environments,
-        },
-        exercisesUpdatedAt: Date.now(),
-        exercisesUpdatedBy: editorEmail,
-      })
+      fastWrite(
+        updateDoc(groupRef(groupId), {
+          exercises: {
+            phases: clean.phases,
+            environments: clean.environments,
+          },
+          exercisesUpdatedAt: Date.now(),
+          exercisesUpdatedBy: editorEmail,
+        })
+      )
     );
     savingPromise = task.catch(() => {});
     await task;
@@ -217,12 +219,14 @@ export async function saveExercises(
   currentEnvs = clean.environments;
   loading = Promise.resolve(clean.phases);
   const task = savingPromise.then(() =>
-    setDoc(ref(), {
-      phases: clean.phases,
-      environments: clean.environments,
-      updatedAt: Date.now(),
-      updatedBy: editorEmail,
-    })
+    fastWrite(
+      setDoc(ref(), {
+        phases: clean.phases,
+        environments: clean.environments,
+        updatedAt: Date.now(),
+        updatedBy: editorEmail,
+      })
+    )
   );
   savingPromise = task.catch(() => {});
   await task;

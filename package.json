@@ -17,12 +17,14 @@
   },
   "build": {
     "appId": "com.tracksim.zero",
-    "productName": "TrackSIM ZERO",
+    "productName": "TrackSIM PRO",
     "icon": "public/favicon.ico",
     "protocols": [
       {
-        "name": "TrackSIM ZERO",
-        "schemes": ["tracksim"]
+        "name": "TrackSIM PRO",
+        "schemes": [
+          "tracksim"
+        ]
       }
     ],
     "publish": {
@@ -41,11 +43,13 @@
     "asar": true,
     "win": {
       "icon": "public/favicon.ico",
-      "artifactName": "TrackSIM-ZERO-Setup-${version}.${ext}",
+      "artifactName": "TrackSIM-PRO-Setup-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },

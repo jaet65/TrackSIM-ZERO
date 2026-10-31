@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "./AuthProvider";
 import { ALLOWED_DOMAIN } from "../lib/config";
 import UpdateNotifier from "./UpdateNotifier";
+import NetworkStatusBadge from "./NetworkStatusBadge";
 
 export default function ProtectedLayout() {
   const { user, loading, error, signIn, logout } = useAuth();
@@ -59,7 +60,8 @@ export default function ProtectedLayout() {
             </div>
           )}
 
-          <div className="pt-2 flex justify-center">
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+            <NetworkStatusBadge />
             <UpdateNotifier />
           </div>
         </main>
@@ -77,7 +79,7 @@ export default function ProtectedLayout() {
               <img
                 src="/Logo.png"
                 alt="TrackSIM Logo"
-                className="h-9 w-9 object-contain rounded-full shadow-sm group-hover:scale-105 transition"
+                className="h-12 w-12 object-contain rounded-full shadow-sm group-hover:scale-105 transition"
               />
               <div>
                 <span className="font-bold tracking-tight text-slate-900 group-hover:text-indigo-600 transition">
@@ -139,7 +141,8 @@ export default function ProtectedLayout() {
             </NavLink>
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <NetworkStatusBadge />
             <div className="hidden sm:flex flex-col text-right">
               <span className="text-xs font-semibold text-slate-800">{user.displayName || "Usuario"}</span>
               <span className="text-[11px] text-slate-500">{user.email}</span>

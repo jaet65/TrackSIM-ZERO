@@ -1,5 +1,5 @@
-import { collection, doc, getDoc, getDocs, query, setDoc, where, writeBatch } from "firebase/firestore";
-import { firestore, getDb } from "./firebase";
+import { collection, doc, query, setDoc, where, writeBatch } from "firebase/firestore";
+import { firestore, getDb, safeGetDoc, safeGetDocs, fastWrite } from "./firebase";
 import type { Mark, ParsedReport, TelemetryMetrics } from "./parse";
 import { evaluateMarks } from "./parse";
 import { classify } from "./catalog";
@@ -71,7 +71,7 @@ export async function saveEvaluation(
 ): Promise<"saved" | "duplicate"> {
   // Verificar también el formato legado sin prefijo de grupo para evitar duplicar registros antiguos del mismo grupo
   const legacyRef = doc(evaluations(), evaluationId(phase, fileName));
-  const legacySnap = await getDoc(legacyRef);
+  const legacySnap = await safeGetDoc(legacyRef, 1500);
   if (legacySnap.exists()) {
     const existingGroup = (legacySnap.data() as EvaluationDoc).groupId || "";
     if (existingGroup === (groupId || "")) {
@@ -80,7 +80,7 @@ export async function saveEvaluation(
   }
 
   const ref = doc(evaluations(), evaluationId(phase, fileName, groupId));
-  if (groupId && (await getDoc(ref)).exists()) return "duplicate";
+  if (groupId && (await safeGetDoc(ref, 1500)).exists()) return "duplicate";
 
   const data: EvaluationDoc = {
     phase,
@@ -118,7 +118,7 @@ export async function saveEvaluation(
     }
   }
 
-  await setDoc(ref, data);
+  await fastWrite(setDoc(ref, data), 2000);
   return "saved";
 }
 
@@ -358,7 +358,7 @@ async function fetchEvaluations(field?: "phase" | "driverId", value?: number | s
   const q = field !== undefined && value !== undefined
     ? query(evaluations(), where(field, "==", value))
     : query(evaluations());
-  const docs = (await getDocs(q)).docs.map((d) => withCurrentScore(d.data() as EvaluationDoc, filter?.groupId));
+  const docs = (await safeGetDocs(q)).docs.map((d) => withCurrentScore(d.data() as EvaluationDoc, filter?.groupId));
   
   return docs.filter((d) => {
     if (!matchesDateRange(d.date, filter)) return false;
@@ -395,7 +395,7 @@ export async function getPhasesWithEvaluations(dateFilter?: DateFilter): Promise
 
 // Devuelve los nombres únicos de ejercicios detectados en las evaluaciones subidas (del grupo o globales)
 export async function listUploadedExerciseNames(groupId?: string | null): Promise<string[]> {
-  const snap = await getDocs(query(evaluations()));
+  const snap = await safeGetDocs(query(evaluations()));
   const byKey = new Map<string, string>();
   // Priorizar los del grupo seleccionado y luego incluir el resto
   const allDocs = snap.docs.map((d) => d.data() as EvaluationDoc);
@@ -569,7 +569,7 @@ export async function driverData(driverId: string, filter?: DateFilter) {
 
 // Elimina todas las evaluaciones en lotes de hasta 400 documentos por batch.
 export async function deleteAllEvaluations(): Promise<number> {
-  const snap = await getDocs(evaluations());
+  const snap = await safeGetDocs(evaluations());
   if (snap.empty) return 0;
 
   let totalDeleted = 0;
@@ -582,7 +582,7 @@ export async function deleteAllEvaluations(): Promise<number> {
     for (const d of chunk) {
       batch.delete(d.ref);
     }
-    await batch.commit();
+    await fastWrite(batch.commit());
     totalDeleted += chunk.length;
   }
 

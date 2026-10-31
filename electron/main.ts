@@ -323,11 +323,15 @@ function startEmbeddedStaticServer(): Promise<number> {
           ".js": "text/javascript; charset=utf-8",
           ".css": "text/css; charset=utf-8",
           ".json": "application/json; charset=utf-8",
+          ".webmanifest": "application/manifest+json; charset=utf-8",
           ".png": "image/png",
           ".jpg": "image/jpeg",
           ".jpeg": "image/jpeg",
           ".svg": "image/svg+xml",
           ".ico": "image/x-icon",
+          ".woff": "font/woff",
+          ".woff2": "font/woff2",
+          ".ttf": "font/ttf",
         };
         res.writeHead(200, { "Content-Type": mimeTypes[ext] || "application/octet-stream" });
         fs.createReadStream(filePath).pipe(res);
@@ -337,18 +341,36 @@ function startEmbeddedStaticServer(): Promise<number> {
       }
     });
 
-    // Intentamos escuchar en un puerto libre de loopback (127.0.0.1 / localhost)
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      if (addr && typeof addr === "object") {
-        localStaticServer = srv;
-        resolve(addr.port);
-      } else {
-        reject(new Error("Could not bind static server"));
-      }
-    });
+    // Usamos un puerto fijo preferido (51799) para que el origen http://localhost:51799 sea siempre el mismo
+    // entre reinicios de la app Electron y se conserven intactos IndexedDB (caché offline de Firestore + sesión Auth)
+    // y localStorage incluso cuando el usuario abre la app sin internet.
+    const candidatePorts = [51799, 51800, 51801, 0];
+    let portIdx = 0;
 
-    srv.on("error", reject);
+    const tryListen = () => {
+      const targetPort = candidatePorts[portIdx] ?? 0;
+      const onError = (err: NodeJS.ErrnoException) => {
+        if ((err.code === "EADDRINUSE" || err.code === "EACCES") && portIdx < candidatePorts.length - 1) {
+          portIdx++;
+          tryListen();
+        } else {
+          reject(err);
+        }
+      };
+      srv.once("error", onError);
+      srv.listen(targetPort, "127.0.0.1", () => {
+        srv.removeListener("error", onError);
+        const addr = srv.address();
+        if (addr && typeof addr === "object") {
+          localStaticServer = srv;
+          resolve(addr.port);
+        } else {
+          reject(new Error("Could not bind static server"));
+        }
+      });
+    };
+
+    tryListen();
   });
 }
 
@@ -631,6 +653,9 @@ function downloadFileWithProgress(
         let receivedBytes = 0;
 
         const fileStream = fs.createWriteStream(destPath);
+        res.setTimeout(20000, () => {
+          req.destroy(new Error("Tiempo de espera agotado por conexión inestable durante la descarga"));
+        });
         res.on("data", (chunk: Buffer) => {
           receivedBytes += chunk.length;
           if (totalBytes > 0) {
@@ -655,6 +680,10 @@ function downloadFileWithProgress(
         });
       }
     );
+
+    req.setTimeout(20000, () => {
+      req.destroy(new Error("Tiempo de espera agotado al conectar para descargar la actualización"));
+    });
 
     req.on("error", (err) => {
       fs.unlink(destPath, () => {});

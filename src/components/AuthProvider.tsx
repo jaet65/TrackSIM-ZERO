@@ -35,13 +35,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async () => {
     setError("");
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setError(
+        "Sin conexión a internet. Para iniciar sesión por primera vez con Google necesitas red; una vez iniciada, tu sesión se mantendrá guardada incluso sin conexión."
+      );
+      return;
+    }
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ hd: ALLOWED_DOMAIN, prompt: "select_account" });
     try {
       await signInWithPopup(auth, provider);
     } catch (e) {
       const code = (e as { code?: string }).code;
-      if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") setError((e as Error).message);
+      if (code === "auth/network-request-failed") {
+        setError("Conexión inestable al contactar con Google. Verifica tu internet e inténtalo de nuevo.");
+      } else if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") {
+        setError((e as Error).message);
+      }
     }
   };
 

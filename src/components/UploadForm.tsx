@@ -31,10 +31,22 @@ type Result = {
   uncataloged?: string[];
 };
 
-export default function UploadForm({ onDone }: { onDone: () => void }) {
+export default function UploadForm({
+  selectedGroupId,
+  onDone,
+}: {
+  selectedGroupId?: string;
+  onDone: () => void;
+}) {
   const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{
+    current: number;
+    total: number;
+    percent: number;
+  } | null>(null);
   const { user } = useAuth();
   const [results, setResults] = useState<Result[]>([]);
+  const [showResultsModal, setShowResultsModal] = useState(false);
   const [fileCount, setFileCount] = useState<number>(0);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [showDesktopModal, setShowDesktopModal] = useState(false);
@@ -54,9 +66,9 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
   const [modalBusy, setModalBusy] = useState(false);
   const [modalError, setModalError] = useState("");
 
-  const refreshActiveGroup = async () => {
+  const refreshActiveGroup = async (explicitGroupId?: string) => {
     setLoadingGroup(true);
-    const grpId = getActiveGroupId();
+    const grpId = explicitGroupId !== undefined ? explicitGroupId : getActiveGroupId();
     if (grpId) {
       try {
         const grp = await getGroup(grpId);
@@ -75,8 +87,8 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
   };
 
   useEffect(() => {
-    refreshActiveGroup();
-  }, []);
+    refreshActiveGroup(selectedGroupId);
+  }, [selectedGroupId]);
 
   const handleLaunchDesktopApp = () => {
     let appLaunched = false;
@@ -169,13 +181,19 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
     if (!files.length) return;
 
     setBusy(true);
+    setUploadProgress({ current: 0, total: files.length, percent: 0 });
     const out: Result[] = [];
-    for (const f of files) {
+
+    try {
+      await Promise.all([
+        loadCatalog(false, activeGroup.id),
+        loadExercises(false, activeGroup.id),
+      ]);
+    } catch {}
+
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
       try {
-        await Promise.all([
-          loadCatalog(false, activeGroup.id),
-          loadExercises(false, activeGroup.id),
-        ]);
         const report = parseReport(decodeCsv(await f.arrayBuffer()), activeGroup.id);
         const phase = phaseForExercise(report.exercise, activeGroup.id);
         if (!phase) throw new Error(`La unidad «${report.exercise}» no está en el catálogo de ejercicios del grupo «${activeGroup.name}».`);
@@ -202,11 +220,19 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
       } catch (err) {
         out.push({ file: f.name, status: "error", message: (err as Error).message });
       }
+      const completed = i + 1;
+      setUploadProgress({
+        current: completed,
+        total: files.length,
+        percent: Math.round((completed / files.length) * 100),
+      });
     }
     setResults(out);
+    setShowResultsModal(true);
     form.reset();
     setFileCount(0);
     setBusy(false);
+    setUploadProgress(null);
     onDone();
   }
 
@@ -392,13 +418,15 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleOpenModal}
-              className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 underline"
-            >
-              Cambiar Grupo
-            </button>
+            {results.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowResultsModal(true)}
+                className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 underline"
+              >
+                Ver último registro ({results.length})
+              </button>
+            )}
             <Link
               to="/grupos"
               className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline"
@@ -472,7 +500,12 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
             {busy ? (
               <>
                 <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                <span>Procesando telemetría…</span>
+                <span>
+                  Procesando telemetría…{" "}
+                  {uploadProgress
+                    ? `${uploadProgress.percent}% (${uploadProgress.current}/${uploadProgress.total})`
+                    : "0%"}
+                </span>
               </>
             ) : (
               <>
@@ -693,59 +726,99 @@ export default function UploadForm({ onDone }: { onDone: () => void }) {
         </div>
       )}
 
-      {results.length > 0 && (
-        <div className="mt-4 border-t border-slate-100 pt-3">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Registro de Carga ({results.length})
-            </h3>
-            <button
-              type="button"
-              onClick={() => setResults([])}
-              className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-              title="Limpiar registro de carga"
-            >
-              <span>Limpiar</span>
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <ul className="space-y-2 text-xs">
-            {results.map((r) => (
-              <li
-                key={r.file}
-                className="rounded-xl border border-slate-200 bg-slate-50/70 p-3"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-mono text-slate-800 font-medium">{r.file}</span>
-                  <div>
-                    {r.status === "saved" && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                        Fase {r.phase} · {r.driver} (Calif: {r.score}, {r.errors} errores)
-                      </span>
-                    )}
-                    {r.status === "duplicate" && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200/80 px-2.5 py-0.5 text-[11px] text-slate-600">
-                        Ya cargado previamente (omitido)
-                      </span>
-                    )}
-                    {r.status === "error" && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700 border border-rose-200">
-                        {r.message}
-                      </span>
-                    )}
-                  </div>
+      {/* Modal de Registro de Carga al finalizar el procesamiento */}
+      {showResultsModal && results.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Registro de Carga ({results.length} {results.length === 1 ? "archivo" : "archivos"})
+                </h3>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 font-semibold text-emerald-700 border border-emerald-200">
+                    ✓ {results.filter((r) => r.status === "saved").length} guardados
+                  </span>
+                  {results.some((r) => r.status === "duplicate") && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 font-medium text-slate-600 border border-slate-200">
+                      • {results.filter((r) => r.status === "duplicate").length} omitidos (duplicados)
+                    </span>
+                  )}
+                  {results.some((r) => r.status === "error") && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 font-semibold text-rose-700 border border-rose-200">
+                      ✕ {results.filter((r) => r.status === "error").length} con error
+                    </span>
+                  )}
                 </div>
-                {!!r.uncataloged?.length && (
-                  <div className="mt-2 rounded-lg bg-amber-50 p-2.5 text-[11px] text-amber-800 border border-amber-200">
-                    ⚠️ Errores sin catalogar (evaluados por defecto como moderados): {r.uncataloged.join("; ")}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowResultsModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+                title="Cerrar ventana"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="my-4 flex-1 overflow-y-auto pr-1">
+              <ul className="space-y-2 text-xs">
+                {results.map((r) => (
+                  <li
+                    key={r.file}
+                    className="rounded-xl border border-slate-200 bg-slate-50/70 p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-mono text-slate-800 font-medium break-all">{r.file}</span>
+                      <div>
+                        {r.status === "saved" && (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            Fase {r.phase} · {r.driver} (Calif: {r.score}, {r.errors} errores)
+                          </span>
+                        )}
+                        {r.status === "duplicate" && (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200/80 px-2.5 py-0.5 text-[11px] text-slate-600">
+                            Ya cargado previamente (omitido)
+                          </span>
+                        )}
+                        {r.status === "error" && (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700 border border-rose-200">
+                            {r.message}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {!!r.uncataloged?.length && (
+                      <div className="mt-2 rounded-lg bg-amber-50 p-2.5 text-[11px] text-amber-800 border border-amber-200">
+                        ⚠️ Errores sin catalogar (evaluados por defecto como moderados): {r.uncataloged.join("; ")}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setResults([]);
+                  setShowResultsModal(false);
+                }}
+                className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition"
+              >
+                Limpiar registro
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowResultsModal(false)}
+                className="rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:from-indigo-700 hover:to-blue-700 transition"
+              >
+                Aceptar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

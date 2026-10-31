@@ -1,5 +1,5 @@
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
-import { firestore } from "./firebase";
+import { doc, setDoc, updateDoc } from "firebase/firestore";
+import { firestore, safeGetDoc, fastWrite } from "./firebase";
 import {
   DEFAULT_CONFIG,
   sanitizeCatalog,
@@ -24,7 +24,7 @@ export function waitForCatalogSaves(): Promise<void> {
 export async function loadCatalog(force = false, groupId?: string | null): Promise<CatalogConfig> {
   await savingPromise;
   if (!loading || force) {
-    loading = getDoc(ref())
+    loading = safeGetDoc(ref())
       .then((snap) => {
         const cfg = snap.exists() ? sanitizeCatalog(snap.data()) : DEFAULT_CONFIG;
         setCatalog(cfg);
@@ -38,7 +38,7 @@ export async function loadCatalog(force = false, groupId?: string | null): Promi
   const baseCfg = await loading;
 
   if (groupId) {
-    const grpSnap = await getDoc(groupRef(groupId));
+    const grpSnap = await safeGetDoc(groupRef(groupId));
     if (grpSnap.exists()) {
       const grpData = grpSnap.data();
       if (grpData?.catalog) {
@@ -60,11 +60,13 @@ export async function saveCatalog(cfg: CatalogConfig, editorEmail: string, group
   if (groupId) {
     setGroupCatalog(groupId, clean);
     const writeOp = savingPromise.then(() =>
-      updateDoc(groupRef(groupId), {
-        catalog: clean,
-        catalogUpdatedAt: Date.now(),
-        catalogUpdatedBy: editorEmail,
-      })
+      fastWrite(
+        updateDoc(groupRef(groupId), {
+          catalog: clean,
+          catalogUpdatedAt: Date.now(),
+          catalogUpdatedBy: editorEmail,
+        })
+      )
     );
     savingPromise = writeOp.catch(() => {});
     await writeOp;
@@ -74,7 +76,7 @@ export async function saveCatalog(cfg: CatalogConfig, editorEmail: string, group
   setCatalog(clean);
   loading = Promise.resolve(clean);
   const writeOp = savingPromise.then(() =>
-    setDoc(ref(), { ...clean, updatedAt: Date.now(), updatedBy: editorEmail })
+    fastWrite(setDoc(ref(), { ...clean, updatedAt: Date.now(), updatedBy: editorEmail }))
   );
   savingPromise = writeOp.catch(() => {});
   await writeOp;

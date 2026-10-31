@@ -799,7 +799,7 @@ export async function downloadDriverPdf(driverId: string, driverName: string, fi
   const a = document.createElement("a");
   a.href = url;
   const cleanName = driverName.replace(/[^\w\s-]/gi, "").trim().replace(/\s+/g, "_");
-  a.download = `Expediente_${cleanName}.pdf`;
+  a.download = `${cleanName}_expediente.pdf`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -835,7 +835,7 @@ export async function downloadBulkReportsZip(
       const driverPdfBytes = await generateDriverReportPdf(row.driverId, filter);
       if (driverPdfBytes && expedientesFolder) {
         const cleanName = row.driver.replace(/[^\w\s-]/gi, "").trim().replace(/\s+/g, "_");
-        expedientesFolder.file(`Expediente_${cleanName}.pdf`, driverPdfBytes);
+        expedientesFolder.file(`${cleanName}_expediente.pdf`, driverPdfBytes);
       }
     } catch (err) {
       console.error(`Error generando expediente para ${row.driver}:`, err);

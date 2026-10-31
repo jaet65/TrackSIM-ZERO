@@ -360,7 +360,7 @@ export default function Home() {
               onChange={(e) => {
                 const val = e.target.value;
                 setSelectedGroupId(val);
-                if (val) setActiveGroupId(val);
+                setActiveGroupId(val || null);
                 updateUrl(selectedPhase, startDate, endDate, val);
               }}
               className="rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm focus:border-indigo-600 focus:bg-white focus:outline-none transition cursor-pointer"
@@ -450,6 +450,7 @@ export default function Home() {
 
       {/* Carga de Archivos */}
       <UploadForm
+        selectedGroupId={selectedGroupId}
         onDone={() => {
           listGroups().then(setAllGroups).catch(() => {});
           const activeId = getActiveGroupId();
