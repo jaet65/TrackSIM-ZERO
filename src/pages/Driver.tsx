@@ -453,184 +453,184 @@ export default function Driver() {
             </p>
           </div>
         ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {phases.map((p) => {
-            // Evaluaciones correspondientes a esta fase para promediar ejes de telemetría
-            const phaseEvals = evals.filter((e) => e.phase === p.phase);
-            const telemetries = phaseEvals.map((e) => e.telemetry);
-            const firstExerciseName = phaseEvals[0]?.exercise || "";
-            const phaseGroupId = phaseEvals[0]?.groupId || groupParam || null;
-            const radarSummary = computeTelemetryAxes(telemetries, firstExerciseName, phaseGroupId);
-            const axes = radarSummary.axes;
+          <div className="grid gap-4 sm:grid-cols-2">
+            {phases.map((p) => {
+              // Evaluaciones correspondientes a esta fase para promediar ejes de telemetría
+              const phaseEvals = evals.filter((e) => e.phase === p.phase);
+              const telemetries = phaseEvals.map((e) => e.telemetry);
+              const firstExerciseName = phaseEvals[0]?.exercise || "";
+              const phaseGroupId = phaseEvals[0]?.groupId || groupParam || null;
+              const radarSummary = computeTelemetryAxes(telemetries, firstExerciseName, phaseGroupId);
+              const axes = radarSummary.axes;
 
-            // Coordenadas para radar en layout horizontal (size: 210x170, radius: 46)
-            const miniW = 210;
-            const miniH = 165;
-            const cX = miniW / 2;
-            const cY = miniH / 2;
-            const r = 44;
+              // Coordenadas para radar en layout horizontal (size: 210x170, radius: 46)
+              const miniW = 210;
+              const miniH = 165;
+              const cX = miniW / 2;
+              const cY = miniH / 2;
+              const r = 44;
 
-            const getCoord = (index: number, val: number, customR = r) => {
-              const angle = (Math.PI * 2 / 5) * index - Math.PI / 2;
-              const rad = (val / 100) * customR;
-              return {
-                x: cX + rad * Math.cos(angle),
-                y: cY + rad * Math.sin(angle),
+              const getCoord = (index: number, val: number, customR = r) => {
+                const angle = (Math.PI * 2 / 5) * index - Math.PI / 2;
+                const rad = (val / 100) * customR;
+                return {
+                  x: cX + rad * Math.cos(angle),
+                  y: cY + rad * Math.sin(angle),
+                };
               };
-            };
 
-            const miniPolygonPoints = axes
-              .map((a, i) => {
-                const c = getCoord(i, a.value);
-                return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
-              })
-              .join(" ");
+              const miniPolygonPoints = axes
+                .map((a, i) => {
+                  const c = getCoord(i, a.value);
+                  return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+                })
+                .join(" ");
 
-            return (
-              <div
-                key={p.phase}
-                className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4"
-              >
-                {/* Lado Izquierdo: Información de la Fase */}
-                <div className="flex-1 space-y-3 w-full">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
-                        Fase {p.phase}
+              return (
+                <div
+                  key={p.phase}
+                  className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4"
+                >
+                  {/* Lado Izquierdo: Información de la Fase */}
+                  <div className="flex-1 space-y-3 w-full">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
+                          Fase {p.phase}
+                        </span>
+                        <h3 className="text-base font-bold text-slate-900 leading-snug">{phaseName(p.phase)}</h3>
+                      </div>
+                      <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${p.color}`}>
+                        {p.verdict}
                       </span>
-                      <h3 className="text-base font-bold text-slate-900 leading-snug">{phaseName(p.phase)}</h3>
                     </div>
-                    <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${p.color}`}>
-                      {p.verdict}
+
+                    <div className="grid grid-cols-2 gap-2 text-xs border-t border-slate-100 pt-3">
+                      <div className="rounded-xl bg-slate-50 p-2 border border-slate-100">
+                        <span className="text-[10px] text-slate-400 block font-medium">Ejercicios</span>
+                        <span className="text-sm font-bold text-slate-900">{p.exercises}</span>
+                        <span className="text-slate-500 text-[11px]"> de {p.expected}</span>
+                      </div>
+
+                      <div className="rounded-xl bg-slate-50 p-2 border border-slate-100">
+                        <span className="text-[10px] text-slate-400 block font-medium">Infracciones</span>
+                        <span className={`text-sm font-bold ${p.errors > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                          {p.errors}
+                        </span>
+                        <span className="text-slate-500 text-[11px]"> error(es)</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-xl bg-indigo-50/60 p-2.5 border border-indigo-100">
+                      <div>
+                        <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">
+                          Calificación
+                        </span>
+                        <span className="text-xl font-black font-mono text-indigo-600">{p.avgScore}</span>
+                        <span className="text-xs text-indigo-500"> / 10</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">
+                          Puntaje Eco
+                        </span>
+                        <span className="text-base font-extrabold font-mono text-indigo-700">
+                          {p.exercises > 0 ? `${radarSummary.ecoScore}/10` : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Lado Derecho: Gráfico Radar */}
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2 flex flex-col items-center shrink-0">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Radar Telemetría
                     </span>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs border-t border-slate-100 pt-3">
-                    <div className="rounded-xl bg-slate-50 p-2 border border-slate-100">
-                      <span className="text-[10px] text-slate-400 block font-medium">Ejercicios</span>
-                      <span className="text-sm font-bold text-slate-900">{p.exercises}</span>
-                      <span className="text-slate-500 text-[11px]"> de {p.expected}</span>
-                    </div>
+                    <svg width={miniW} height={miniH} className="overflow-visible select-none">
+                      {/* Círculos / Guías (50% y 100%) */}
+                      {[0.5, 1.0].map((step) => {
+                        const gridPts = axes
+                          .map((_, i) => {
+                            const c = getCoord(i, step * 100);
+                            return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+                          })
+                          .join(" ");
+                        return (
+                          <polygon
+                            key={step}
+                            points={gridPts}
+                            fill={step === 1.0 ? "#ffffff" : "transparent"}
+                            stroke="#e2e8f0"
+                            strokeWidth="1"
+                          />
+                        );
+                      })}
 
-                    <div className="rounded-xl bg-slate-50 p-2 border border-slate-100">
-                      <span className="text-[10px] text-slate-400 block font-medium">Infracciones</span>
-                      <span className={`text-sm font-bold ${p.errors > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                        {p.errors}
-                      </span>
-                      <span className="text-slate-500 text-[11px]"> error(es)</span>
-                    </div>
-                  </div>
+                      {/* Ejes radiales */}
+                      {axes.map((_, i) => {
+                        const c = getCoord(i, 100);
+                        return (
+                          <line
+                            key={i}
+                            x1={cX}
+                            y1={cY}
+                            x2={c.x}
+                            y2={c.y}
+                            stroke="#e2e8f0"
+                            strokeWidth="1"
+                          />
+                        );
+                      })}
 
-                  <div className="flex items-center justify-between rounded-xl bg-indigo-50/60 p-2.5 border border-indigo-100">
-                    <div>
-                      <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">
-                        Calificación
-                      </span>
-                      <span className="text-xl font-black font-mono text-indigo-600">{p.avgScore}</span>
-                      <span className="text-xs text-indigo-500"> / 10</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">
-                        Puntaje Eco
-                      </span>
-                      <span className="text-base font-extrabold font-mono text-indigo-700">
-                        {p.exercises > 0 ? `${radarSummary.ecoScore}/10` : "—"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Lado Derecho: Gráfico Radar */}
-                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2 flex flex-col items-center shrink-0">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Radar Telemetría
-                  </span>
-
-                  <svg width={miniW} height={miniH} className="overflow-visible select-none">
-                    {/* Círculos / Guías (50% y 100%) */}
-                    {[0.5, 1.0].map((step) => {
-                      const gridPts = axes
-                        .map((_, i) => {
-                          const c = getCoord(i, step * 100);
-                          return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
-                        })
-                        .join(" ");
-                      return (
+                      {/* Polígono del conductor en esta fase (solo si realizó ejercicios) */}
+                      {p.exercises > 0 ? (
                         <polygon
-                          key={step}
-                          points={gridPts}
-                          fill={step === 1.0 ? "#ffffff" : "transparent"}
-                          stroke="#e2e8f0"
-                          strokeWidth="1"
+                          points={miniPolygonPoints}
+                          fill="rgba(79, 70, 229, 0.20)"
+                          stroke="#4f46e5"
+                          strokeWidth="2"
                         />
-                      );
-                    })}
+                      ) : (
+                        <text
+                          x={cX}
+                          y={cY + 3}
+                          textAnchor="middle"
+                          fontSize="8.5"
+                          fontWeight="600"
+                          fill="#94a3b8"
+                        >
+                          Sin realizar
+                        </text>
+                      )}
 
-                    {/* Ejes radiales */}
-                    {axes.map((_, i) => {
-                      const c = getCoord(i, 100);
-                      return (
-                        <line
-                          key={i}
-                          x1={cX}
-                          y1={cY}
-                          x2={c.x}
-                          y2={c.y}
-                          stroke="#e2e8f0"
-                          strokeWidth="1"
-                        />
-                      );
-                    })}
-
-                    {/* Polígono del conductor en esta fase (solo si realizó ejercicios) */}
-                    {p.exercises > 0 ? (
-                      <polygon
-                        points={miniPolygonPoints}
-                        fill="rgba(79, 70, 229, 0.20)"
-                        stroke="#4f46e5"
-                        strokeWidth="2"
-                      />
-                    ) : (
-                      <text
-                        x={cX}
-                        y={cY + 3}
-                        textAnchor="middle"
-                        fontSize="8.5"
-                        fontWeight="600"
-                        fill="#94a3b8"
-                      >
-                        Sin realizar
-                      </text>
-                    )}
-
-                    {/* Vértices y Etiquetas */}
-                    {axes.map((a, i) => {
-                      const c = getCoord(i, a.value);
-                      const labelPos = getCoord(i, 130);
-                      return (
-                        <g key={i}>
-                          {p.exercises > 0 && (
-                            <circle cx={c.x} cy={c.y} r="2.5" fill="#4f46e5" stroke="#ffffff" strokeWidth="1" />
-                          )}
-                          <text
-                            x={labelPos.x}
-                            y={labelPos.y + 3}
-                            textAnchor="middle"
-                            fontSize="8"
-                            fontWeight="600"
-                            fill="#475569"
-                          >
-                            {a.label}
-                          </text>
-                        </g>
-                      );
-                    })}
-                  </svg>
+                      {/* Vértices y Etiquetas */}
+                      {axes.map((a, i) => {
+                        const c = getCoord(i, a.value);
+                        const labelPos = getCoord(i, 130);
+                        return (
+                          <g key={i}>
+                            {p.exercises > 0 && (
+                              <circle cx={c.x} cy={c.y} r="2.5" fill="#4f46e5" stroke="#ffffff" strokeWidth="1" />
+                            )}
+                            <text
+                              x={labelPos.x}
+                              y={labelPos.y + 3}
+                              textAnchor="middle"
+                              fontSize="8"
+                              fontWeight="600"
+                              fill="#475569"
+                            >
+                              {a.label}
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
         )}
       </section>
 
@@ -665,60 +665,60 @@ export default function Driver() {
                     </td>
                   </tr>
                 ) : (
-                allExerciseRows.map((row) =>
-                  row.type === "done" ? (
-                    <tr
-                      key={`${row.eval.phase}-${row.eval.fileName}`}
-                      className="group hover:bg-indigo-50/30 transition cursor-pointer"
-                      onClick={() => setSelectedEval(row.eval)}
-                    >
-                      <td className="px-4 py-3">
-                        <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
-                          F{row.eval.phase}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-slate-900">
-                        <span className="text-indigo-600 group-hover:text-indigo-700 underline decoration-indigo-200 group-hover:decoration-indigo-500 underline-offset-2 transition">
-                          {row.eval.exercise}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-500">{row.eval.date}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.eval.instructor}</td>
-                      <td className="px-4 py-3 text-slate-500 font-mono">{fmt(row.eval.durationSec)}</td>
-                      <td className="px-4 py-3 font-mono text-slate-700">
-                        {row.eval.errorCount > 0 ? (
-                          <span className="font-semibold text-rose-600">{row.eval.errorCount}</span>
-                        ) : (
-                          <span className="text-emerald-600">0</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">
-                        {row.eval.score}
-                      </td>
-                    </tr>
-                  ) : (
-                    <tr key={row.key} className="bg-slate-50/60 text-slate-400">
-                      <td className="px-4 py-3">
-                        <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-500">
-                          F{row.phase}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-medium text-slate-500">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span>{row.exercise}</span>
-                          <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
-                            No realizado
+                  allExerciseRows.map((row) =>
+                    row.type === "done" ? (
+                      <tr
+                        key={`${row.eval.phase}-${row.eval.fileName}`}
+                        className="group hover:bg-indigo-50/30 transition cursor-pointer"
+                        onClick={() => setSelectedEval(row.eval)}
+                      >
+                        <td className="px-4 py-3">
+                          <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
+                            F{row.eval.phase}
                           </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-slate-400">—</td>
-                      <td className="px-4 py-3 text-slate-400">—</td>
-                      <td className="px-4 py-3 font-mono text-slate-400">—</td>
-                      <td className="px-4 py-3 font-mono text-slate-400">—</td>
-                      <td className="px-4 py-3 text-right font-mono font-bold text-slate-400">0</td>
-                    </tr>
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-slate-900">
+                          <span className="text-indigo-600 group-hover:text-indigo-700 underline decoration-indigo-200 group-hover:decoration-indigo-500 underline-offset-2 transition">
+                            {row.eval.exercise}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-500">{row.eval.date}</td>
+                        <td className="px-4 py-3 text-slate-700">{row.eval.instructor}</td>
+                        <td className="px-4 py-3 text-slate-500 font-mono">{fmt(row.eval.durationSec)}</td>
+                        <td className="px-4 py-3 font-mono text-slate-700">
+                          {row.eval.errorCount > 0 ? (
+                            <span className="font-semibold text-rose-600">{row.eval.errorCount}</span>
+                          ) : (
+                            <span className="text-emerald-600">0</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">
+                          {row.eval.score}
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={row.key} className="bg-slate-50/60 text-slate-400">
+                        <td className="px-4 py-3">
+                          <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-500">
+                            F{row.phase}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-500">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>{row.exercise}</span>
+                            <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+                              No realizado
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-400">—</td>
+                        <td className="px-4 py-3 text-slate-400">—</td>
+                        <td className="px-4 py-3 font-mono text-slate-400">—</td>
+                        <td className="px-4 py-3 font-mono text-slate-400">—</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-slate-400">0</td>
+                      </tr>
+                    )
                   )
-                )
                 )}
               </tbody>
             </table>
@@ -980,7 +980,15 @@ export default function Driver() {
                     <span className="text-xs text-indigo-400">/ 10</span>
                   </div>
                   <span className="block text-[10px] text-indigo-600/80 mt-0.5">
-                    {selectedEval.telemetryScore !== undefined ? "70% destreza + 30% eco" : "100% destreza"}
+                    {selectedEval.pacing?.isPacingDeficit ? (
+                      <span className="text-rose-600 font-semibold" title={selectedEval.pacing.reason}>
+                        ⚠️ -{selectedEval.pacing.penaltyDeduction} pts (ritmo lento)
+                      </span>
+                    ) : selectedEval.telemetryScore !== undefined ? (
+                      "70% destreza + 30% eco"
+                    ) : (
+                      "100% destreza"
+                    )}
                   </span>
                 </div>
 
@@ -1020,6 +1028,28 @@ export default function Driver() {
                   </span>
                 </div>
               </div>
+
+              {/* Banner de Penalización por Conducción Evasiva / Ritmo Lento */}
+              {selectedEval.pacing?.isPacingDeficit && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50/80 p-3.5 text-rose-900 shadow-sm">
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-xl">⚠️</span>
+                    <div className="flex-1 text-xs">
+                      <div className="flex items-center justify-between">
+                        <strong className="font-bold text-rose-950">
+                          Penalización por Conducción Evasiva / Velocidad Anormalmente Reducida
+                        </strong>
+                        <span className="rounded bg-rose-200 px-2 py-0.5 font-mono font-bold text-rose-900">
+                          -{selectedEval.pacing.penaltyDeduction} pts
+                        </span>
+                      </div>
+                      <p className="mt-1 text-rose-800">
+                        {selectedEval.pacing.reason}.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Indicadores Genéricos de Telemetría (con Gráfico de Radar) */}
               {selectedEval.telemetry && Object.keys(selectedEval.telemetry).length > 0 && (() => {
@@ -1566,11 +1596,10 @@ export default function Driver() {
                             </td>
                             <td className="px-3.5 py-2.5 text-right whitespace-nowrap">
                               <span
-                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
-                                  m.ignored
-                                    ? "bg-slate-100 text-slate-400 border border-slate-200 line-through"
-                                    : SEVERITIES[m.severity].badge
-                                }`}
+                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${m.ignored
+                                  ? "bg-slate-100 text-slate-400 border border-slate-200 line-through"
+                                  : SEVERITIES[m.severity].badge
+                                  }`}
                               >
                                 {SEVERITIES[m.severity].label}
                               </span>

@@ -7,6 +7,12 @@ import { loadCatalog } from "./catalogStore";
 import { CRITICAL_LIMIT, verdictFor } from "./config";
 import { exerciseKey, getExercises, loadExercises, phaseForExercise, resolveExerciseEnvironment } from "./exercises";
 import { listGroups } from "./groups";
+import {
+  computeGroupBenchmarks,
+  analyzePacing,
+  type ExerciseBenchmark,
+  type PacingAnalysis,
+} from "./pacingBenchmark";
 
 export type EvaluationDoc = {
   phase: number;
@@ -171,9 +177,15 @@ export type EvaluationView = EvaluationDoc & {
   criticalCount: number;
   errorScore: number;
   telemetryScore?: number;
+  pacing?: PacingAnalysis;
 };
 
-export function withCurrentScore(d: EvaluationDoc, fallbackGroupId?: string | null, docId?: string): EvaluationView {
+export function withCurrentScore(
+  d: EvaluationDoc,
+  fallbackGroupId?: string | null,
+  docId?: string,
+  benchmarks?: Map<string, ExerciseBenchmark>
+): EvaluationView {
   const exerciseName = d.unit || d.exercise;
   const effectiveGroupId = d.groupId || fallbackGroupId || undefined;
   const resolvedDocId = docId || evaluationId(d.phase, d.fileName, d.groupId);
@@ -223,6 +235,17 @@ export function withCurrentScore(d: EvaluationDoc, fallbackGroupId?: string | nu
 
   const ev = evaluateMarks(d.marks, d.durationSec, telemetry, exerciseName, effectiveGroupId);
   const resolvedPhase = phaseForExercise(exerciseName, effectiveGroupId) ?? d.phase;
+
+  // Analizar si el conductor circuló a un ritmo evasivo / excesivamente lento respecto al grupo
+  let finalScore = ev.score;
+  let pacing: PacingAnalysis | undefined;
+  if (benchmarks && telemetry) {
+    pacing = analyzePacing(exerciseName, telemetry, benchmarks);
+    if (pacing.isPacingDeficit && pacing.penaltyDeduction > 0) {
+      finalScore = Math.max(0, Math.round((finalScore - pacing.penaltyDeduction) * 10) / 10);
+    }
+  }
+
   return {
     ...d,
     docId: resolvedDocId,
@@ -233,7 +256,8 @@ export function withCurrentScore(d: EvaluationDoc, fallbackGroupId?: string | nu
     criticalCount: ev.criticalCount,
     errorScore: ev.errorScore,
     telemetryScore: ev.telemetryScore,
-    score: ev.score,
+    score: finalScore,
+    pacing,
   };
 }
 
@@ -362,8 +386,34 @@ async function fetchEvaluations(field?: "phase" | "driverId", value?: number | s
   const q = field !== undefined && value !== undefined
     ? query(evaluations(), where(field, "==", value))
     : query(evaluations());
-  const docs = (await safeGetDocs(q)).docs.map((d) =>
-    withCurrentScore(d.data() as EvaluationDoc, filter?.groupId, d.id)
+
+  const snap = await safeGetDocs(q);
+  const rawDocs = snap.docs.map((d) => ({
+    doc: d.data() as EvaluationDoc,
+    id: d.id,
+  }));
+
+  // Si hay un grupo especificado o si las evaluaciones pertenecen a grupos, calcular los benchmarks del grupo
+  let groupBenchmarks: Map<string, ExerciseBenchmark> | undefined;
+  const targetGroupId = filter?.groupId || (field === "driverId" && rawDocs[0]?.doc?.groupId);
+  if (targetGroupId) {
+    // Si estamos filtrando por un solo conductor (field === "driverId"), necesitamos las evaluaciones de todo el grupo
+    // para poder calcular la media de todos los conductores del grupo.
+    let groupRawDocs: EvaluationDoc[] = [];
+    if (field === "driverId") {
+      const groupQ = query(evaluations(), where("groupId", "==", targetGroupId));
+      const groupSnap = await safeGetDocs(groupQ);
+      groupRawDocs = groupSnap.docs.map((d) => d.data() as EvaluationDoc);
+    } else {
+      groupRawDocs = rawDocs
+        .map((r) => r.doc)
+        .filter((d) => d.groupId === targetGroupId);
+    }
+    groupBenchmarks = computeGroupBenchmarks(groupRawDocs);
+  }
+
+  const docs = rawDocs.map(({ doc, id }) =>
+    withCurrentScore(doc, filter?.groupId, id, groupBenchmarks)
   );
   
   return docs.filter((d) => {
