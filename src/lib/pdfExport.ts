@@ -4,6 +4,7 @@ import { driverData, type DateFilter, type EvaluationView } from "./db";
 import { phaseName, CRITICAL_LIMIT } from "./config";
 import { SEVERITIES, SEVERITY_ORDER, type Severity } from "./catalog";
 import { computeTelemetryAxes } from "./telemetryRadar";
+import { generatePedagogicalRecommendations } from "./recommendations";
 import { TRACKSIM_LOGO_BASE64 } from "./logoBase64";
 import type { DisplayRow } from "../pages/Home";
 
@@ -589,10 +590,11 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   // -------------------------------------------------------------
   // Sección: Progreso por Fase con Perfil Radar Completo y Telemetría
   // -------------------------------------------------------------
+  const sectionTitle = isCursoGroup ? "Evaluación Integral del Curso" : "Progreso por Fase";
   doc.setFontSize(10.5);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text(isCursoGroup ? "Evaluación Integral del Curso" : "Progreso por Fase", 14, y);
+  doc.text(sectionTitle, 14, y);
   y += 4;
 
   const cardW = 182; // Ancho completo (1 columna)
@@ -617,6 +619,14 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     const rpmAxis = axes.find((a) => a.label === "Zona Verde");
     const bd = rpmAxis?.breakdown;
 
+    // Benchmark del grupo o flota para esta fase / curso
+    const isCursoGroup = data.groupType === "curso" || p.phase === 0;
+    const groupPhaseEvals = (data.groupEvals || []).filter(
+      (ge) => isCursoGroup || ge.phase === p.phase
+    );
+    const groupRadar = groupPhaseEvals.length > 0 ? computeTelemetryAxes(groupPhaseEvals, "", phaseGroupId) : null;
+    const groupAxes = groupRadar?.axes;
+
     // Contenedor principal de la fase
     doc.setFillColor(255, 255, 255);
     doc.roundedRect(cardX, cardY, cardW, cardH, 2.5, 2.5, "F");
@@ -639,16 +649,20 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     const pName = p.phase === 0 ? "Ejercicios Directos del Curso" : phaseName(p.phase);
     doc.text(pName.length > 28 ? `${pName.substring(0, 26)}…` : pName, cardX + 3.5, cardY + 9);
 
-    // Badge fase
-    const pApto = p.verdict.startsWith("APTO") && !p.verdict.includes("OBSERVACIONES");
-    const pObs = p.verdict.includes("OBSERVACIONES");
-    const pIncomplete = p.verdict === "INCOMPLETO";
-    const pNotDone = p.verdict === "NO REALIZADO";
-    const pCol = pApto ? [16, 185, 129] : pObs || pIncomplete ? [217, 119, 6] : pNotDone ? COLOR_MUTED : [225, 29, 72];
-    doc.setFontSize(6.5);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(pCol[0], pCol[1], pCol[2]);
-    doc.text(p.verdict, cardX + 54, cardY + 4.5, { align: "right" });
+    // Badge de la fase (solo si son múltiples fases para no duplicar en Curso)
+    if (p.phase !== 0 && !isCursoGroup) {
+      const pApto = p.verdict.startsWith("APTO") && !p.verdict.includes("OBSERVACIONES");
+      const pObs = p.verdict.includes("OBSERVACIONES");
+      const pIncomplete = p.verdict === "INCOMPLETO";
+      const pNotDone = p.verdict === "NO REALIZADO";
+      const pCol = pApto ? [16, 185, 129] : pObs || pIncomplete ? [217, 119, 6] : pNotDone ? COLOR_MUTED : [225, 29, 72];
+      
+      const vText = p.verdict;
+      doc.setFontSize(vText.length > 12 ? 5.2 : 6.5);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(pCol[0], pCol[1], pCol[2]);
+      doc.text(vText, cardX + 54.5, cardY + 4.5, { align: "right" });
+    }
 
     // Métricas rápidas de la fase (lado izquierdo)
     doc.setFontSize(6);
@@ -732,7 +746,29 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
       doc.line(p1.x, p1.y, p2.x, p2.y);
     }
 
-    // Polígono de telemetría de la fase
+    // Polígono del Grupo / Flota (Azul punteado tenue de benchmark)
+    if (groupAxes && groupPhaseEvals.length > 0) {
+      doc.setDrawColor(147, 197, 253); // Azul claro tenue (sky-300 / blue-300)
+      doc.setLineWidth(0.35);
+      const dashStep = 1.0;
+      for (let i = 0; i < 5; i++) {
+        const p1 = getPdfCoord(i, groupAxes[i].value);
+        const p2 = getPdfCoord((i + 1) % 5, groupAxes[(i + 1) % 5].value);
+        
+        // Trazar línea punteada manual
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dist = Math.hypot(dx, dy);
+        const steps = Math.max(1, Math.floor(dist / (dashStep * 2)));
+        for (let s = 0; s < steps; s++) {
+          const t1 = (s * 2) / (steps * 2);
+          const t2 = (s * 2 + 1) / (steps * 2);
+          doc.line(p1.x + dx * t1, p1.y + dy * t1, p1.x + dx * t2, p1.y + dy * t2);
+        }
+      }
+    }
+
+    // Polígono de telemetría de la fase del operador
     if (p.exercises > 0) {
       doc.setDrawColor(5, 150, 105); // emerald
       doc.setLineWidth(0.5);
@@ -1145,6 +1181,129 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     doc.line(14, y + 7.5, 196, y + 7.5);
     y += 7.5;
   });
+
+  // -------------------------------------------------------------
+  // Sección: Recomendaciones Pedagógicas y Plan de Mejora
+  // -------------------------------------------------------------
+  const allAxes = data.phases.flatMap((p) => {
+    const phaseEvals = data.evals.filter((e) => e.phase === p.phase);
+    return computeTelemetryAxes(phaseEvals, "", phaseEvals[0]?.groupId || filter?.groupId || null).axes;
+  });
+
+  const pdfRecs = generatePedagogicalRecommendations({
+    overall: data.overall,
+    verdict: data.verdict,
+    criticalErrors: data.criticalErrors,
+    breakdown: data.breakdown,
+    radarAxes: allAxes,
+    completedExercises: data.completedExercises,
+    expectedExercises: data.expectedExercises,
+  });
+
+  if (pdfRecs.length > 0) {
+    if (y > 230) {
+      doc.addPage();
+      y = drawHeader(doc, `Expediente: ${data.name} (Recomendaciones)`, "Plan de mejora y directrices pedagógicas");
+    } else {
+      y += 6;
+    }
+
+    doc.setFontSize(10.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+    doc.text("Recomendaciones Automatizadas y Plan de Mejora", 14, y);
+    y += 4;
+
+    pdfRecs.forEach((rec) => {
+      // Calcular dimensiones dinámicas para que el texto nunca salga trunco
+      doc.setFontSize(6.5);
+      doc.setFont("helvetica", "normal");
+      const descLines = doc.splitTextToSize(rec.description, 172) as string[];
+      
+      const actLines = doc.splitTextToSize(rec.actionItem, 142) as string[];
+
+      const baseHeaderH = 5.5;
+      const descBlockH = descLines.length * 3.2;
+      const actBlockH = Math.max(4.5, actLines.length * 3.2);
+      const totalCardH = Math.max(16, baseHeaderH + descBlockH + actBlockH + 4.5);
+
+      if (y + totalCardH > 275) {
+        doc.addPage();
+        y = drawHeader(doc, `Expediente: ${data.name} (Recomendaciones Cont.)`, "Plan de mejora y directrices pedagógicas");
+      }
+
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(14, y, 182, totalCardH, 2, 2, "F");
+      doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+      doc.roundedRect(14, y, 182, totalCardH, 2, 2, "S");
+
+      // Categoría / Prioridad Badge
+      const prioColor = rec.priority === "ALTA" ? [225, 29, 72] : rec.priority === "MEDIA" ? [217, 119, 6] : [5, 150, 105];
+      doc.setFontSize(5.5);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(prioColor[0], prioColor[1], prioColor[2]);
+      doc.text(`[${rec.category} · PRIORIDAD ${rec.priority}]`, 18, y + 4.5);
+
+      // Título
+      doc.setFontSize(7.5);
+      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+      doc.text(rec.title, 60, y + 4.5);
+
+      // Descripción multilínea completa (sin truncar)
+      let curTextY = y + 8.5;
+      doc.setFontSize(6.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      descLines.forEach((line) => {
+        doc.text(line, 18, curTextY);
+        curTextY += 3.2;
+      });
+
+      // Acción Sugerida multilínea completa
+      curTextY += 1.0;
+      doc.setFontSize(6.5);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+      doc.text("Acción pedagógica:", 18, curTextY);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+      actLines.forEach((line, idx) => {
+        if (idx === 0) {
+          doc.text(line, 43, curTextY);
+        } else {
+          doc.text(line, 18, curTextY + idx * 3.2);
+        }
+      });
+
+      y += totalCardH + 3.0;
+    });
+  }
+
+  // Firmas y Validación Oficial al pie de la última sección
+  if (y > 235) {
+    doc.addPage();
+    y = drawHeader(doc, `Expediente: ${data.name} (Validación)`, "Acreditación y firmas oficiales");
+  } else {
+    y += 8;
+  }
+
+  const sigY = y + 15;
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.line(25, sigY, 85, sigY);
+  doc.line(125, sigY, 185, sigY);
+
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  doc.text("FIRMA DEL INSTRUCTOR EVALUADOR", 55, sigY + 4, { align: "center" });
+  doc.text("FIRMA DEL OPERADOR EVALUADO", 155, sigY + 4, { align: "center" });
+
+  doc.setFontSize(6);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text("Certifica la veracidad de la simulación", 55, sigY + 7.5, { align: "center" });
+  doc.text("Declara conocer los resultados obtenidos", 155, sigY + 7.5, { align: "center" });
 
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {

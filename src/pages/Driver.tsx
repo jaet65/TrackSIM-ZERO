@@ -5,6 +5,7 @@ import { SEVERITIES, SEVERITY_ORDER, classify, getCatalog, type Severity } from 
 import { driverData, updateEvaluationMarks, type DateFilter, type EvaluationView } from "../lib/db";
 import { resolveExerciseEnvironment } from "../lib/exercises";
 import { computeTelemetryAxes } from "../lib/telemetryRadar";
+import { generatePedagogicalRecommendations } from "../lib/recommendations";
 import { downloadDriverPdf } from "../lib/pdfExport";
 import { useAuth } from "../components/AuthProvider";
 import type { Mark } from "../lib/parse";
@@ -104,6 +105,25 @@ export default function Driver() {
       maxErrorCount: maxCount,
     };
   }, [breakdownList]);
+
+  // Generar recomendaciones automáticas inteligentes
+  const recommendations = useMemo(() => {
+    if (!data) return [];
+    // Si hay fases, recolectar los ejes de todas las fases
+    const allAxes = data.phases.flatMap((p) => {
+      const phaseEvals = (data.evals || []).filter((e) => e.phase === p.phase);
+      return computeTelemetryAxes(phaseEvals, "", phaseEvals[0]?.groupId || groupParam || null).axes;
+    });
+    return generatePedagogicalRecommendations({
+      overall: data.overall,
+      verdict: data.verdict,
+      criticalErrors: data.criticalErrors,
+      breakdown: data.breakdown,
+      radarAxes: allAxes,
+      completedExercises: data.completedExercises,
+      expectedExercises: data.expectedExercises,
+    });
+  }, [data, groupParam]);
 
   // Filtrar exclusivamente los eventos de tipo ERROR y calcular conteos por severidad para el modal
   const { sortedErrorMarks, severityCounts, ignoredErrorCount } = useMemo(() => {
@@ -433,6 +453,61 @@ export default function Driver() {
         </div>
       </div>
 
+      {/* Tarjeta de Recomendaciones Automatizadas para el Instructor */}
+      {recommendations.length > 0 && (
+        <section className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/60 via-white to-blue-50/40 p-5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
+                💡
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Recomendaciones Automatizadas del Expediente</h3>
+                <p className="text-[11px] text-slate-500">
+                  Directrices pedagógicas calculadas según las incidencias y la telemetría del operador
+                </p>
+              </div>
+            </div>
+            <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-[10px] font-bold text-indigo-700">
+              {recommendations.length} {recommendations.length === 1 ? "observación" : "observaciones"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            {recommendations.map((rec) => {
+              const badgeColors =
+                rec.priority === "ALTA"
+                  ? "bg-rose-50 text-rose-700 border-rose-200"
+                  : rec.priority === "MEDIA"
+                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                  : "bg-emerald-50 text-emerald-700 border-emerald-200";
+
+              return (
+                <div
+                  key={rec.id}
+                  className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-xs flex flex-col justify-between hover:border-indigo-300 transition"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm">{rec.icon}</span>
+                      <span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${badgeColors}`}>
+                        {rec.category} · Prioridad {rec.priority}
+                      </span>
+                    </div>
+                    <h4 className="mt-1.5 text-xs font-bold text-slate-900">{rec.title}</h4>
+                    <p className="mt-1 text-[11px] text-slate-600 leading-relaxed">{rec.description}</p>
+                  </div>
+                  <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-start gap-1.5 text-[11px] text-indigo-900 bg-indigo-50/50 -mx-1 -mb-1 p-2 rounded-lg">
+                    <span className="font-bold text-indigo-700 shrink-0">Acción:</span>
+                    <span className="text-slate-700">{rec.actionItem}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Resumen por Fase */}
       <section className="space-y-3">
         <h2 className="text-base font-bold text-slate-900">Progreso por Fase</h2>
@@ -463,6 +538,14 @@ export default function Driver() {
               const axes = radarSummary.axes;
               const envLabel = radarSummary.environmentLabel;
 
+              // Calcular benchmark del grupo o flota para esta misma fase o curso completo
+              // En modalidad Curso (p.phase === 0), emparejar con todas las evaluaciones de la flota o grupo
+              const groupPhaseEvals = (data.groupEvals || []).filter(
+                (ge) => p.phase === 0 || ge.phase === p.phase || (data.groupType === "curso")
+              );
+              const groupRadarSummary = groupPhaseEvals.length > 0 ? computeTelemetryAxes(groupPhaseEvals, "", phaseGroupId) : null;
+              const groupAxes = groupRadarSummary?.axes;
+
               // Coordenadas para radar en layout visual completo (size: 340x290, radius: 80)
               const width = 340;
               const height = 290;
@@ -485,6 +568,15 @@ export default function Driver() {
                   return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
                 })
                 .join(" ");
+
+              const groupPolygonPoints = groupAxes
+                ? groupAxes
+                    .map((ga, i) => {
+                      const c = getCoords(i, ga.value);
+                      return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+                    })
+                    .join(" ")
+                : "";
 
               return (
                 <div
@@ -617,6 +709,17 @@ export default function Driver() {
                             );
                           })}
 
+                          {/* Polígono del Grupo / Flota (Azul punteado tenue de Benchmark Comparativo) */}
+                          {groupPolygonPoints && groupPhaseEvals.length > 0 && (
+                            <polygon
+                              points={groupPolygonPoints}
+                              fill="rgba(191, 219, 254, 0.12)"
+                              stroke="#93c5fd"
+                              strokeWidth="1.8"
+                              strokeDasharray="4,4"
+                            />
+                          )}
+
                           {/* Polígono del Operador (Relleno y Borde) */}
                           {p.exercises > 0 ? (
                             <polygon
@@ -683,9 +786,17 @@ export default function Driver() {
                           })}
                         </svg>
 
-                        <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-500">
-                          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
-                          <span>Área verde = Nivel de destreza operativa</span>
+                        <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-500">
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                            <span className="font-semibold text-slate-700">Operador</span>
+                          </div>
+                          {groupPolygonPoints && groupPhaseEvals.length > 0 && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-block h-2 w-4 rounded-sm border-b-2 border-indigo-500 border-dashed bg-indigo-50"></span>
+                              <span className="font-semibold text-indigo-700">Promedio Grupo ({groupPhaseEvals.length} ej.)</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -1370,6 +1481,23 @@ export default function Driver() {
                   }
                 }
 
+                // Obtener evaluaciones del mismo ejercicio en el grupo para benchmark en el modal individual
+                const exerciseKeyVal = (selectedEval.exercise || selectedEval.unit || "").trim().toLowerCase();
+                const groupExerciseEvals = (data?.groupEvals || []).filter(
+                  (ge) => (ge.exercise || ge.unit || "").trim().toLowerCase() === exerciseKeyVal && ge.telemetry
+                );
+                const groupExerciseSummary = groupExerciseEvals.length > 0 ? computeTelemetryAxes(groupExerciseEvals, selectedEval.exercise, selectedEval.groupId || groupParam || null) : null;
+                const groupExerciseAxes = groupExerciseSummary?.axes;
+
+                const groupExercisePolygonPoints = groupExerciseAxes
+                  ? groupExerciseAxes
+                      .map((ga, i) => {
+                        const c = getCoords(i, ga.value);
+                        return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+                      })
+                      .join(" ")
+                  : "";
+
                 const axes = [
                   { 
                     label: "Zona Verde", 
@@ -1486,6 +1614,17 @@ export default function Driver() {
                             );
                           })}
 
+                          {/* Polígono del Grupo / Flota (Azul punteado tenue de Benchmark Comparativo del Ejercicio) */}
+                          {groupExercisePolygonPoints && groupExerciseEvals.length > 0 && (
+                            <polygon
+                              points={groupExercisePolygonPoints}
+                              fill="rgba(191, 219, 254, 0.12)"
+                              stroke="#93c5fd"
+                              strokeWidth="1.8"
+                              strokeDasharray="4,4"
+                            />
+                          )}
+
                           {/* Polígono del Operador (Relleno y Borde) */}
                           <polygon
                             points={radarPolygonPoints}
@@ -1531,9 +1670,17 @@ export default function Driver() {
                           })}
                         </svg>
 
-                        <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-500">
-                          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
-                          <span>Área verde = Nivel de destreza operativa</span>
+                        <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-500">
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                            <span className="font-semibold text-slate-700">Operador</span>
+                          </div>
+                          {groupExercisePolygonPoints && groupExerciseEvals.length > 0 && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-block h-2 w-4 rounded-sm border-b-2 border-indigo-500 border-dashed bg-indigo-50"></span>
+                              <span className="font-semibold text-indigo-700">Media del Grupo ({groupExerciseEvals.length} {groupExerciseEvals.length === 1 ? "ej." : "ej."})</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 

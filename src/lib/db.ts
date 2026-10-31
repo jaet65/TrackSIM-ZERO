@@ -687,6 +687,21 @@ export async function driverData(driverId: string, filter?: DateFilter) {
 
   const isCurso = getGroupType(filter?.groupId || rawEvals[0].groupId) === "curso";
 
+  // Obtener telemetrías del resto del grupo para benchmark comparativo si existe un grupo
+  let groupEvals: EvaluationView[] = [];
+  const targetGroupId = filter?.groupId || rawEvals[0]?.groupId;
+  try {
+    const allGroupDocs = await fetchEvaluations(undefined, undefined, targetGroupId ? { groupId: targetGroupId } : undefined);
+    if (targetGroupId) {
+      groupEvals = allGroupDocs.filter((d) => d.groupId === targetGroupId);
+    } else {
+      // Si no hay grupo asignado o filtrado, comparar contra todas las evaluaciones disponibles (flota global)
+      groupEvals = allGroupDocs;
+    }
+  } catch (e) {
+    console.warn("No se pudieron cargar evaluaciones del grupo para benchmark:", e);
+  }
+
   return {
     name: rawEvals[0].driverName,
     evals,
@@ -700,6 +715,7 @@ export async function driverData(driverId: string, filter?: DateFilter) {
     verdict: v.label,
     color: v.color,
     groupType: isCurso ? ("curso" as const) : ("escuela" as const),
+    groupEvals,
   };
 }
 

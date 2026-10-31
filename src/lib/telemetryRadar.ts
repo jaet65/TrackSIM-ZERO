@@ -52,6 +52,17 @@ export type PhaseRadarSummary = {
 };
 
 /**
+ * Calcula el radar promedio para un grupo completo o conjunto global de evaluaciones.
+ * Permite superponer la media del grupo contra el desempeño del conductor individual.
+ */
+export function computeGroupRadarBenchmark(
+  evalList: (TelemetryMetrics | TelemetryItemInput | undefined)[],
+  fallbackGroupId?: string | null
+): PhaseRadarSummary {
+  return computeTelemetryAxes(evalList, "", fallbackGroupId);
+}
+
+/**
  * Calcula los 5 ejes de telemetría multidimensional para una evaluación o conjunto de evaluaciones.
  * Soporta fases heterogéneas / multientorno (Carretera, Montaña, Urbano/Ciudad), aplicando las metas
  * y penalizaciones calibradas de cada entorno ejercicio por ejercicio y luego promediando los índices de rendimiento.

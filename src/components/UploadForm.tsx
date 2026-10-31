@@ -14,6 +14,7 @@ import {
 } from "../lib/groups";
 import { useAuth } from "./AuthProvider";
 import SimulatorSyncModal from "./SimulatorSyncModal";
+import ConfigureExercisesModal from "./ConfigureExercisesModal";
 import { isElectronApp } from "../lib/streamdbClient";
 
 const GITHUB_OWNER = "jaet65";
@@ -66,6 +67,9 @@ export default function UploadForm({
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [modalBusy, setModalBusy] = useState(false);
   const [modalError, setModalError] = useState("");
+
+  // Modal para configurar ejercicios si no han sido definidos
+  const [showConfigExercisesModal, setShowConfigExercisesModal] = useState(false);
 
   const refreshActiveGroup = async (explicitGroupId?: string) => {
     setLoadingGroup(true);
@@ -182,6 +186,21 @@ export default function UploadForm({
     const form = e.currentTarget;
     const files = Array.from(new FormData(form).getAll("files")).filter((f): f is File => f instanceof File);
     if (!files.length) return;
+
+    // Verificar si el grupo activo ya tiene ejercicios configurados
+    try {
+      const currentExercises = await loadExercises(false, activeGroup.id);
+      const totalExercisesConfigured = Object.values(currentExercises || {}).reduce(
+        (acc, list) => acc + (list?.length || 0),
+        0
+      );
+      if (totalExercisesConfigured === 0) {
+        setShowConfigExercisesModal(true);
+        return;
+      }
+    } catch (e) {
+      console.warn("No se pudieron verificar los ejercicios del grupo:", e);
+    }
 
     setBusy(true);
     setUploadProgress({ current: 0, total: files.length, percent: 0 });
@@ -571,6 +590,18 @@ export default function UploadForm({
           }}
         />
       )}
+
+      {/* Modal de configuración obligatoria de ejercicios si el grupo está vacío */}
+      <ConfigureExercisesModal
+        isOpen={showConfigExercisesModal}
+        onClose={() => setShowConfigExercisesModal(false)}
+        group={activeGroup}
+        onSaved={async () => {
+          if (activeGroup) {
+            await loadExercises(true, activeGroup.id);
+          }
+        }}
+      />
 
       {/* Modal para versión Web: Abrir App de Escritorio o Descargar Instalador */}
       {!isDesktop && showDesktopModal && (
