@@ -149,8 +149,8 @@ export function generateGlobalReportPdf(
     {
       title: "FALTAS CRÍTICAS",
       value: String(totalCriticos),
-      sub: `${totalErrors} infracc. totales`,
-      valColor: totalCriticos > 0 ? [225, 29, 72] : COLOR_MUTED,
+      sub: totalCriticos > 0 ? "Riesgo alto / Eliminatorio" : "Sin faltas críticas (0)",
+      valColor: totalCriticos > 0 ? [225, 29, 72] : [16, 185, 129],
       bg: totalCriticos > 0 ? [255, 241, 242] : COLOR_BG_LIGHT,
       border: totalCriticos > 0 ? [254, 205, 211] : COLOR_BORDER,
     },
@@ -440,7 +440,368 @@ export function generateGlobalReportPdf(
 }
 
 // -------------------------------------------------------------
-// 2. EXPEDIENTE INDIVIDUAL IDÉNTICO AL EXPEDIENTE DE PANTALLA
+// 2. RESUMEN EJECUTIVO DE 1 PÁGINA (Grupo / Flota)
+// -------------------------------------------------------------
+export function generateExecutiveSummaryPdf(
+  groupName: string,
+  rows: DisplayRow[],
+  filterSubtitle: string,
+  metrics?: { total: number; promedio: number; aptos: number; noAptos: number }
+): Uint8Array {
+  const doc = new jsPDF({ format: "a4", unit: "mm" });
+  let y = 14;
+
+  // Cabecera ejecutiva con Logo TrackSIM
+  try {
+    doc.addImage(TRACKSIM_LOGO_BASE64, "PNG", 14, y - 2, 16, 16);
+  } catch (e) {
+    console.error("Error cargando logo en resumen ejecutivo:", e);
+  }
+
+  // Título e identificación
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("Resumen Ejecutivo de Capacitación", 34, y + 5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text(`Programa: ${filterSubtitle}`, 34, y + 10);
+
+  // Badge institucional a la derecha
+  const nowStr = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "short", day: "numeric" });
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(148, y, 48, 10, 2, 2, "F");
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  doc.text("INFORME DE DIRECCIÓN", 172, y + 4.5, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text(`Fecha: ${nowStr}`, 172, y + 8, { align: "center" });
+
+  y += 18;
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.line(14, y, 196, y);
+  y += 5;
+
+  // Cálculos estadísticos
+  const total = rows.length;
+  const aptos = rows.filter((r) => r.verdict.startsWith("APTO") && !r.verdict.includes("OBSERVACIONES")).length;
+  const aptosObs = rows.filter((r) => r.verdict.includes("OBSERVACIONES")).length;
+  const noAptos = rows.filter((r) => r.verdict.includes("NO APTO")).length;
+  const incompletos = rows.filter((r) => r.verdict === "INCOMPLETO" || r.verdict === "NO REALIZADO").length;
+
+  const avgGlobal = metrics?.promedio ?? (total > 0 ? Math.round((rows.reduce((a, b) => a + b.avgScore, 0) / total) * 10) / 10 : 0);
+  const totalErrors = rows.reduce((a, b) => a + b.errors, 0);
+  const totalCritical = rows.reduce((a, b) => a + b.criticalErrors, 0);
+  const passRate = total > 0 ? Math.round(((aptos + aptosObs) / total) * 100) : 0;
+
+  // 1. KPI Cards (4 columnas)
+  const kpiW = 43.5;
+  const kpiH = 20;
+
+  // Card 1: Promedio General
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(14, y, kpiW, kpiH, 2, 2, "F");
+  doc.roundedRect(14, y, kpiW, kpiH, 2, 2, "S");
+  doc.setFontSize(6.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text("PROMEDIO GLOBAL", 18, y + 5);
+  doc.setFontSize(16);
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  doc.text(`${avgGlobal}`, 18, y + 13);
+  doc.setFontSize(7.5);
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text("/ 10 pts", 34, y + 13);
+  doc.setFontSize(6);
+  doc.setTextColor(avgGlobal >= 8 ? 5 : avgGlobal >= 6 ? 217 : 225, avgGlobal >= 8 ? 150 : avgGlobal >= 6 ? 119 : 29, avgGlobal >= 8 ? 105 : avgGlobal >= 6 ? 6 : 72);
+  doc.text(avgGlobal >= 8 ? "Rendimiento Alto" : avgGlobal >= 6 ? "Riesgo Moderado" : "Requiere Atención", 18, y + 17.5);
+
+  // Card 2: Tasa de Aprobación
+  const c2X = 14 + kpiW + 2.5;
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(c2X, y, kpiW, kpiH, 2, 2, "F");
+  doc.roundedRect(c2X, y, kpiW, kpiH, 2, 2, "S");
+  doc.setFontSize(6.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text("TASA DE APROBACIÓN", c2X + 4, y + 5);
+  doc.setFontSize(16);
+  doc.setTextColor(5, 150, 105);
+  doc.text(`${passRate}%`, c2X + 4, y + 13);
+  doc.setFontSize(6);
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text(`${aptos + aptosObs} de ${total} aprobados`, c2X + 4, y + 17.5);
+
+  // Card 3: Evaluados & Estatus
+  const c3X = c2X + kpiW + 2.5;
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(c3X, y, kpiW, kpiH, 2, 2, "F");
+  doc.roundedRect(c3X, y, kpiW, kpiH, 2, 2, "S");
+  doc.setFontSize(6.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text("CONDUCTORES EVALUADOS", c3X + 4, y + 5);
+  doc.setFontSize(16);
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  doc.text(`${total}`, c3X + 4, y + 13);
+  doc.setFontSize(6);
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text(`Aptos: ${aptos} · Obs: ${aptosObs} · No: ${noAptos}`, c3X + 4, y + 17.5);
+
+  // Card 4: Faltas Críticas de Riesgo (Críticas)
+  const c4X = c3X + kpiW + 2.5;
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(c4X, y, kpiW, kpiH, 2, 2, "F");
+  doc.roundedRect(c4X, y, kpiW, kpiH, 2, 2, "S");
+  doc.setFontSize(6.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text("FALTAS CRÍTICAS", c4X + 4, y + 5);
+  doc.setFontSize(16);
+  doc.setTextColor(totalCritical > 0 ? 225 : 5, totalCritical > 0 ? 29 : 150, totalCritical > 0 ? 72 : 105);
+  doc.text(`${totalCritical}`, c4X + 4, y + 13);
+  doc.setFontSize(6);
+  doc.setTextColor(totalCritical > 0 ? 225 : 5, totalCritical > 0 ? 29 : 150, totalCritical > 0 ? 72 : 105);
+  doc.text(totalCritical > 0 ? "Faltas eliminatorias graves" : "Conducción segura (0 críticas)", c4X + 4, y + 17.5);
+
+  y += kpiH + 5;
+
+  // 2. Barra Visual Proporcional de Estatus
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(14, y, 182, 14, 2, 2, "F");
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.roundedRect(14, y, 182, 14, 2, 2, "S");
+
+  doc.setFontSize(6.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text("DISTRIBUCIÓN DEL DICTAMEN FINAL", 18, y + 4);
+
+  const barX = 18;
+  const barY = y + 5.5;
+  const barW = 174;
+  const barH = 3;
+
+  const wApto = total > 0 ? (aptos / total) * barW : 0;
+  const wObs = total > 0 ? (aptosObs / total) * barW : 0;
+  const wNo = total > 0 ? (noAptos / total) * barW : 0;
+  const wInc = total > 0 ? (incompletos / total) * barW : 0;
+
+  let bCurX = barX;
+  if (wApto > 0) { doc.setFillColor(16, 185, 129); doc.rect(bCurX, barY, wApto, barH, "F"); bCurX += wApto; }
+  if (wObs > 0) { doc.setFillColor(245, 158, 11); doc.rect(bCurX, barY, wObs, barH, "F"); bCurX += wObs; }
+  if (wNo > 0) { doc.setFillColor(244, 63, 94); doc.rect(bCurX, barY, wNo, barH, "F"); bCurX += wNo; }
+  if (wInc > 0) { doc.setFillColor(148, 163, 184); doc.rect(bCurX, barY, wInc, barH, "F"); }
+
+  doc.setFontSize(6);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  doc.text(`Apto: ${aptos} (${total > 0 ? Math.round((aptos / total) * 100) : 0}%)`, 18, y + 11.5);
+  doc.text(`Con Observaciones: ${aptosObs} (${total > 0 ? Math.round((aptosObs / total) * 100) : 0}%)`, 62, y + 11.5);
+  doc.text(`No Apto: ${noAptos} (${total > 0 ? Math.round((noAptos / total) * 100) : 0}%)`, 120, y + 11.5);
+  doc.text(`Incompletos: ${incompletos}`, 165, y + 11.5);
+
+  y += 18;
+
+  // 3. Dos Columnas: TOP 5 CONDUCTORES vs RECOMENDACIÓN INSTITUCIONAL
+  const colW = 89;
+  const colH = 68;
+
+  // Columna Izquierda: Ranking TOP 5
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(14, y, colW, colH, 2, 2, "F");
+  doc.roundedRect(14, y, colW, colH, 2, 2, "S");
+
+  // Icono vectorial decorativo para Cuadro de Honor (Premio/Trofeo estilizado)
+  doc.setFillColor(245, 158, 11); // Amber-500
+  doc.circle(19, y + 5.2, 1.8, "F");
+  doc.setFillColor(255, 255, 255);
+  doc.circle(19, y + 5.2, 0.9, "F");
+
+  doc.setFontSize(7.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  doc.text("CUADRO DE HONOR · Mejores Conductores", 23, y + 6);
+  doc.line(18, y + 8, 14 + colW - 4, y + 8);
+
+  const topDrivers = [...rows].sort((a, b) => b.avgScore - a.avgScore || a.criticalErrors - b.criticalErrors).slice(0, 5);
+  let topY = y + 14;
+  topDrivers.forEach((d, idx) => {
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+    doc.text(`#${idx + 1}`, 18, topY);
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+    const dName = d.driver.length > 24 ? `${d.driver.substring(0, 22)}…` : d.driver;
+    doc.text(dName, 26, topY);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(d.avgScore >= 8 ? 5 : 217, d.avgScore >= 8 ? 150 : 119, d.avgScore >= 8 ? 105 : 6);
+    doc.text(`${d.avgScore}/10`, 14 + colW - 6, topY, { align: "right" });
+
+    doc.setFontSize(5.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+    doc.text(`${d.errors} err. · ${d.criticalErrors} crít.`, 26, topY + 3.2);
+
+    topY += 9.5;
+  });
+
+  // Columna Derecha: Directrices Pedagógicas y Diagnóstico de la Generación
+  const colRX = 14 + colW + 4;
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(colRX, y, colW, colH, 2, 2, "F");
+  doc.roundedRect(colRX, y, colW, colH, 2, 2, "S");
+
+  // Icono vectorial decorativo para Diagnóstico (Radar / Faro estilizado)
+  doc.setFillColor(79, 70, 229); // Indigo-600
+  doc.circle(colRX + 6, y + 5.2, 1.8, "F");
+  doc.setFillColor(255, 255, 255);
+  doc.circle(colRX + 6, y + 5.2, 0.9, "F");
+
+  doc.setFontSize(7.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  doc.text("DIAGNÓSTICO Y DIRECTRICES DE FLOTA", colRX + 10, y + 6);
+  doc.line(colRX + 4, y + 8, colRX + colW - 4, y + 8);
+
+  doc.setFontSize(6.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+  doc.text("1. Foco en Seguridad Crítica:", colRX + 4, y + 13.5);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  const secTxt = totalCritical > 0
+    ? `Se registraron ${totalCritical} faltas críticas. Es imperativo reforzar el entrenamiento en anticipación de frenada y mantenimiento de carril.`
+    : "Excelente comportamiento: cero faltas críticas acumuladas en este grupo de evaluación.";
+  const secLines = doc.splitTextToSize(secTxt, colW - 8) as string[];
+  doc.text(secLines, colRX + 4, y + 17);
+
+  doc.setFontSize(6.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+  doc.text("2. Eficiencia & Telemetría:", colRX + 4, y + 31);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  const ecoTxt = avgGlobal >= 7.5
+    ? "El grupo mantiene un buen régimen de RPM y dosificación progresiva del acelerador. Fomentar el uso proactivo del retarder."
+    : "Se detecta oportunidad de mejora en el uso de freno auxiliar y permanencia en zona verde para reducir desgaste mecánico y consumo de diésel.";
+  const ecoLines = doc.splitTextToSize(ecoTxt, colW - 8) as string[];
+  doc.text(ecoLines, colRX + 4, y + 34.5);
+
+  doc.setFontSize(6.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+  doc.text("3. Conclusión Institucional:", colRX + 4, y + 49);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  const planTxt = passRate >= 80
+    ? `Grupo con alto nivel de aprobación (${passRate}%). Se valida la aptitud general para la operación en ruta.`
+    : `Tasa de aprobación del ${passRate}%. Se sugiere programar una jornada de refuerzo práctico para los operadores en riesgo antes de su liberación.`;
+  const planLines = doc.splitTextToSize(planTxt, colW - 8) as string[];
+  doc.text(planLines, colRX + 4, y + 52.5);
+
+  y += colH + 6;
+
+  // 4. Tabla Síntesis de Conductores (Compacta 1 página)
+  doc.setFillColor(241, 245, 249);
+  doc.rect(14, y, 182, 6, "F");
+  doc.setFontSize(6.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  doc.text("CONDUCTOR", 18, y + 4.2);
+  doc.text("PROGRESO", 80, y + 4.2);
+  doc.text("FALTAS", 112, y + 4.2);
+  doc.text("CRÍTICAS", 132, y + 4.2);
+  doc.text("PROMEDIO", 154, y + 4.2);
+  doc.text("DICTAMEN", 192, y + 4.2, { align: "right" });
+
+  y += 6;
+  const displayLimit = Math.min(rows.length, 12);
+  for (let i = 0; i < displayLimit; i++) {
+    const r = rows[i];
+    if (i % 2 === 1) {
+      doc.setFillColor(248, 250, 252);
+      doc.rect(14, y, 182, 5.5, "F");
+    }
+
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+    const cName = r.driver.length > 28 ? `${r.driver.substring(0, 26)}…` : r.driver;
+    doc.text(cName, 18, y + 3.8);
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+    doc.text(r.exercisesText || "—", 80, y + 3.8);
+
+    doc.text(`${r.errors}`, 112, y + 3.8);
+
+    if (r.criticalErrors > 0) {
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(225, 29, 72);
+      doc.text(`${r.criticalErrors}`, 132, y + 3.8);
+    } else {
+      doc.setTextColor(16, 185, 129);
+      doc.text("0", 132, y + 3.8);
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+    doc.text(`${r.avgScore}`, 154, y + 3.8);
+
+    const isApto = r.verdict.startsWith("APTO") && !r.verdict.includes("OBSERVACIONES");
+    const isObs = r.verdict.includes("OBSERVACIONES");
+    const vColor = isApto ? [5, 150, 105] : isObs ? [217, 119, 6] : [225, 29, 72];
+    doc.setTextColor(vColor[0], vColor[1], vColor[2]);
+    doc.text(r.verdict, 192, y + 3.8, { align: "right" });
+
+    y += 5.5;
+  }
+
+  if (rows.length > 12) {
+    doc.setFontSize(5.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+    doc.text(`* Mostrando los primeros 12 de ${rows.length} conductores. Para el desglose completo ver el Reporte Global extendido.`, 18, y + 3.5);
+    y += 4;
+  }
+
+  drawFooter(doc, 1, 1);
+  return doc.output("arraybuffer") as unknown as Uint8Array;
+}
+
+// -------------------------------------------------------------
+// Descarga directa del Resumen Ejecutivo en 1 página
+// -------------------------------------------------------------
+export function downloadExecutiveSummaryPdf(
+  groupName: string,
+  rows: DisplayRow[],
+  filterSubtitle: string,
+  metrics?: { total: number; promedio: number; aptos: number; noAptos: number }
+): void {
+  const bytes = generateExecutiveSummaryPdf(groupName, rows, filterSubtitle, metrics);
+  const blob = new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const cleanName = groupName.replace(/[^\w\s-]/gi, "").trim().replace(/\s+/g, "_") || "Grupo";
+  const dateStr = new Date().toISOString().slice(0, 10);
+  a.download = `Resumen_Ejecutivo_${cleanName}_${dateStr}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// -------------------------------------------------------------
+// 3. EXPEDIENTE INDIVIDUAL IDÉNTICO AL EXPEDIENTE DE PANTALLA
 // -------------------------------------------------------------
 export async function generateDriverReportPdf(driverId: string, filter?: DateFilter): Promise<Uint8Array | null> {
   const data = await driverData(driverId, filter);
@@ -899,6 +1260,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
 
   // -------------------------------------------------------------
   // Sección: Puntos Débiles (Análisis por Gravedad con Stacked Bar)
+  // Filtrado de alto impacto: se priorizan Críticas y Graves
   // -------------------------------------------------------------
   // Agrupamiento por severidad
   const bySev: Record<Severity, typeof data.breakdown> = {
@@ -913,14 +1275,19 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     totalErrorsSum += item.count;
   }
 
+  // Conteo de faltas relevantes de riesgo (Críticas y Graves)
+  const countCriticas = bySev.CRITICO.reduce((a, b) => a + b.count, 0);
+  const countGraves = bySev.GRAVE.reduce((a, b) => a + b.count, 0);
+  const totalRelevantes = countCriticas + countGraves;
+
   doc.setFontSize(10.5);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
   doc.text("Puntos Débiles (Análisis por Gravedad)", 14, y);
   y += 4;
 
-  if (totalErrorsSum > 0) {
-    // Tarjeta del gráfico visual apilado
+  if (totalRelevantes > 0) {
+    // Tarjeta del gráfico visual apilado centrado en Críticas y Graves
     doc.setFillColor(255, 255, 255);
     doc.roundedRect(14, y, 182, 22, 3, 3, "F");
     doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
@@ -929,48 +1296,35 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     doc.setFontSize(7.5);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-    doc.text(`Proporción de Incidencias Totales (${totalErrorsSum} eventos acumulados)`, 18, y + 5.5);
+    doc.text(`Incidencias de Riesgo (${totalRelevantes} eventos: Críticas y Graves)`, 18, y + 5.5);
 
-    // Barra compuesta horizontal
+    // Barra compuesta horizontal para Crítico y Grave
     const barX = 18;
     const barY = y + 7.5;
     const barW = 174;
     const barH = 3.5;
 
     let curX = barX;
-    SEVERITY_ORDER.forEach((s) => {
+    const relevantSeverities: Severity[] = ["CRITICO", "GRAVE"];
+    relevantSeverities.forEach((s) => {
       const itemsInS = bySev[s];
       const sum = itemsInS.reduce((a, b) => a + b.count, 0);
-      const segW = totalErrorsSum > 0 ? (sum / totalErrorsSum) * barW : 0;
+      const segW = totalRelevantes > 0 ? (sum / totalRelevantes) * barW : 0;
       if (segW > 0) {
-        const segColor =
-          s === "CRITICO"
-            ? [244, 63, 94]
-            : s === "GRAVE"
-              ? [249, 115, 22]
-              : s === "MODERADO"
-                ? [245, 158, 11]
-                : [148, 163, 184];
+        const segColor = s === "CRITICO" ? [244, 63, 94] : [249, 115, 22];
         doc.setFillColor(segColor[0], segColor[1], segColor[2]);
         doc.rect(curX, barY, segW, barH, "F");
         curX += segW;
       }
     });
 
-    // Leyenda de 4 columnas
+    // Leyenda de 2 columnas destacadas (Críticas y Graves)
     const legY = y + 17;
-    const legCols = [18, 62, 106, 150];
-    SEVERITY_ORDER.forEach((s, idx) => {
+    const legCols = [18, 90];
+    relevantSeverities.forEach((s, idx) => {
       const sum = bySev[s].reduce((a, b) => a + b.count, 0);
-      const pct = totalErrorsSum > 0 ? ((sum / totalErrorsSum) * 100).toFixed(1) : "0";
-      const segColor =
-        s === "CRITICO"
-          ? [244, 63, 94]
-          : s === "GRAVE"
-            ? [249, 115, 22]
-            : s === "MODERADO"
-              ? [245, 158, 11]
-              : [148, 163, 184];
+      const pct = totalRelevantes > 0 ? ((sum / totalRelevantes) * 100).toFixed(1) : "0";
+      const segColor = s === "CRITICO" ? [244, 63, 94] : [249, 115, 22];
 
       doc.setFillColor(segColor[0], segColor[1], segColor[2]);
       doc.circle(legCols[idx], legY - 1, 1.2, "F");
@@ -989,14 +1343,27 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     });
 
     y += 26;
+  } else {
+    // Si no tuvo ni críticas ni graves
+    doc.setFillColor(240, 253, 244);
+    doc.roundedRect(14, y, 182, 12, 2.5, 2.5, "F");
+    doc.setDrawColor(187, 247, 208);
+    doc.roundedRect(14, y, 182, 12, 2.5, 2.5, "S");
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(22, 101, 52);
+    doc.text("Conducción Segura: Sin faltas críticas ni graves registradas en las sesiones evaluadas.", 18, y + 7.5);
+    y += 16;
   }
 
   // -------------------------------------------------------------
-  // Tarjetas agrupadas por Nivel de Gravedad con barras individuales
+  // Tarjetas agrupadas por Nivel de Gravedad (Solo Crítico y Grave)
   // -------------------------------------------------------------
-  const maxErrCount = Math.max(...data.breakdown.map((b) => b.count), 1);
+  const relevantList = [...bySev.CRITICO, ...bySev.GRAVE];
+  const maxErrCount = Math.max(...relevantList.map((b) => b.count), 1);
 
-  SEVERITY_ORDER.forEach((sev) => {
+  const displaySeverities: Severity[] = ["CRITICO", "GRAVE"];
+  displaySeverities.forEach((sev) => {
     const items = bySev[sev];
     if (items.length === 0) return;
 
@@ -1310,26 +1677,32 @@ export async function downloadDriverPdf(driverId: string, driverName: string, fi
 }
 
 // -------------------------------------------------------------
-// 4. GENERADOR DE PAQUETE ZIP (Global + Expedientes independientes)
+// 4. GENERADOR DE PAQUETE ZIP (Global + Resumen Ejecutivo + Expedientes independientes)
 // -------------------------------------------------------------
 export async function downloadBulkReportsZip(
   rows: DisplayRow[],
   filterSubtitle: string,
   metrics: { total: number; promedio: number; aptos: number; noAptos: number },
   onProgress?: (current: number, total: number, currentName: string) => void,
-  filter?: DateFilter
+  filter?: DateFilter,
+  groupName?: string
 ): Promise<void> {
   const zip = new JSZip();
 
-  // 1. Generar reporte global
+  // 1. Generar reporte global consolidado
   if (onProgress) onProgress(0, rows.length, "Generando Reporte Global consolidado");
   const globalPdfBytes = generateGlobalReportPdf(rows, filterSubtitle, metrics);
   zip.file("00_Reporte_Global_Resultados.pdf", globalPdfBytes);
 
+  // 2. Generar resumen ejecutivo de 1 página para Dirección
+  if (onProgress) onProgress(0, rows.length, "Generando Resumen Ejecutivo (1 página)");
+  const executivePdfBytes = generateExecutiveSummaryPdf(groupName || "Flota General", rows, filterSubtitle, metrics);
+  zip.file("01_Resumen_Ejecutivo_Direccion.pdf", executivePdfBytes);
+
   // Carpeta para expedientes individuales
   const expedientesFolder = zip.folder("Expedientes_Individuales");
 
-  // 2. Generar expediente independiente de cada conductor
+  // 3. Generar expediente independiente de cada conductor
   let count = 0;
   for (const row of rows) {
     count++;
@@ -1345,7 +1718,7 @@ export async function downloadBulkReportsZip(
     }
   }
 
-  // 3. Empaquetar y descargar ZIP
+  // 4. Empaquetar y descargar ZIP
   if (onProgress) onProgress(rows.length, rows.length, "Comprimiendo archivo ZIP...");
   const content = await zip.generateAsync({ type: "blob" });
 

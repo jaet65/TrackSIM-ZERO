@@ -18,7 +18,7 @@ import {
   type GroupDoc,
 } from "../lib/groups";
 import { useAuth } from "../components/AuthProvider";
-import { downloadBulkReportsZip } from "../lib/pdfExport";
+import { downloadBulkReportsZip, downloadExecutiveSummaryPdf } from "../lib/pdfExport";
 
 export type DisplayRow = {
   driverId: string;
@@ -90,7 +90,7 @@ export default function Home() {
           return prev;
         });
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Sincronizar el estado del filtro con el param de la URL
@@ -116,7 +116,7 @@ export default function Home() {
     setError("");
 
     // Cargar las fases que tienen resultados que cumplan los filtros
-    getPhasesWithEvaluations(dateFilter).then(setAvailablePhases).catch(() => {});
+    getPhasesWithEvaluations(dateFilter).then(setAvailablePhases).catch(() => { });
 
     if (selectedPhase === null) {
       // Promedio General por defecto
@@ -268,7 +268,7 @@ export default function Home() {
       const dateSubtitle = hasDateFilter
         ? (startDate && endDate ? `${startDate} al ${endDate}` : startDate ? `Desde ${startDate}` : `Hasta ${endDate}`)
         : "Sin filtro de fecha (Histórico completo)";
-      const filterSubtitle = `${groupTitle} · ${phaseTitle} · Rango: ${dateSubtitle}`;
+      const filterSubtitle = `${groupTitle} · ${phaseTitle}`;
 
       await downloadBulkReportsZip(
         rows,
@@ -282,7 +282,8 @@ export default function Home() {
         (current, total, name) => {
           setExportProgress({ current, total, name });
         },
-        dateFilter
+        dateFilter,
+        currentGroupObj?.name || "Todos los Grupos"
       );
     } catch (err: any) {
       console.error("Error al exportar lote PDF/ZIP:", err);
@@ -301,6 +302,30 @@ export default function Home() {
     ? Math.round((rows!.reduce((acc, r) => acc + r.avgScore, 0) / totalConductores) * 10) / 10
     : 0;
 
+  const handleExportExecutiveSummary = () => {
+    if (!sortedRows || sortedRows.length === 0) return;
+    const phaseTitle = selectedPhase === null
+      ? "Promedio General (Todas las fases)"
+      : `Fase ${selectedPhase}: ${PHASES.find((p) => p.id === selectedPhase)?.name || ""}`;
+    const groupTitle = currentGroupObj ? currentGroupObj.name : "Todos los Grupos";
+    const dateSubtitle = hasDateFilter
+      ? (startDate && endDate ? `${startDate} al ${endDate}` : startDate ? `Desde ${startDate}` : `Hasta ${endDate}`)
+      : "Histórico completo";
+    const filterSubtitle = `${groupTitle} · ${phaseTitle} · ${dateSubtitle}`;
+
+    downloadExecutiveSummaryPdf(
+      groupTitle,
+      sortedRows,
+      filterSubtitle,
+      {
+        total: totalConductores,
+        promedio: promedioGeneral,
+        aptos,
+        noAptos,
+      }
+    );
+  };
+
   return (
     <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
       {/* Hero Header */}
@@ -317,8 +342,8 @@ export default function Home() {
             {selectedGroupId && currentGroupObj
               ? `Filtrando por el grupo: «${currentGroupObj.name}» ${currentGroupObj.status === "closed" ? "(🔒 Cerrado/Congelado)" : "(Abierto)"}`
               : selectedPhase === null
-              ? "Vista global: Calificaciones promediadas de todo el programa de capacitación."
-              : `Vista focalizada: Resultados detallados de la Fase ${selectedPhase}.`}
+                ? "Vista global: Calificaciones promediadas de todo el programa de capacitación."
+                : `Vista focalizada: Resultados detallados de la Fase ${selectedPhase}.`}
           </p>
         </div>
 
@@ -460,7 +485,7 @@ export default function Home() {
       <UploadForm
         selectedGroupId={selectedGroupId}
         onDone={() => {
-          listGroups().then(setAllGroups).catch(() => {});
+          listGroups().then(setAllGroups).catch(() => { });
           const activeId = getActiveGroupId();
           if (activeId && activeId !== selectedGroupId) {
             setSelectedGroupId(activeId);
@@ -484,9 +509,8 @@ export default function Home() {
           <p className="mt-1 text-2xl font-black text-slate-900">{promedioGeneral}</p>
           <div className="mt-1 flex items-center gap-1.5">
             <span
-              className={`h-2 w-2 rounded-full ${
-                promedioGeneral >= 8 ? "bg-emerald-500" : promedioGeneral >= 6 ? "bg-amber-500" : "bg-rose-500"
-              }`}
+              className={`h-2 w-2 rounded-full ${promedioGeneral >= 8 ? "bg-emerald-500" : promedioGeneral >= 6 ? "bg-amber-500" : "bg-rose-500"
+                }`}
             />
             <span className="text-[11px] font-medium text-slate-600">
               {promedioGeneral >= 8 ? "Nivel Satisfactorio" : promedioGeneral >= 6 ? "En Riesgo / Regular" : "No Apto"}
@@ -523,7 +547,19 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleExportExecutiveSummary}
+              disabled={!sortedRows || sortedRows.length === 0}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              title="Descargar Resumen Ejecutivo de 1 sola página para Dirección"
+            >
+              <svg className="h-4 w-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>Resumen Ejecutivo (PDF)</span>
+            </button>
+
             <button
               onClick={handleExportZip}
               disabled={!rows || rows.length === 0 || isExportingZip}
@@ -642,15 +678,14 @@ export default function Home() {
                   <tr key={r.driverId} className="hover:bg-slate-50/60 transition group">
                     <td className="px-4 py-3.5">
                       <Link
-                        to={`/drivers/${r.driverId}${
-                          selectedGroupId || startDate || endDate
+                        to={`/drivers/${r.driverId}${selectedGroupId || startDate || endDate
                             ? `?${new URLSearchParams({
-                                ...(selectedGroupId ? { grupo: selectedGroupId } : {}),
-                                ...(startDate ? { desde: startDate } : {}),
-                                ...(endDate ? { hasta: endDate } : {}),
-                              }).toString()}`
+                              ...(selectedGroupId ? { grupo: selectedGroupId } : {}),
+                              ...(startDate ? { desde: startDate } : {}),
+                              ...(endDate ? { hasta: endDate } : {}),
+                            }).toString()}`
                             : ""
-                        }`}
+                          }`}
                         className="font-bold text-slate-900 group-hover:text-indigo-600 transition"
                       >
                         {r.driver}
@@ -685,9 +720,8 @@ export default function Home() {
                         </span>
                         <div className="h-1.5 w-16 rounded-full bg-slate-100 overflow-hidden mt-0.5">
                           <div
-                            className={`h-full rounded-full ${
-                              r.avgScore >= 8 ? "bg-emerald-500" : r.avgScore >= 6 ? "bg-amber-500" : "bg-rose-500"
-                            }`}
+                            className={`h-full rounded-full ${r.avgScore >= 8 ? "bg-emerald-500" : r.avgScore >= 6 ? "bg-amber-500" : "bg-rose-500"
+                              }`}
                             style={{ width: `${Math.min(100, Math.max(0, r.avgScore * 10))}%` }}
                           />
                         </div>
