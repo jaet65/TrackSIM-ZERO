@@ -453,35 +453,35 @@ export default function Driver() {
             </p>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-6 grid-cols-1">
             {phases.map((p) => {
               // Evaluaciones correspondientes a esta fase para promediar ejes de telemetría
               const phaseEvals = evals.filter((e) => e.phase === p.phase);
-              const telemetries = phaseEvals.map((e) => e.telemetry);
-              const firstExerciseName = phaseEvals[0]?.exercise || "";
               const phaseGroupId = phaseEvals[0]?.groupId || groupParam || null;
-              const radarSummary = computeTelemetryAxes(telemetries, firstExerciseName, phaseGroupId);
+              // Pasamos las evaluaciones completas con su ejercicio específico para que se calibre cada entorno individualmente
+              const radarSummary = computeTelemetryAxes(phaseEvals, "", phaseGroupId);
               const axes = radarSummary.axes;
+              const envLabel = radarSummary.environmentLabel;
 
-              // Coordenadas para radar en layout horizontal (size: 210x170, radius: 46)
-              const miniW = 210;
-              const miniH = 165;
-              const cX = miniW / 2;
-              const cY = miniH / 2;
-              const r = 44;
+              // Coordenadas para radar en layout visual completo (size: 340x290, radius: 80)
+              const width = 340;
+              const height = 290;
+              const centerX = width / 2;
+              const centerY = height / 2;
+              const radius = 80;
 
-              const getCoord = (index: number, val: number, customR = r) => {
-                const angle = (Math.PI * 2 / 5) * index - Math.PI / 2;
-                const rad = (val / 100) * customR;
+              const getCoords = (index: number, val: number, customRadius = radius) => {
+                const angle = (Math.PI * 2 / axes.length) * index - Math.PI / 2;
+                const r = (val / 100) * customRadius;
                 return {
-                  x: cX + rad * Math.cos(angle),
-                  y: cY + rad * Math.sin(angle),
+                  x: centerX + r * Math.cos(angle),
+                  y: centerY + r * Math.sin(angle),
                 };
               };
 
-              const miniPolygonPoints = axes
+              const radarPolygonPoints = axes
                 .map((a, i) => {
-                  const c = getCoord(i, a.value);
+                  const c = getCoords(i, a.value);
                   return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
                 })
                 .join(" ");
@@ -489,143 +489,342 @@ export default function Driver() {
               return (
                 <div
                   key={p.phase}
-                  className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4"
+                  className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm space-y-4"
                 >
-                  {/* Lado Izquierdo: Información de la Fase */}
-                  <div className="flex-1 space-y-3 w-full">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
-                          Fase {p.phase}
-                        </span>
-                        <h3 className="text-base font-bold text-slate-900 leading-snug">{phaseName(p.phase)}</h3>
+                  {/* Encabezado Principal de la Fase */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 font-black text-sm">
+                        F{p.phase}
                       </div>
-                      <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${p.color}`}>
-                        {p.verdict}
-                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
+                            Fase {p.phase}
+                          </span>
+                          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${p.color}`}>
+                            {p.verdict}
+                          </span>
+                        </div>
+                        <h3 className="text-base font-bold text-slate-900 leading-snug">
+                          {phaseName(p.phase)}
+                        </h3>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-xs border-t border-slate-100 pt-3">
-                      <div className="rounded-xl bg-slate-50 p-2 border border-slate-100">
-                        <span className="text-[10px] text-slate-400 block font-medium">Ejercicios</span>
-                        <span className="text-sm font-bold text-slate-900">{p.exercises}</span>
-                        <span className="text-slate-500 text-[11px]"> de {p.expected}</span>
+                    {/* Resumen rápido de métricas de la fase */}
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
+                      <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-1.5 flex items-center gap-1.5">
+                        <span className="text-[11px] text-slate-400 font-medium">Ejercicios:</span>
+                        <strong className="text-slate-800 font-bold">{p.exercises}</strong>
+                        <span className="text-slate-400 text-[10px]">/ {p.expected}</span>
                       </div>
 
-                      <div className="rounded-xl bg-slate-50 p-2 border border-slate-100">
-                        <span className="text-[10px] text-slate-400 block font-medium">Infracciones</span>
-                        <span className={`text-sm font-bold ${p.errors > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                      <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-1.5 flex items-center gap-1.5">
+                        <span className="text-[11px] text-slate-400 font-medium">Infracciones:</span>
+                        <strong className={p.errors > 0 ? "text-rose-600 font-bold" : "text-emerald-600 font-bold"}>
                           {p.errors}
-                        </span>
-                        <span className="text-slate-500 text-[11px]"> error(es)</span>
+                        </strong>
                       </div>
-                    </div>
 
-                    <div className="flex items-center justify-between rounded-xl bg-indigo-50/60 p-2.5 border border-indigo-100">
-                      <div>
-                        <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">
-                          Calificación
-                        </span>
-                        <span className="text-xl font-black font-mono text-indigo-600">{p.avgScore}</span>
-                        <span className="text-xs text-indigo-500"> / 10</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">
-                          Puntaje Eco
-                        </span>
-                        <span className="text-base font-extrabold font-mono text-indigo-700">
-                          {p.exercises > 0 ? `${radarSummary.ecoScore}/10` : "—"}
-                        </span>
+                      <div className="rounded-xl bg-indigo-50/70 border border-indigo-100 px-3 py-1.5 flex items-center gap-1.5">
+                        <span className="text-[11px] text-indigo-600 font-medium">Calif. Promedio:</span>
+                        <strong className="text-sm font-black font-mono text-indigo-700">{p.avgScore}</strong>
+                        <span className="text-indigo-400 text-[10px]">/ 10</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Lado Derecho: Gráfico Radar */}
-                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2 flex flex-col items-center shrink-0">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                      Radar Telemetría
-                    </span>
+                  {/* Sección de Indicadores de Telemetría · Perfil Radar (Idéntica al ejercicio) */}
+                  <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                            <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            Indicadores de Telemetría · Perfil Radar
+                          </h4>
+                          <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                            {envLabel}
+                          </span>
+                          {radarSummary.hasSlipperyRoad && (
+                            <span className="rounded-full bg-sky-100 border border-sky-300 px-2 py-0.5 text-[10px] font-bold text-sky-800 flex items-center gap-1">
+                              🌧️ Pavimento mojado (Retarder off)
+                              {radarSummary.slipperyCount < radarSummary.totalExercises && (
+                                <span className="font-normal text-sky-700">
+                                  ({radarSummary.slipperyCount}/{radarSummary.totalExercises} ej.)
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          {radarSummary.environment === "MIXTO"
+                            ? `Calibrado dinámicamente por ejercicio (${radarSummary.environments
+                                .map((e) => (e === "MONTANA" ? "Montaña" : e === "CIUDAD" ? "Ciudad" : "Carretera"))
+                                .join(" / ")}) · Meta Verde media: ${radarSummary.greenTarget}%`
+                            : `Calibrado para ${radarSummary.environment.toLowerCase()} (Meta Verde: ${radarSummary.greenTarget}%)`} · Promedio de la fase
+                        </span>
+                      </div>
+                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                        Puntaje Eco: {p.exercises > 0 ? `${radarSummary.ecoScore}/10` : "—"}
+                      </span>
+                    </div>
 
-                    <svg width={miniW} height={miniH} className="overflow-visible select-none">
-                      {/* Círculos / Guías (50% y 100%) */}
-                      {[0.5, 1.0].map((step) => {
-                        const gridPts = axes
-                          .map((_, i) => {
-                            const c = getCoord(i, step * 100);
-                            return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
-                          })
-                          .join(" ");
-                        return (
-                          <polygon
-                            key={step}
-                            points={gridPts}
-                            fill={step === 1.0 ? "#ffffff" : "transparent"}
-                            stroke="#e2e8f0"
-                            strokeWidth="1"
-                          />
-                        );
-                      })}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                      {/* Gráfico de Radar SVG */}
+                      <div className="md:col-span-6 flex flex-col items-center justify-center p-3 rounded-xl bg-white border border-slate-200/80 shadow-xs overflow-hidden">
+                        <svg width={width} height={height} className="overflow-visible select-none">
+                          {/* Círculos / Polígonos de cuadrícula guía (25%, 50%, 75%, 100%) */}
+                          {[0.25, 0.5, 0.75, 1.0].map((step) => {
+                            const gridPoints = axes
+                              .map((_, i) => {
+                                const c = getCoords(i, step * 100);
+                                return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+                              })
+                              .join(" ");
+                            return (
+                              <polygon
+                                key={step}
+                                points={gridPoints}
+                                fill={step === 1.0 ? "#f8fafc" : "transparent"}
+                                stroke="#e2e8f0"
+                                strokeWidth="1"
+                                strokeDasharray={step < 1.0 ? "2,2" : undefined}
+                              />
+                            );
+                          })}
 
-                      {/* Ejes radiales */}
-                      {axes.map((_, i) => {
-                        const c = getCoord(i, 100);
-                        return (
-                          <line
-                            key={i}
-                            x1={cX}
-                            y1={cY}
-                            x2={c.x}
-                            y2={c.y}
-                            stroke="#e2e8f0"
-                            strokeWidth="1"
-                          />
-                        );
-                      })}
+                          {/* Ejes radiales desde el centro */}
+                          {axes.map((_, i) => {
+                            const c = getCoords(i, 100);
+                            return (
+                              <line
+                                key={i}
+                                x1={centerX}
+                                y1={centerY}
+                                x2={c.x}
+                                y2={c.y}
+                                stroke="#e2e8f0"
+                                strokeWidth="1"
+                              />
+                            );
+                          })}
 
-                      {/* Polígono del conductor en esta fase (solo si realizó ejercicios) */}
-                      {p.exercises > 0 ? (
-                        <polygon
-                          points={miniPolygonPoints}
-                          fill="rgba(79, 70, 229, 0.20)"
-                          stroke="#4f46e5"
-                          strokeWidth="2"
-                        />
-                      ) : (
-                        <text
-                          x={cX}
-                          y={cY + 3}
-                          textAnchor="middle"
-                          fontSize="8.5"
-                          fontWeight="600"
-                          fill="#94a3b8"
-                        >
-                          Sin realizar
-                        </text>
-                      )}
-
-                      {/* Vértices y Etiquetas */}
-                      {axes.map((a, i) => {
-                        const c = getCoord(i, a.value);
-                        const labelPos = getCoord(i, 130);
-                        return (
-                          <g key={i}>
-                            {p.exercises > 0 && (
-                              <circle cx={c.x} cy={c.y} r="2.5" fill="#4f46e5" stroke="#ffffff" strokeWidth="1" />
-                            )}
+                          {/* Polígono del Operador (Relleno y Borde) */}
+                          {p.exercises > 0 ? (
+                            <polygon
+                              points={radarPolygonPoints}
+                              fill="rgba(16, 185, 129, 0.22)"
+                              stroke="#059669"
+                              strokeWidth="2.5"
+                            />
+                          ) : (
                             <text
-                              x={labelPos.x}
-                              y={labelPos.y + 3}
+                              x={centerX}
+                              y={centerY + 4}
                               textAnchor="middle"
-                              fontSize="8"
+                              fontSize="11"
                               fontWeight="600"
-                              fill="#475569"
+                              fill="#94a3b8"
                             >
-                              {a.label}
+                              Sin ejercicios evaluados
                             </text>
-                          </g>
-                        );
-                      })}
-                    </svg>
+                          )}
+
+                          {/* Nodos de datos en cada eje con etiquetas de concepto y porcentaje */}
+                          {axes.map((a, i) => {
+                            const c = getCoords(i, a.value);
+                            const labelCoords = getCoords(i, 100, radius + 32);
+                            return (
+                              <g key={i}>
+                                {p.exercises > 0 && (
+                                  <circle
+                                    cx={c.x}
+                                    cy={c.y}
+                                    r="4"
+                                    className="fill-emerald-600 stroke-white stroke-2"
+                                  />
+                                )}
+                                <text
+                                  x={labelCoords.x}
+                                  y={labelCoords.y - 7}
+                                  textAnchor="middle"
+                                  dominantBaseline="central"
+                                  className="text-[10px] font-bold fill-slate-800"
+                                >
+                                  {a.label}
+                                </text>
+                                <text
+                                  x={labelCoords.x}
+                                  y={labelCoords.y + 7}
+                                  textAnchor="middle"
+                                  dominantBaseline="central"
+                                  className={`text-[9px] font-semibold font-mono ${
+                                    p.exercises === 0
+                                      ? "fill-slate-400"
+                                      : a.value >= 75
+                                      ? "fill-emerald-600"
+                                      : a.value >= 50
+                                      ? "fill-amber-600"
+                                      : "fill-rose-600"
+                                  }`}
+                                >
+                                  {p.exercises > 0 ? `${a.value}%` : "—"}
+                                </text>
+                              </g>
+                            );
+                          })}
+                        </svg>
+
+                        <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-500">
+                          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
+                          <span>Área verde = Nivel de destreza operativa</span>
+                        </div>
+                      </div>
+
+                      {/* Tarjetas complementarias con los valores reales */}
+                      <div className="md:col-span-6 grid grid-cols-2 gap-2 text-xs">
+                        {axes.map((axis, idx) => {
+                          const isGreenAxis = axis.label === "Zona Verde" && "breakdown" in axis;
+                          return (
+                            <div
+                              key={idx}
+                              className={`rounded-lg bg-white p-2.5 border border-slate-200/80 ${
+                                isGreenAxis ? "col-span-2" : ""
+                              }`}
+                            >
+                              <div className="flex items-center justify-between text-[10px] text-slate-400">
+                                <span className="font-semibold text-slate-700">{axis.label}</span>
+                                <div className="flex items-center gap-1.5">
+                                  {axis.meta && (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      ({axis.meta})
+                                    </span>
+                                  )}
+                                  <span
+                                    className={`font-bold font-mono ${
+                                      p.exercises === 0
+                                        ? "text-slate-400"
+                                        : axis.value >= 75
+                                        ? "text-emerald-600"
+                                        : axis.value >= 50
+                                        ? "text-amber-600"
+                                        : "text-rose-600"
+                                    }`}
+                                  >
+                                    {p.exercises > 0 ? `${axis.value}%` : "—"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {isGreenAxis && axis.breakdown ? (
+                                <div className="mt-1.5 space-y-1.5">
+                                  {/* Desglose de las 4 Zonas de RPM con colores diferenciados */}
+                                  <div className="grid grid-cols-4 gap-1.5 text-center">
+                                    <div className="rounded bg-slate-50 border border-slate-100 p-1">
+                                      <span className="block text-[9px] text-slate-400 uppercase font-medium">Bajas RPM</span>
+                                      <strong className="block text-[11px] font-mono text-slate-700 font-bold">
+                                        {axis.breakdown.low}%
+                                      </strong>
+                                    </div>
+                                    <div className="rounded bg-emerald-50 border border-emerald-200/60 p-1">
+                                      <span className="block text-[9px] text-emerald-700 uppercase font-medium">Verde (Óptima)</span>
+                                      <strong className="block text-[11px] font-mono text-emerald-800 font-bold">
+                                        {axis.breakdown.green}%
+                                      </strong>
+                                    </div>
+                                    <div className="rounded bg-amber-50 border border-amber-200/60 p-1">
+                                      <span className="block text-[9px] text-amber-700 uppercase font-medium">Amarilla</span>
+                                      <strong className="block text-[11px] font-mono text-amber-800 font-bold">
+                                        {axis.breakdown.yellow}%
+                                      </strong>
+                                    </div>
+                                    <div className="rounded bg-rose-50 border border-rose-200/60 p-1">
+                                      <span className="block text-[9px] text-rose-700 uppercase font-medium">Roja</span>
+                                      <strong className="block text-[11px] font-mono text-rose-800 font-bold">
+                                        {axis.breakdown.red}%
+                                      </strong>
+                                    </div>
+                                  </div>
+
+                                  {/* Explicación de la condición y penalización */}
+                                  <div className="text-[10px] flex items-center justify-between px-1 text-slate-500">
+                                    <span>
+                                      {axis.breakdown.isSlippery ? (
+                                        <span className="text-sky-700 font-medium">
+                                          ❄️ Clima adverso: se permite zona amarilla hasta 25% para retención por compresión segura.
+                                        </span>
+                                      ) : (
+                                        <span>
+                                          Retención en seco: la zona amarilla solo se admite con freno motor activo.
+                                        </span>
+                                      )}
+                                    </span>
+                                    {axis.breakdown.penalty > 0 ? (
+                                      <span className="text-rose-600 font-bold font-mono">
+                                        Penalización: -{axis.breakdown.penalty}%
+                                      </span>
+                                    ) : (
+                                      <span className="text-emerald-600 font-semibold font-mono">
+                                        ✓ Sin penalización
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="mt-1 flex items-baseline justify-between gap-1">
+                                  <strong className="text-slate-800 font-mono text-sm">
+                                    {axis.raw}
+                                  </strong>
+                                </div>
+                              )}
+
+                              {/* Barra de progreso miniatura */}
+                              <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    p.exercises === 0
+                                      ? "bg-slate-200"
+                                      : axis.value >= 75
+                                      ? "bg-emerald-500"
+                                      : axis.value >= 50
+                                      ? "bg-amber-500"
+                                      : "bg-rose-500"
+                                  }`}
+                                  style={{ width: `${axis.value}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        <div className="rounded-lg bg-white p-2.5 border border-slate-200/80 col-span-2 grid grid-cols-3 gap-2 text-center">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block truncate">Consumo Reportado</span>
+                            <span className="font-mono text-xs text-slate-800 font-semibold">
+                              {radarSummary.metrics.avgConsumption !== undefined
+                                ? `${radarSummary.metrics.avgConsumption} l/100km`
+                                : "—"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block truncate">Velocidad Med/Max</span>
+                            <span className="font-mono text-xs text-slate-800 font-semibold">
+                              {radarSummary.metrics.avgSpeed || "—"} / {radarSummary.metrics.maxSpeed || "—"} km/h
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block truncate">RPM Max / Cambios</span>
+                            <span className="font-mono text-xs text-slate-800 font-semibold">
+                              {radarSummary.metrics.maxRpm || "—"} rpm · {radarSummary.metrics.gearChanges ?? "—"} c.
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
@@ -1094,7 +1293,15 @@ export default function Driver() {
                 const axisBrake = Math.max(0, 100 - brakePenalty);
                 const brakeTargetLabel = brakeTolerance > 0 ? `meta ≤${brakeTolerance}` : "meta 0";
 
-                // 3. Freno Auxiliar / Retarder
+                // Tiempo de freno de servicio en segundos
+                let serviceBrakeSec = 0;
+                if (tel.brakeTime && tel.brakeTime !== "00:00") {
+                  const bParts = tel.brakeTime.split(":").map(Number);
+                  serviceBrakeSec = (bParts[0] || 0) * 60 + (bParts[1] || 0);
+                }
+                const totalBrakingSec = (tel.auxBrakeTimeSec || 0) + serviceBrakeSec;
+
+                // 3. Freno Auxiliar / Retarder (Relación Asistencia vs Freno de Servicio)
                 let axisRetarder = 100;
                 let retarderRaw = `${tel.auxBrakeTimeSec || 0}s`;
                 if (tel.hasSlipperyRoad) {
@@ -1106,16 +1313,35 @@ export default function Driver() {
                     axisRetarder = Math.max(10, Math.round(100 - Math.min(90, (tel.auxBrakeTimeSec || 0) * 4)));
                     retarderRaw = `${tel.auxBrakeTimeSec}s (Riesgo tijera ⚠️)`;
                   }
-                } else {
-                  // Pavimento seco: en montaña la meta es 45s, en carretera/ciudad 20s
-                  const retarderTarget = env === "MONTANA" ? 45 : 20;
-                  const sec = tel.auxBrakeTimeSec || 0;
-                  if (env === "MONTANA" && sec < 5) {
-                    axisRetarder = 25;
-                    retarderRaw = `${sec}s (Riesgo cristalización ⚠️)`;
+                } else if (env === "CIUDAD") {
+                  // En zonas urbanas y maniobras el retarder está prohibido por ruido y no aplica
+                  if (!tel.auxBrakeTimeSec || tel.auxBrakeTimeSec <= 3) {
+                    axisRetarder = 100;
+                    retarderRaw = `${tel.auxBrakeTimeSec || 0}s (Urbano/Prohibido ✓)`;
                   } else {
-                    axisRetarder = Math.min(100, Math.round((sec / retarderTarget) * 100));
-                    retarderRaw = `${sec}s (meta ${retarderTarget}s)`;
+                    axisRetarder = Math.max(20, Math.round(100 - (tel.auxBrakeTimeSec || 0) * 3));
+                    retarderRaw = `${tel.auxBrakeTimeSec}s (Uso indebido ⚠️)`;
+                  }
+                } else {
+                  // Pavimento seco en carretera o montaña: Ratio = Retarder / (Retarder + Servicio)
+                  const targetRatio = env === "MONTANA" ? 0.60 : 0.40;
+                  const sec = tel.auxBrakeTimeSec || 0;
+                  if (totalBrakingSec <= 5) {
+                    axisRetarder = 100;
+                    retarderRaw = `${sec}s (Sin exigencia)`;
+                  } else {
+                    const actualRatio = sec / totalBrakingSec;
+                    const actualRatioPct = Math.round(actualRatio * 100);
+                    if (actualRatio >= targetRatio) {
+                      axisRetarder = 100;
+                      retarderRaw = `${sec}s (Ratio ${actualRatioPct}% ✓)`;
+                    } else if (env === "MONTANA" && sec < 5 && serviceBrakeSec > 15) {
+                      axisRetarder = 25;
+                      retarderRaw = `${sec}s (Riesgo cristalización ⚠️)`;
+                    } else {
+                      axisRetarder = Math.max(20, Math.min(100, Math.round((actualRatio / targetRatio) * 100)));
+                      retarderRaw = `${sec}s (Ratio ${actualRatioPct}% / meta ${Math.round(targetRatio * 100)}%)`;
+                    }
                   }
                 }
 

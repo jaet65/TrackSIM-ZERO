@@ -255,7 +255,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   doc.setFontSize(7.5);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text("Expediente de Desempeño y Telemetría — TrackSIM ZERO", 49, y + 11);
+  doc.text("Expediente de Desempeño y Telemetría — TrackSIM", 49, y + 11);
 
   // Badge de Dictamen Oficial a la derecha
   const isApto = data.verdict === "APTO";
@@ -362,7 +362,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   y += 40;
 
   // -------------------------------------------------------------
-  // Sección: Resumen por Fase (Grid de tarjetas)
+  // Sección: Progreso por Fase con Perfil Radar Completo y Telemetría
   // -------------------------------------------------------------
   doc.setFontSize(10.5);
   doc.setFont("helvetica", "bold");
@@ -370,39 +370,44 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   doc.text("Progreso por Fase", 14, y);
   y += 4;
 
-  const cardW = 89; // 2 columnas por fila para dar amplio espacio
-  const cardH = 26;
-  const cardGap = 4;
+  const cardW = 182; // Ancho completo (1 columna)
+  const cardH = 50;  // Altura suficiente para radar completo, desglose RPM y métricas
 
-  data.phases.forEach((p, idx) => {
-    const col = idx % 2;
-    const row = Math.floor(idx / 2);
-    const cardX = 14 + col * (cardW + cardGap);
-    const cardY = y + row * (cardH + 3);
+  data.phases.forEach((p) => {
+    // Si no cabe la tarjeta completa, salto de página
+    if (y + cardH > 275) {
+      drawFooter(doc, doc.getNumberOfPages(), 0);
+      doc.addPage();
+      y = drawHeader(doc, `Expediente: ${data.name} (Progreso por Fase Cont.)`, "Continuación del desempeño por fase");
+    }
 
-    // Calcular ejes de telemetría de esta fase
+    const cardX = 14;
+    const cardY = y;
+
+    // Calcular ejes de telemetría de esta fase (con soporte multientorno)
     const phaseEvals = data.evals.filter((e) => e.phase === p.phase);
-    const telemetries = phaseEvals.map((e) => e.telemetry);
-    const firstExName = phaseEvals[0]?.exercise || "";
     const phaseGroupId = phaseEvals[0]?.groupId || filter?.groupId || null;
-    const radarData = computeTelemetryAxes(telemetries, firstExName, phaseGroupId);
+    const radarData = computeTelemetryAxes(phaseEvals, "", phaseGroupId);
     const axes = radarData.axes;
+    const rpmAxis = axes.find((a) => a.label === "Zona Verde");
+    const bd = rpmAxis?.breakdown;
 
+    // Contenedor principal de la fase
     doc.setFillColor(255, 255, 255);
     doc.roundedRect(cardX, cardY, cardW, cardH, 2.5, 2.5, "F");
     doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
     doc.roundedRect(cardX, cardY, cardW, cardH, 2.5, 2.5, "S");
 
-    // LADO IZQUIERDO: Información de la fase (ancho: 52mm)
+    // ENCABEZADO DE LA FASE:
     doc.setFontSize(6.5);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
     doc.text(`FASE ${p.phase}`, cardX + 3.5, cardY + 4.5);
 
-    doc.setFontSize(7.5);
+    doc.setFontSize(8);
     doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
     const pName = phaseName(p.phase);
-    doc.text(pName.length > 24 ? `${pName.substring(0, 22)}…` : pName, cardX + 3.5, cardY + 9);
+    doc.text(pName.length > 28 ? `${pName.substring(0, 26)}…` : pName, cardX + 3.5, cardY + 9);
 
     // Badge fase
     const pApto = p.verdict.startsWith("APTO") && !p.verdict.includes("OBSERVACIONES");
@@ -410,35 +415,68 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     const pIncomplete = p.verdict === "INCOMPLETO";
     const pNotDone = p.verdict === "NO REALIZADO";
     const pCol = pApto ? [16, 185, 129] : pObs || pIncomplete ? [217, 119, 6] : pNotDone ? COLOR_MUTED : [225, 29, 72];
-    doc.setFontSize(6);
+    doc.setFontSize(6.5);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(pCol[0], pCol[1], pCol[2]);
     doc.text(p.verdict, cardX + 54, cardY + 4.5, { align: "right" });
 
-    // Línea divisoria izquierda
-    doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
-    doc.line(cardX + 3.5, cardY + 11.5, cardX + 54, cardY + 11.5);
-
-    // Métricas en 2 líneas
+    // Métricas rápidas de la fase (lado izquierdo)
     doc.setFontSize(6);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-    doc.text(`${p.exercises}/${p.expected} ejercicios`, cardX + 3.5, cardY + 16);
-    doc.text(`${p.errors} infracciones`, cardX + 3.5, cardY + 20.5);
+    doc.text(`Ejercicios: `, cardX + 3.5, cardY + 14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+    doc.text(`${p.exercises} de ${p.expected}`, cardX + 16, cardY + 14);
 
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+    doc.text(`Infracciones: `, cardX + 3.5, cardY + 18.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(p.errors > 0 ? 225 : 16, p.errors > 0 ? 29 : 185, p.errors > 0 ? 72 : 129);
+    doc.text(`${p.errors} err.`, cardX + 18, cardY + 18.5);
+
+    // Cuadro Calificación y Puntaje Eco
+    doc.setFillColor(245, 247, 255);
+    doc.roundedRect(cardX + 3.5, cardY + 22, 50, 11, 1.5, 1.5, "F");
+    doc.setDrawColor(224, 231, 255);
+    doc.roundedRect(cardX + 3.5, cardY + 22, 50, 11, 1.5, 1.5, "S");
+
+    doc.setFontSize(5.5);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-    doc.text(`Nota: ${p.avgScore} / 10`, cardX + 32, cardY + 16);
-    doc.text(`Eco: ${p.exercises > 0 ? `${radarData.ecoScore}/10` : "—"}`, cardX + 32, cardY + 20.5);
+    doc.text("CALIFICACIÓN", cardX + 5.5, cardY + 25.5);
+    doc.text("PUNTAJE ECO", cardX + 33, cardY + 25.5);
 
-    // Divisor vertical entre texto y radar
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+    doc.text(String(p.avgScore), cardX + 5.5, cardY + 31);
+    doc.setFontSize(6.5);
+    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+    doc.text("/10", cardX + 13.5, cardY + 31);
+
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+    doc.text(p.exercises > 0 ? `${radarData.ecoScore}/10` : "—", cardX + 33, cardY + 31);
+
+    // Entorno especificado
+    doc.setFontSize(5.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+    const cleanEnvLabel = radarData.environmentLabel.replace(/[^\w\s-()+/·]/gi, "").trim();
+    doc.text(cleanEnvLabel, cardX + 3.5, cardY + 37);
+    doc.text(`Meta Verde: ${radarData.greenTarget}%`, cardX + 3.5, cardY + 40.5);
+
+    // Divisor vertical 1 (traslado al gráfico radar)
     doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
     doc.line(cardX + 56, cardY + 3, cardX + 56, cardY + cardH - 3);
 
-    // LADO DERECHO: Radar de Telemetría (ancho disponible: 33mm)
-    const rcX = cardX + 72;
-    const rcY = cardY + 13;
-    const rRadius = 9;
+    // GRÁFICO RADAR (Centro) - Ancho aprox: 46mm
+    const rcX = cardX + 80;
+    const rcY = cardY + 25;
+    const rRadius = 16;
 
     const getPdfCoord = (i: number, val: number, cr = rRadius) => {
       const angle = (Math.PI * 2 / 5) * i - Math.PI / 2;
@@ -449,49 +487,149 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
       };
     };
 
-    // Fondo y círculo exterior del radar
+    // Guías del radar (50% y 100%)
     doc.setDrawColor(226, 232, 240);
     doc.setLineWidth(0.2);
-    // Guía 100% y ejes
     for (let i = 0; i < 5; i++) {
       const p1 = getPdfCoord(i, 100);
       const p2 = getPdfCoord((i + 1) % 5, 100);
       doc.line(p1.x, p1.y, p2.x, p2.y);
       doc.line(rcX, rcY, p1.x, p1.y);
     }
-    // Guía 50%
     for (let i = 0; i < 5; i++) {
       const p1 = getPdfCoord(i, 50);
       const p2 = getPdfCoord((i + 1) % 5, 50);
       doc.line(p1.x, p1.y, p2.x, p2.y);
     }
 
-    // Polígono de telemetría de la fase (solo si realizó ejercicios)
+    // Polígono de telemetría de la fase
     if (p.exercises > 0) {
-      doc.setDrawColor(79, 70, 229); // indigo
-      doc.setLineWidth(0.4);
+      doc.setDrawColor(5, 150, 105); // emerald
+      doc.setLineWidth(0.5);
       for (let i = 0; i < 5; i++) {
         const p1 = getPdfCoord(i, axes[i].value);
         const p2 = getPdfCoord((i + 1) % 5, axes[(i + 1) % 5].value);
         doc.line(p1.x, p1.y, p2.x, p2.y);
-        doc.setFillColor(79, 70, 229);
-        doc.circle(p1.x, p1.y, 0.5, "F");
+        doc.setFillColor(5, 150, 105);
+        doc.circle(p1.x, p1.y, 0.7, "F");
       }
+    } else {
+      doc.setFontSize(6);
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.text("Sin realizar", rcX, rcY + 1, { align: "center" });
     }
 
-    // Etiquetas abreviadas de los 5 ejes
-    doc.setFontSize(4);
+    // Etiquetas y porcentajes de los 5 vértices
+    doc.setFontSize(4.5);
     doc.setFont("helvetica", "bold");
+    axes.forEach((a, i) => {
+      const lp = getPdfCoord(i, 128);
+      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+      doc.text(a.label, lp.x, lp.y, { align: "center" });
+
+      const valColor = a.value >= 75 ? [5, 150, 105] : a.value >= 50 ? [217, 119, 6] : [225, 29, 72];
+      doc.setTextColor(valColor[0], valColor[1], valColor[2]);
+      doc.text(p.exercises > 0 ? `${a.value}%` : "—", lp.x, lp.y + 2, { align: "center" });
+    });
+
+    // Divisor vertical 2 (traslado a las tarjetas de valores reales)
+    doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+    doc.line(cardX + 106, cardY + 3, cardX + 106, cardY + cardH - 3);
+
+    // LADO DERECHO: Tarjetas de valores reales y Desglose de RPM (X: cardX + 109, Ancho: 70mm)
+    const dX = cardX + 109;
+
+    // 1. Desglose de RPM
+    doc.setFontSize(5.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+    doc.text("ZONA VERDE & RPM:", dX, cardY + 5.5);
+
+    const rpmCols = [
+      { label: "Bajas", val: bd ? `${bd.low}%` : "—", bg: [248, 250, 252], text: COLOR_PRIMARY },
+      { label: "Verde", val: bd ? `${bd.green}%` : "—", bg: [236, 253, 245], text: [5, 150, 105] },
+      { label: "Amarilla", val: bd ? `${bd.yellow}%` : "—", bg: [254, 243, 199], text: [217, 119, 6] },
+      { label: "Roja", val: bd ? `${bd.red}%` : "—", bg: [255, 241, 242], text: [225, 29, 72] },
+    ];
+
+    const boxW = 16.5;
+    const boxH = 7.5;
+    rpmCols.forEach((c, idx) => {
+      const bX = dX + idx * (boxW + 1);
+      doc.setFillColor(c.bg[0], c.bg[1], c.bg[2]);
+      doc.roundedRect(bX, cardY + 7, boxW, boxH, 1, 1, "F");
+      doc.setFontSize(4.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.text(c.label, bX + boxW / 2, cardY + 9.5, { align: "center" });
+      doc.setFontSize(5.5);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(c.text[0], c.text[1], c.text[2]);
+      doc.text(c.val, bX + boxW / 2, cardY + 13.2, { align: "center" });
+    });
+
+    // 2. Grid de 4 ejes restantes
+    const otherAxes = axes.filter((a) => a.label !== "Zona Verde");
+    otherAxes.forEach((a, idx) => {
+      const axCol = idx % 2;
+      const axRow = Math.floor(idx / 2);
+      const aX = dX + axCol * 35.5;
+      const aY = cardY + 16.5 + axRow * 11;
+
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(aX, aY, 34, 9.5, 1, 1, "F");
+
+      doc.setFontSize(5);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+      doc.text(a.label, aX + 2, aY + 3.2);
+
+      const valCol = a.value >= 75 ? [5, 150, 105] : a.value >= 50 ? [217, 119, 6] : [225, 29, 72];
+      doc.setTextColor(valCol[0], valCol[1], valCol[2]);
+      doc.text(p.exercises > 0 ? `${a.value}%` : "—", aX + 32, aY + 3.2, { align: "right" });
+
+      doc.setFontSize(4.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      const rawText = a.raw.length > 22 ? `${a.raw.substring(0, 20)}…` : a.raw;
+      doc.text(rawText, aX + 2, aY + 6.2);
+
+      // Barrita miniatura
+      doc.setFillColor(226, 232, 240);
+      doc.roundedRect(aX + 2, aY + 7.5, 30, 1, 0.5, 0.5, "F");
+      if (p.exercises > 0 && a.value > 0) {
+        doc.setFillColor(valCol[0], valCol[1], valCol[2]);
+        doc.roundedRect(aX + 2, aY + 7.5, Math.round((a.value / 100) * 30), 1, 0.5, 0.5, "F");
+      }
+    });
+
+    // 3. Barra resumen inferior de métricas de telemetría (Consumo / Velocidad / RPM)
+    const mY = cardY + 39.5;
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(dX, mY, 70, 7.5, 1, 1, "F");
+
+    doc.setFontSize(4.5);
+    doc.setFont("helvetica", "normal");
     doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-    const shortLabels = ["Verde", "Freno", "Ret.", "Inercia", "Acel."];
-    for (let i = 0; i < 5; i++) {
-      const lp = getPdfCoord(i, 138);
-      doc.text(shortLabels[i], lp.x, lp.y + 0.6, { align: "center" });
-    }
+    doc.text("Consumo Med.", dX + 2, mY + 2.8);
+    doc.text("Vel. Med/Max", dX + 25, mY + 2.8);
+    doc.text("RPM Max / Cambios", dX + 47, mY + 2.8);
+
+    doc.setFontSize(5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+    const consStr = radarData.metrics.avgConsumption !== undefined ? `${radarData.metrics.avgConsumption} l/100` : "—";
+    const speedStr = `${radarData.metrics.avgSpeed || "—"} / ${radarData.metrics.maxSpeed || "—"} km/h`;
+    const rpmStr = `${radarData.metrics.maxRpm || "—"} rpm · ${radarData.metrics.gearChanges ?? "—"} c.`;
+
+    doc.text(consStr, dX + 2, mY + 6);
+    doc.text(speedStr, dX + 25, mY + 6);
+    doc.text(rpmStr, dX + 47, mY + 6);
+
+    y += cardH + 3.5;
   });
 
-  const totalPhaseRows = Math.ceil(data.phases.length / 2);
-  y += totalPhaseRows * (cardH + 3) + 4;
+  y += 2;
 
   // -------------------------------------------------------------
   // Sección: Puntos Débiles (Análisis por Gravedad con Stacked Bar)
