@@ -58,11 +58,13 @@ jobs:
             }
           }
 
-          $exeFiles = Get-ChildItem -Path "release" -Filter "TrackSIM-ZERO-Setup-*.exe" | Select-Object -ExpandProperty FullName
-          $blockmapFiles = Get-ChildItem -Path "release" -Filter "TrackSIM-ZERO-Setup-*.blockmap" | Select-Object -ExpandProperty FullName
+          $exeFiles = Get-ChildItem -Path "release" -Filter "*Setup-*.exe" | Select-Object -ExpandProperty FullName
+          $blockmapFiles = Get-ChildItem -Path "release" -Filter "*Setup-*.blockmap" | Select-Object -ExpandProperty FullName
           $assets = @($exeFiles) + @($blockmapFiles) | Where-Object { $_ }
 
           if (-not $exeFiles) {
+            Write-Host "Directory contents of release/:"
+            Get-ChildItem -Path "release" -Recurse | Select-Object FullName
             throw "No .exe installer found in release/ directory!"
           }
 
