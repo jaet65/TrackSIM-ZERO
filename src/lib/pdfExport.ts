@@ -63,13 +63,19 @@ function drawHeader(doc: jsPDF, title: string, subtitle?: string) {
   return y + 6;
 }
 
-function drawFooter(doc: jsPDF, pageNum: number, totalPages: number) {
+function drawFooter(doc: jsPDF, pageNum: number, totalPages: number, folio?: string) {
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
+  doc.setFontSize(7);
   doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
   doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
   doc.line(14, 285, 196, 285);
+
   doc.text("TrackSIM Report — Documento Oficial de Evaluación", 14, 290);
+  if (folio) {
+    doc.setFont("helvetica", "bold");
+    doc.text(`Folio: ${folio}`, 105, 290, { align: "center" });
+    doc.setFont("helvetica", "normal");
+  }
   doc.text(`Página ${pageNum} de ${totalPages}`, 196, 290, { align: "right" });
 }
 
@@ -883,9 +889,46 @@ export function downloadExecutiveSummaryPdf(
 // -------------------------------------------------------------
 // 3. EXPEDIENTE INDIVIDUAL IDÉNTICO AL EXPEDIENTE DE PANTALLA
 // -------------------------------------------------------------
+function generateDeterministicFolio(driverId: string, data: NonNullable<Awaited<ReturnType<typeof driverData>>>): string {
+  // Construir una cadena canónica basada en los datos inmutables y sesiones del expediente
+  const sortedSessions = [...data.evals]
+    .map((e) => `${e.docId || e.fileName}_${e.score}_${e.errorCount}_${e.date}`)
+    .sort()
+    .join("|");
+
+  const canonicalString = `${driverId}#${data.name}#${data.overall}#${data.criticalErrors}#${data.completedExercises}#${sortedSessions}`;
+
+  // FNV-1a hash de 64 bits (dos partes de 32 bits) para garantizar un hash determinista y distribuido
+  let h1 = 0x811c9dc5;
+  let h2 = 0x811c9dc5;
+  for (let i = 0; i < canonicalString.length; i++) {
+    const c = canonicalString.charCodeAt(i);
+    h1 ^= c;
+    h1 = Math.imul(h1, 0x01000193);
+    h2 ^= c ^ (i & 0xff);
+    h2 = Math.imul(h2, 0x01000193);
+  }
+
+  const hex1 = (h1 >>> 0).toString(16).toUpperCase().padStart(8, "0");
+  const hex2 = (h2 >>> 0).toString(16).toUpperCase().padStart(8, "0");
+  const hashPart = `${hex1.slice(0, 4)}-${hex2.slice(0, 4)}`;
+
+  // Fecha de la última evaluación para contextualizar el folio
+  const latestDate = data.evals.reduce((latest, e) => {
+    const d = (e.date || "").replace(/[^\d]/g, "").slice(0, 8);
+    return d > latest ? d : latest;
+  }, "");
+  const dateTag = latestDate.length === 8 ? latestDate : new Date().toISOString().slice(0, 10).replace(/-/g, "");
+
+  return `EXP-${dateTag}-${hashPart}`;
+}
+
 export async function generateDriverReportPdf(driverId: string, filter?: DateFilter): Promise<Uint8Array | null> {
   const data = await driverData(driverId, filter);
   if (!data) return null;
+
+  // Generar folio único y determinista (hash de identidad del expediente)
+  const folio = generateDeterministicFolio(driverId, data);
 
   const doc = new jsPDF({ format: "a4", unit: "mm" });
   let y = 14;
@@ -1097,7 +1140,6 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   data.phases.forEach((p) => {
     // Si no cabe la tarjeta completa, salto de página
     if (y + cardH > 275) {
-      drawFooter(doc, doc.getNumberOfPages(), 0);
       doc.addPage();
       y = drawHeader(doc, `Expediente: ${data.name} (Progreso por Fase Cont.)`, "Continuación del desempeño por fase");
     }
@@ -1545,7 +1587,6 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
 
     // Si no cabe, saltar a página siguiente
     if (y + 16 + items.length * 8 > 275) {
-      drawFooter(doc, doc.getNumberOfPages(), 0);
       doc.addPage();
       y = drawHeader(doc, `Expediente: ${data.name} (Puntos Débiles Cont.)`, "Continuación del análisis de incidencias");
     }
@@ -1609,7 +1650,6 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   // Sección: Desglose de Ejercicios Evaluados (Tabla completa idéntica a pantalla)
   // -------------------------------------------------------------
   if (y > 200) {
-    drawFooter(doc, doc.getNumberOfPages(), 0);
     doc.addPage();
     y = drawHeader(doc, `Expediente: ${data.name} (Desglose de Ejercicios)`, "Historial cronológico de simulaciones");
   }
@@ -1827,7 +1867,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    drawFooter(doc, i, totalPages);
+    drawFooter(doc, i, totalPages, folio);
   }
 
   return doc.output("arraybuffer") as unknown as Uint8Array;

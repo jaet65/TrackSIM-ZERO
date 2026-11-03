@@ -364,8 +364,8 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Botón de Limpiar Grupo: Solo visible si hay un grupo seleccionado y es admin */}
-        {isAdmin && selectedGroupId && (
+        {/* Botón de Limpiar Grupo: Solo visible si hay un grupo seleccionado, es admin y NO está cerrado */}
+        {isAdmin && selectedGroupId && currentGroupObj?.status !== "closed" && (
           <button
             onClick={() => {
               setConfirmInput("");
@@ -443,7 +443,7 @@ export default function Home() {
           ) : (
             <div className="flex items-center gap-2">
               <span className="rounded-xl bg-purple-50 border border-purple-200 px-3 py-1.5 text-xs font-bold text-purple-700 flex items-center gap-1.5">
-                🎯 Modalidad Curso (Sin Fases)
+                🎯 Modalidad Curso
               </span>
             </div>
           )}
@@ -696,12 +696,12 @@ export default function Home() {
                     <td className="px-4 py-3.5">
                       <Link
                         to={`/drivers/${r.driverId}${selectedGroupId || startDate || endDate
-                            ? `?${new URLSearchParams({
-                              ...(selectedGroupId ? { grupo: selectedGroupId } : {}),
-                              ...(startDate ? { desde: startDate } : {}),
-                              ...(endDate ? { hasta: endDate } : {}),
-                            }).toString()}`
-                            : ""
+                          ? `?${new URLSearchParams({
+                            ...(selectedGroupId ? { grupo: selectedGroupId } : {}),
+                            ...(startDate ? { desde: startDate } : {}),
+                            ...(endDate ? { hasta: endDate } : {}),
+                          }).toString()}`
+                          : ""
                           }`}
                         className="font-bold text-slate-900 group-hover:text-indigo-600 transition"
                       >

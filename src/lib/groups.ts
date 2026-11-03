@@ -12,6 +12,7 @@ import {
 import { firestore, getDb, safeGetDoc, safeGetDocs, fastWrite } from "./firebase";
 import type { EvaluationDoc } from "./db";
 import { withCurrentScore } from "./db";
+import { computeGroupBenchmarks } from "./pacingBenchmark";
 import {
   loadExercises,
   getExercises,
@@ -193,6 +194,8 @@ export async function closeAndFreezeGroup(
 
   const chunkSize = 400;
   const docs = snap.docs;
+  const rawDocs = docs.map((d) => d.data() as EvaluationDoc);
+  const groupBenchmarks = computeGroupBenchmarks(rawDocs);
   const driversSet = new Set<string>();
 
   for (let i = 0; i < docs.length; i += chunkSize) {
@@ -203,8 +206,8 @@ export async function closeAndFreezeGroup(
       const evalDoc = d.data() as EvaluationDoc;
       driversSet.add(evalDoc.driverId);
 
-      // Calcular el score congelado con los catálogos del grupo en su estado exacto actual
-      const computed = withCurrentScore({ ...evalDoc, groupId });
+      // Calcular el score congelado con los catálogos del grupo y sus benchmarks de ritmo
+      const computed = withCurrentScore({ ...evalDoc, groupId }, undefined, undefined, groupBenchmarks);
 
       batch.update(d.ref, {
         frozen: true,
