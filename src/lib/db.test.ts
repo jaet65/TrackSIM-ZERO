@@ -1,0 +1,88 @@
+import { describe, expect, it } from "vitest";
+import {
+  adjustScoreForCritical,
+  dictamen,
+  driverSlug,
+  withCurrentScore,
+  type EvaluationDoc,
+} from "./db";
+
+const evaluation = (overrides: Partial<EvaluationDoc> = {}): EvaluationDoc => ({
+  phase: 1,
+  driverId: "ana-perez",
+  driverName: "Ana Pérez",
+  fileName: "report.csv",
+  lesson: "Lección 1",
+  unit: "Autopista",
+  exercise: "Autopista",
+  vehicle: "Camión",
+  instructor: "Instructor",
+  instructorEmail: "instructor@example.com",
+  date: "2026-01-10",
+  durationSec: 120,
+  errorCount: 0,
+  score: 10,
+  marks: [],
+  createdAt: 1,
+  ...overrides,
+});
+
+describe("evaluation helpers", () => {
+  it("creates stable driver slugs and applies the critical-fault verdict threshold", () => {
+    expect(driverSlug("  Ana Pérez + López  ")).toBe("ana-perez-lopez");
+    expect(dictamen(9, 1).label).toBe("APTO");
+    expect(dictamen(9, 2).label).toBe("NO APTO");
+    expect(adjustScoreForCritical(9, 1)).toBe(9);
+    expect(adjustScoreForCritical(9, 2)).toBe(5.9);
+  });
+
+  it("recalculates current scores and detects legacy slippery-road marks", () => {
+    const view = withCurrentScore(
+      evaluation({
+        marks: [{ time: "00:00:10", type: "ERROR", description: "Salirse de la vía" }],
+        telemetry: { pctGreenZone: 75 },
+      }),
+      undefined,
+      "evaluation-1"
+    );
+
+    expect(view.docId).toBe("evaluation-1");
+    expect(view.criticalCount).toBe(0);
+    expect(view.errorCount).toBe(1);
+    expect(view.telemetry?.pctLowRpmZone).toBe(25);
+    expect(view.score).toBeLessThan(10);
+
+    const wetView = withCurrentScore(
+      evaluation({
+        marks: [{ time: "00:00:10", type: "INFO", description: "Nieve detectada" }],
+        telemetry: { pctGreenZone: 75 },
+      })
+    );
+    expect(wetView.telemetry?.hasSlipperyRoad).toBe(true);
+    expect(wetView.telemetry?.slipperyCondition).toBe("Nieve");
+  });
+
+  it("preserves frozen values and converts legacy 0-to-100 scores into the 0-to-10 scale", () => {
+    const frozenMarks = [{ time: "00:00:01", type: "ERROR", description: "Frozen mark" }];
+    const view = withCurrentScore(
+      evaluation({
+        frozen: true,
+        frozenScore: 87,
+        frozenErrorScore: 92,
+        frozenTelemetryScore: 75,
+        frozenErrorCount: 4,
+        frozenCriticalCount: 2,
+        frozenMarks,
+      })
+    );
+
+    expect(view).toMatchObject({
+      score: 8.7,
+      errorScore: 9.2,
+      telemetryScore: 7.5,
+      errorCount: 4,
+      criticalCount: 2,
+      marks: frozenMarks,
+    });
+  });
+});
