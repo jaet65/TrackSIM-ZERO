@@ -67,7 +67,7 @@ export async function createDatabaseBackup(): Promise<DatabaseBackupPackage> {
       version: "1.0.0",
       timestamp: now,
       dateIso: new Date(now).toISOString(),
-      source: "TrackSIM ZERO",
+      source: "TrackSIM PRO",
       stats: {
         evaluationsCount: evaluationsList.length,
         groupsCount: groupsList.length,
@@ -115,7 +115,7 @@ export async function restoreDatabaseBackup(
   onProgress?: RestoreProgressCallback
 ): Promise<{ evaluationsRestored: number; groupsRestored: number }> {
   if (!backup || !backup.metadata || !Array.isArray(backup.evaluations)) {
-    throw new Error("El archivo proporcionado no tiene el formato válido de respaldo de TrackSIM ZERO.");
+    throw new Error("El archivo proporcionado no tiene el formato válido de respaldo de TrackSIM PRO.");
   }
 
   const db = getDb();

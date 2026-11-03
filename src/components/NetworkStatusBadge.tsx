@@ -45,7 +45,7 @@ export default function NetworkStatusBadge() {
   if (status.degraded) {
     return (
       <div
-        title="Se detectó una conexión a internet lenta o inestable. TrackSIM ZERO está usando la caché local para responder sin demoras."
+        title="Se detectó una conexión a internet lenta o inestable. TrackSIM PRO está usando la caché local para responder sin demoras."
         className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50/80 px-2.5 py-1 text-[11px] font-medium text-amber-700"
       >
         <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />

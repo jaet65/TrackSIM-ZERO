@@ -37,7 +37,7 @@ export default function ProtectedLayout() {
           </div>
 
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">TrackSIM ZERO</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">TrackSIM PRO</h1>
             <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-indigo-600">
               Evaluación y Telemetría de Conductores
             </p>

@@ -640,7 +640,7 @@ export default function UploadForm({
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">TrackSIM ZERO para Escritorio</h3>
+                  <h3 className="text-base font-bold text-slate-900">TrackSIM PRO para Escritorio</h3>
                   <p className="text-xs text-slate-500">
                     Conexión directa a Lander DB sin depender de Python
                   </p>
@@ -659,7 +659,7 @@ export default function UploadForm({
                 1. ¿Ya tienes instalada la aplicación en esta PC?
               </p>
               <p className="text-slate-600">
-                Si tu navegador mostró el aviso <strong>«¿Abrir TrackSIM ZERO?»</strong>, confírmalo para iniciar la aplicación.
+                Si tu navegador mostró el aviso <strong>«¿Abrir TrackSIM PRO?»</strong>, confírmalo para iniciar la aplicación.
               </p>
               <a
                 href="tracksim://open"
@@ -668,14 +668,14 @@ export default function UploadForm({
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
-                Volver a intentar abrir TrackSIM ZERO
+                Volver a intentar abrir TrackSIM PRO
               </a>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs space-y-3">
               <div>
                 <p className="font-semibold text-slate-900">
-                  2. ¿No tienes instalado TrackSIM ZERO en esta PC?
+                  2. ¿No tienes instalado TrackSIM PRO en esta PC?
                 </p>
                 <p className="mt-0.5 text-slate-500">
                   Descarga e instala la versión de escritorio para Windows (incluye sincronización nativa con PostgreSQL Lander DB y actualizaciones automáticas).

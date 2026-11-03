@@ -390,8 +390,9 @@ async function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     show: false,
-    title: "TrackSIM ZERO",
+    title: "TrackSIM PRO",
     icon: iconPath,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
@@ -400,6 +401,7 @@ async function createWindow() {
     },
   });
 
+  mainWindow.setMenuBarVisibility(false);
   mainWindow.maximize();
   mainWindow.show();
 
@@ -425,6 +427,7 @@ async function createWindow() {
       overrideBrowserWindowOptions: {
         width: 600,
         height: 700,
+        icon: iconPath,
         autoHideMenuBar: true,
       },
     };
@@ -723,7 +726,7 @@ function downloadFileWithProgress(
 }
 
 function getInstallerDestPath(fileName: string, version: string): string {
-  const fallback = `TrackSIM-ZERO-Setup-${version || "latest"}.exe`;
+  const fallback = `TrackSIM-PRO-Setup-${version || "latest"}.exe`;
   const safeName = (fileName || fallback).replace(/[^a-zA-Z0-9._ -]/g, "_");
   return path.join(app.getPath("temp"), safeName);
 }
@@ -819,9 +822,9 @@ $appExe = '${exePath}'
 $verText = if ('${versionLabel}') { 'v${versionLabel}' } else { 'Nueva versión' }
 $restart = ${shouldRestart}
 
-# 1. Esperar a que todos los procesos de TrackSIM ZERO terminen y liberen archivos
+# 1. Esperar a que todos los procesos de TrackSIM PRO terminen y liberen archivos
 for ($i = 0; $i -lt 30; $i++) {
-  $procs = Get-Process -Name 'TrackSIM ZERO' -ErrorAction SilentlyContinue
+  $procs = Get-Process -Name 'TrackSIM PRO','TrackSIM ZERO' -ErrorAction SilentlyContinue
   if (-not $procs) { break }
   if ($i -ge 10) {
     $procs | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -837,7 +840,7 @@ if ($restart) {
   $xamlStr = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Actualizando TrackSIM ZERO"
+        Title="Actualizando TrackSIM PRO"
         Width="440" Height="185"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
@@ -879,7 +882,7 @@ if ($restart) {
         </Border>
 
         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-          <TextBlock Text="Actualizando TrackSIM ZERO" FontFamily="Segoe UI" FontSize="15" FontWeight="Bold" Foreground="#0F172A"/>
+          <TextBlock Text="Actualizando TrackSIM PRO" FontFamily="Segoe UI" FontSize="15" FontWeight="Bold" Foreground="#0F172A"/>
           <TextBlock Text="Aplicando actualización en segundo plano..." FontFamily="Segoe UI" FontSize="12" Foreground="#64748B" Margin="0,2,0,0"/>
         </StackPanel>
 
@@ -943,10 +946,10 @@ if ($win) {
   $win.Close()
 }
 
-# 4. Relanzar TrackSIM ZERO si corresponde
+# 4. Relanzar TrackSIM PRO si corresponde
 if ($restart) {
   $logFile = Join-Path $env:TEMP 'tracksim-update.log'
-  $candidates = @($appExe, (Join-Path $env:LOCALAPPDATA 'Programs\\TrackSIM ZERO\\TrackSIM ZERO.exe'), (Join-Path $env:ProgramFiles 'TrackSIM ZERO\\TrackSIM ZERO.exe')) | Where-Object { $_ }
+  $candidates = @($appExe, (Join-Path $env:LOCALAPPDATA 'Programs\\TrackSIM PRO\\TrackSIM PRO.exe'), (Join-Path $env:ProgramFiles 'TrackSIM PRO\\TrackSIM PRO.exe'), (Join-Path $env:LOCALAPPDATA 'Programs\\TrackSIM ZERO\\TrackSIM ZERO.exe'), (Join-Path $env:ProgramFiles 'TrackSIM ZERO\\TrackSIM ZERO.exe')) | Where-Object { $_ }
   $launched = $false
   Start-Sleep -Milliseconds 1500
   for ($attempt = 0; $attempt -lt 10 -and -not $launched; $attempt++) {
@@ -955,7 +958,7 @@ if ($restart) {
         try {
           Start-Process -FilePath $c -WorkingDirectory (Split-Path -Parent $c) -ErrorAction Stop
           Start-Sleep -Milliseconds 1500
-          if (Get-Process -Name 'TrackSIM ZERO' -ErrorAction SilentlyContinue) { $launched = $true; break }
+          if (Get-Process -Name 'TrackSIM PRO','TrackSIM ZERO' -ErrorAction SilentlyContinue) { $launched = $true; break }
         } catch {
           Add-Content -LiteralPath $logFile -Value ("$(Get-Date -Format o) fallo al relanzar $c : $($_.Exception.Message)")
         }
@@ -1035,7 +1038,7 @@ ipcMain.handle("updater:check", async () => {
       ) || null;
 
     const downloadUrl = exeAsset ? exeAsset.browser_download_url : null;
-    const fileName = exeAsset ? exeAsset.name : `TrackSIM-ZERO-Setup-${latestVersion}.exe`;
+    const fileName = exeAsset ? exeAsset.name : `TrackSIM-PRO-Setup-${latestVersion}.exe`;
     const expectedSize = exeAsset?.size ? Number(exeAsset.size) : undefined;
 
     // Si hay actualización disponible con instalador .exe, iniciar descarga automática en segundo plano

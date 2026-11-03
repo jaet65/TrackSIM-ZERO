@@ -54,7 +54,7 @@ export default function BackupRestoreModal({
       const backupJson = JSON.parse(text) as DatabaseBackupPackage;
 
       if (!backupJson.metadata || !Array.isArray(backupJson.evaluations)) {
-        throw new Error("El archivo no tiene el formato de respaldo válido de TrackSIM ZERO.");
+        throw new Error("El archivo no tiene el formato de respaldo válido de TrackSIM PRO.");
       }
 
       const confirmed = window.confirm(
