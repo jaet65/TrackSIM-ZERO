@@ -127,6 +127,36 @@ export default function Driver() {
     });
   }, [data, groupParam]);
 
+  // Promedios globales ponderados de Destreza (70%) y Eco-Driving (30%)
+  const { globalDestreza, globalEco } = useMemo(() => {
+    if (!data?.evals?.length) return { globalDestreza: "—", globalEco: "—" };
+    const totalDestreza = data.evals.reduce((acc, e) => acc + (e.errorScore ?? e.score), 0);
+    const avgDestrezaBase = totalDestreza / data.evals.length;
+    let destrezaPonderada = Math.round(avgDestrezaBase * 0.7 * 10) / 10;
+
+    const evalsWithTelemetry = data.evals.filter((e) => e.telemetryScore !== undefined);
+    const avgEcoBase = evalsWithTelemetry.length > 0
+      ? evalsWithTelemetry.reduce((acc, e) => acc + (e.telemetryScore ?? 0), 0) / evalsWithTelemetry.length
+      : null;
+    let ecoPonderado = avgEcoBase !== null ? Math.round(avgEcoBase * 0.3 * 10) / 10 : null;
+
+    // Si tiene faltas críticas eliminatorias, la calificación final está ajustada a 5.9 (o el tope correspondiente).
+    // En ese caso, ajustamos proporcionalmente Destreza y Eco para que la suma cuadre exactamente con `overall`.
+    if (data.overall !== undefined && ecoPonderado !== null) {
+      const rawSum = Math.round((destrezaPonderada + ecoPonderado) * 10) / 10;
+      if (rawSum !== data.overall && rawSum > 0) {
+        const ratio = data.overall / rawSum;
+        destrezaPonderada = Math.round(destrezaPonderada * ratio * 10) / 10;
+        ecoPonderado = Math.round((data.overall - destrezaPonderada) * 10) / 10;
+      }
+    }
+
+    return {
+      globalDestreza: String(destrezaPonderada),
+      globalEco: ecoPonderado !== null ? String(ecoPonderado) : "—",
+    };
+  }, [data]);
+
   // Filtrar exclusivamente los eventos de tipo ERROR y calcular conteos por severidad para el modal
   const { sortedErrorMarks, severityCounts, ignoredErrorCount } = useMemo(() => {
     const counts: Record<Severity, number> = {
@@ -406,9 +436,34 @@ export default function Driver() {
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Calificación Global Promediada
             </span>
-            <div className="mt-2 flex items-baseline gap-3">
-              <span className="text-5xl font-black text-slate-900 tracking-tight">{overall}</span>
-              <span className="text-sm text-slate-500">/ 10 pts</span>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-baseline gap-3">
+                <span className="text-5xl font-black text-slate-900 tracking-tight">{overall}</span>
+                <span className="text-sm text-slate-500">/ 10 pts</span>
+              </div>
+
+              {/* Pastillas de desglose Destreza y Eco-Driving */}
+              <div className="flex items-center gap-2">
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-1.5 text-left">
+                  <span className="block text-[9px] font-bold uppercase tracking-wider text-indigo-500">
+                    Destreza (70%)
+                  </span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-base font-black font-mono text-indigo-700">{globalDestreza}</span>
+                    <span className="text-[10px] text-indigo-400">/7.0</span>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-1.5 text-left">
+                  <span className="block text-[9px] font-bold uppercase tracking-wider text-emerald-600">
+                    Eco-Driving (30%)
+                  </span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-base font-black font-mono text-emerald-700">{globalEco}</span>
+                    <span className="text-[10px] text-emerald-500">/3.0</span>
+                  </div>
+                </div>
+              </div>
             </div>
             <p className="mt-2 text-xs text-slate-600">
               Calculada sobre {expectedExercises} ejercicio(s) esperados en {phases.length} fase(s) configuradas (70% seguridad y errores + 30% eficiencia y telemetría).
@@ -481,8 +536,8 @@ export default function Driver() {
                 rec.priority === "ALTA"
                   ? "bg-rose-50 text-rose-700 border-rose-200"
                   : rec.priority === "MEDIA"
-                  ? "bg-amber-50 text-amber-700 border-amber-200"
-                  : "bg-emerald-50 text-emerald-700 border-emerald-200";
+                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                    : "bg-emerald-50 text-emerald-700 border-emerald-200";
 
               return (
                 <div
@@ -540,6 +595,26 @@ export default function Driver() {
               const axes = radarSummary.axes;
               const envLabel = radarSummary.environmentLabel;
 
+              // Destreza y Eco ponderados de la fase específica
+              const pTotalDestreza = phaseEvals.reduce((acc, e) => acc + (e.errorScore ?? e.score), 0);
+              let pDestrezaVal = phaseEvals.length > 0
+                ? Math.round((pTotalDestreza / phaseEvals.length) * 0.7 * 10) / 10
+                : 0;
+
+              const pEvalsWithEco = phaseEvals.filter((e) => e.telemetryScore !== undefined);
+              let pEcoVal = pEvalsWithEco.length > 0
+                ? Math.round((pEvalsWithEco.reduce((acc, e) => acc + (e.telemetryScore ?? 0), 0) / pEvalsWithEco.length) * 0.3 * 10) / 10
+                : 0;
+
+              if (p.avgScore !== undefined && pEvalsWithEco.length > 0) {
+                const pRawSum = Math.round((pDestrezaVal + pEcoVal) * 10) / 10;
+                if (pRawSum !== p.avgScore && pRawSum > 0) {
+                  const ratio = p.avgScore / pRawSum;
+                  pDestrezaVal = Math.round(pDestrezaVal * ratio * 10) / 10;
+                  pEcoVal = Math.round((p.avgScore - pDestrezaVal) * 10) / 10;
+                }
+              }
+
               // Calcular benchmark del grupo o flota para esta misma fase o curso completo
               // En modalidad Curso (p.phase === 0), emparejar con todas las evaluaciones de la flota o grupo
               const groupPhaseEvals = (data.groupEvals || []).filter(
@@ -573,11 +648,11 @@ export default function Driver() {
 
               const groupPolygonPoints = groupAxes
                 ? groupAxes
-                    .map((ga, i) => {
-                      const c = getCoords(i, ga.value);
-                      return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
-                    })
-                    .join(" ")
+                  .map((ga, i) => {
+                    const c = getCoords(i, ga.value);
+                    return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+                  })
+                  .join(" ")
                 : "";
 
               return (
@@ -588,16 +663,14 @@ export default function Driver() {
                   {/* Encabezado Principal de la Fase o del Curso */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                     <div className="flex items-center gap-3">
-                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black text-sm ${
-                        p.phase === 0 ? "bg-purple-100 text-purple-700" : "bg-indigo-50 text-indigo-600"
-                      }`}>
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black text-sm ${p.phase === 0 ? "bg-purple-100 text-purple-700" : "bg-indigo-50 text-indigo-600"
+                        }`}>
                         {p.phase === 0 ? "🎯" : `F${p.phase}`}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                            p.phase === 0 ? "text-purple-700" : "text-indigo-600"
-                          }`}>
+                          <span className={`text-[10px] font-bold uppercase tracking-wider ${p.phase === 0 ? "text-purple-700" : "text-indigo-600"
+                            }`}>
                             {p.phase === 0 ? "Curso Completo" : `Fase ${p.phase}`}
                           </span>
                           <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${p.color}`}>
@@ -625,11 +698,14 @@ export default function Driver() {
                         </strong>
                       </div>
 
-                      <div className="rounded-xl bg-indigo-50/70 border border-indigo-100 px-3 py-1.5 flex items-center gap-1.5">
-                        <span className="text-[11px] text-indigo-600 font-medium">Calif. Promedio:</span>
-                        <strong className="text-sm font-black font-mono text-indigo-700">{p.avgScore}</strong>
-                        <span className="text-indigo-400 text-[10px]">/ 10</span>
-                      </div>
+                      {/* Calificación promedio de la fase (visible solo en grupos tipo escuela) */}
+                      {(data.groupType === "escuela" || (p.phase > 0 && data.groupType !== "curso")) && (
+                        <div className="rounded-xl bg-indigo-50/70 border border-indigo-100 px-3 py-1.5 flex items-center gap-1.5">
+                          <span className="text-[11px] text-indigo-600 font-medium">Calif. Promedio:</span>
+                          <strong className="text-sm font-black font-mono text-indigo-700">{p.avgScore}</strong>
+                          <span className="text-indigo-400 text-[10px]">/ 10</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -661,14 +737,22 @@ export default function Driver() {
                         <span className="text-[10px] text-slate-400">
                           {radarSummary.environment === "MIXTO"
                             ? `Calibrado dinámicamente por ejercicio (${radarSummary.environments
-                                .map((e) => (e === "MONTANA" ? "Montaña" : e === "CIUDAD" ? "Ciudad" : "Carretera"))
-                                .join(" / ")}) · Meta Verde media: ${radarSummary.greenTarget}%`
+                              .map((e) => (e === "MONTANA" ? "Montaña" : e === "CIUDAD" ? "Ciudad" : "Carretera"))
+                              .join(" / ")}) · Meta Verde media: ${radarSummary.greenTarget}%`
                             : `Calibrado para ${radarSummary.environment.toLowerCase()} (Meta Verde: ${radarSummary.greenTarget}%)`} · Promedio de la fase
                         </span>
                       </div>
-                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
-                        Puntaje Eco: {p.exercises > 0 ? `${radarSummary.ecoScore}/10` : "—"}
-                      </span>
+                      {/* Badges de Destreza y Puntaje Eco (visibles en grupos de tipo escuela) */}
+                      {(data.groupType === "escuela" || (p.phase > 0 && data.groupType !== "curso")) && (
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-[10px] font-semibold text-indigo-700 border border-indigo-200">
+                            Destreza: {phaseEvals.length > 0 ? `${pDestrezaVal.toFixed(1)}/7.0` : "—"}
+                          </span>
+                          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                            Eco-Driving: {pEvalsWithEco.length > 0 ? `${pEcoVal.toFixed(1)}/3.0` : "—"}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
@@ -771,15 +855,14 @@ export default function Driver() {
                                   y={labelCoords.y + 7}
                                   textAnchor="middle"
                                   dominantBaseline="central"
-                                  className={`text-[9px] font-semibold font-mono ${
-                                    p.exercises === 0
-                                      ? "fill-slate-400"
-                                      : a.value >= 75
+                                  className={`text-[9px] font-semibold font-mono ${p.exercises === 0
+                                    ? "fill-slate-400"
+                                    : a.value >= 75
                                       ? "fill-emerald-600"
                                       : a.value >= 50
-                                      ? "fill-amber-600"
-                                      : "fill-rose-600"
-                                  }`}
+                                        ? "fill-amber-600"
+                                        : "fill-rose-600"
+                                    }`}
                                 >
                                   {p.exercises > 0 ? `${a.value}%` : "—"}
                                 </text>
@@ -809,9 +892,8 @@ export default function Driver() {
                           return (
                             <div
                               key={idx}
-                              className={`rounded-lg bg-white p-2.5 border border-slate-200/80 ${
-                                isGreenAxis ? "col-span-2" : ""
-                              }`}
+                              className={`rounded-lg bg-white p-2.5 border border-slate-200/80 ${isGreenAxis ? "col-span-2" : ""
+                                }`}
                             >
                               <div className="flex items-center justify-between text-[10px] text-slate-400">
                                 <span className="font-semibold text-slate-700">{axis.label}</span>
@@ -822,15 +904,14 @@ export default function Driver() {
                                     </span>
                                   )}
                                   <span
-                                    className={`font-bold font-mono ${
-                                      p.exercises === 0
-                                        ? "text-slate-400"
-                                        : axis.value >= 75
+                                    className={`font-bold font-mono ${p.exercises === 0
+                                      ? "text-slate-400"
+                                      : axis.value >= 75
                                         ? "text-emerald-600"
                                         : axis.value >= 50
-                                        ? "text-amber-600"
-                                        : "text-rose-600"
-                                    }`}
+                                          ? "text-amber-600"
+                                          : "text-rose-600"
+                                      }`}
                                   >
                                     {p.exercises > 0 ? `${axis.value}%` : "—"}
                                   </span>
@@ -902,15 +983,14 @@ export default function Driver() {
                               {/* Barra de progreso miniatura */}
                               <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
                                 <div
-                                  className={`h-full rounded-full ${
-                                    p.exercises === 0
-                                      ? "bg-slate-200"
-                                      : axis.value >= 75
+                                  className={`h-full rounded-full ${p.exercises === 0
+                                    ? "bg-slate-200"
+                                    : axis.value >= 75
                                       ? "bg-emerald-500"
                                       : axis.value >= 50
-                                      ? "bg-amber-500"
-                                      : "bg-rose-500"
-                                  }`}
+                                        ? "bg-amber-500"
+                                        : "bg-rose-500"
+                                    }`}
                                   style={{ width: `${axis.value}%` }}
                                 />
                               </div>
@@ -1493,17 +1573,17 @@ export default function Driver() {
 
                 const groupExercisePolygonPoints = groupExerciseAxes
                   ? groupExerciseAxes
-                      .map((ga, i) => {
-                        const c = getCoords(i, ga.value);
-                        return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
-                      })
-                      .join(" ")
+                    .map((ga, i) => {
+                      const c = getCoords(i, ga.value);
+                      return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+                    })
+                    .join(" ")
                   : "";
 
                 const axes = [
-                  { 
-                    label: "Zona Verde", 
-                    value: axisRpm, 
+                  {
+                    label: "Zona Verde",
+                    value: axisRpm,
                     raw: `${tel.pctGreenZone || 0}%`,
                     meta: `meta ≥${greenTarget}%`,
                     breakdown: {

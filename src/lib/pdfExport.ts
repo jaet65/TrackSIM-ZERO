@@ -965,6 +965,59 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
   doc.text("/ 10 pts", 54, y + 18.5);
 
+  // Pastillas de desglose Destreza y Eco-Driving en la tarjeta global (lado derecho)
+  const evalsList = data.evals || [];
+  const totalDestrezaVal = evalsList.reduce((acc, e) => acc + (e.errorScore ?? e.score), 0);
+  let destrezaPonderadaNum = evalsList.length > 0
+    ? Math.round((totalDestrezaVal / evalsList.length) * 0.7 * 10) / 10
+    : 0;
+
+  const evalsWithEco = evalsList.filter((e) => e.telemetryScore !== undefined);
+  let ecoPonderadoNum = evalsWithEco.length > 0
+    ? Math.round((evalsWithEco.reduce((acc, e) => acc + (e.telemetryScore ?? 0), 0) / evalsWithEco.length) * 0.3 * 10) / 10
+    : 0;
+
+  // Ajuste si la calificación final fue topada/ajustada por faltas críticas
+  if (data.overall !== undefined && evalsWithEco.length > 0) {
+    const rawSum = Math.round((destrezaPonderadaNum + ecoPonderadoNum) * 10) / 10;
+    if (rawSum !== data.overall && rawSum > 0) {
+      const ratio = data.overall / rawSum;
+      destrezaPonderadaNum = Math.round(destrezaPonderadaNum * ratio * 10) / 10;
+      ecoPonderadoNum = Math.round((data.overall - destrezaPonderadaNum) * 10) / 10;
+    }
+  }
+
+  const globalDestrezaVal = evalsList.length > 0 ? destrezaPonderadaNum.toFixed(1) : "—";
+  const globalEcoVal = evalsWithEco.length > 0 ? ecoPonderadoNum.toFixed(1) : "—";
+
+  doc.setFillColor(245, 247, 255); // indigo-50
+  doc.roundedRect(73, y + 9, 27, 13, 1.5, 1.5, "F");
+  doc.setDrawColor(224, 231, 255); // indigo-100
+  doc.roundedRect(73, y + 9, 27, 13, 1.5, 1.5, "S");
+  doc.setFontSize(5.2);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+  doc.text("DESTREZA (70%)", 75, y + 13);
+  doc.setFontSize(9);
+  doc.text(globalDestrezaVal, 75, y + 20);
+  doc.setFontSize(6);
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text("/7.0", 87, y + 20);
+
+  doc.setFillColor(240, 253, 244); // emerald-50
+  doc.roundedRect(103, y + 9, 27, 13, 1.5, 1.5, "F");
+  doc.setDrawColor(187, 247, 208); // emerald-200
+  doc.roundedRect(103, y + 9, 27, 13, 1.5, 1.5, "S");
+  doc.setFontSize(5.2);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(22, 101, 52); // emerald-800
+  doc.text("ECO-DRIVE (30%)", 105, y + 13);
+  doc.setFontSize(9);
+  doc.text(globalEcoVal, 105, y + 20);
+  doc.setFontSize(6);
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text("/3.0", 117, y + 20);
+
   doc.setFontSize(7);
   doc.text(
     `Calculada sobre ${data.expectedExercises} ejercicio(s) esperados en ${data.phases.length} fase(s) (70% destreza + 30% eco).`,
@@ -1121,36 +1174,80 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     doc.setTextColor(p.errors > 0 ? 225 : 16, p.errors > 0 ? 29 : 185, p.errors > 0 ? 72 : 129);
     doc.text(`${p.errors} err.`, cardX + 18, cardY + 18.5);
 
-    // Cuadro Calificación y Puntaje Eco
-    doc.setFillColor(245, 247, 255);
-    doc.roundedRect(cardX + 3.5, cardY + 22, 50, 11, 1.5, 1.5, "F");
-    doc.setDrawColor(224, 231, 255);
-    doc.roundedRect(cardX + 3.5, cardY + 22, 50, 11, 1.5, 1.5, "S");
+    // En grupos de tipo escuela (o cuando no es curso), mostrar este desglose por fase
+    const isEscuelaGroup = data.groupType === "escuela" || (!isCursoGroup && p.phase > 0);
+    if (isEscuelaGroup) {
+      // Cálculo de Destreza y Eco ponderados de esta fase específica
+      const phaseEvalsList = data.evals.filter((e) => e.phase === p.phase);
+      const pTotalDestreza = phaseEvalsList.reduce((acc, e) => acc + (e.errorScore ?? e.score), 0);
+      let pDestrezaVal = phaseEvalsList.length > 0
+        ? Math.round((pTotalDestreza / phaseEvalsList.length) * 0.7 * 10) / 10
+        : 0;
 
-    doc.setFontSize(5.5);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-    doc.text("CALIFICACIÓN", cardX + 5.5, cardY + 25.5);
-    doc.text("PUNTAJE ECO", cardX + 33, cardY + 25.5);
+      const pEvalsWithEco = phaseEvalsList.filter((e) => e.telemetryScore !== undefined);
+      let pEcoVal = pEvalsWithEco.length > 0
+        ? Math.round((pEvalsWithEco.reduce((acc, e) => acc + (e.telemetryScore ?? 0), 0) / pEvalsWithEco.length) * 0.3 * 10) / 10
+        : 0;
 
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-    doc.text(String(p.avgScore), cardX + 5.5, cardY + 31);
-    doc.setFontSize(6.5);
-    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-    doc.text("/10", cardX + 13.5, cardY + 31);
+      // Si la fase fue penalizada o topada por faltas críticas, ajustar para que sume p.avgScore
+      if (p.avgScore !== undefined && pEvalsWithEco.length > 0) {
+        const pRawSum = Math.round((pDestrezaVal + pEcoVal) * 10) / 10;
+        if (pRawSum !== p.avgScore && pRawSum > 0) {
+          const ratio = p.avgScore / pRawSum;
+          pDestrezaVal = Math.round(pDestrezaVal * ratio * 10) / 10;
+          pEcoVal = Math.round((p.avgScore - pDestrezaVal) * 10) / 10;
+        }
+      }
 
-    doc.setFontSize(8.5);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-    doc.text(p.exercises > 0 ? `${radarData.ecoScore}/10` : "—", cardX + 33, cardY + 31);
+      const phaseDestrezaStr = phaseEvalsList.length > 0 ? pDestrezaVal.toFixed(1) : "—";
+      const phaseEcoStr = pEvalsWithEco.length > 0 ? pEcoVal.toFixed(1) : "—";
+
+      // Cuadro Calificación, Destreza y Eco-Driving de la fase
+      doc.setFillColor(245, 247, 255);
+      doc.roundedRect(cardX + 3.5, cardY + 22, 50, 11, 1.5, 1.5, "F");
+      doc.setDrawColor(224, 231, 255);
+      doc.roundedRect(cardX + 3.5, cardY + 22, 50, 11, 1.5, 1.5, "S");
+
+      doc.setFontSize(4.8);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+      doc.text("CALIF.", cardX + 5, cardY + 25.5);
+      doc.text("DESTREZA", cardX + 21, cardY + 25.5);
+      doc.text("ECO-DRIVING", cardX + 37, cardY + 25.5);
+
+      // Calif
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+      doc.text(String(p.avgScore), cardX + 5, cardY + 31);
+      doc.setFontSize(5.5);
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.text("/10", cardX + 11.5, cardY + 31);
+
+      // Destreza
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+      doc.text(phaseDestrezaStr, cardX + 21, cardY + 31);
+      doc.setFontSize(5.5);
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.text("/7.0", cardX + 27.5, cardY + 31);
+
+      // Eco-Driving
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+      doc.text(phaseEcoStr, cardX + 37, cardY + 31);
+      doc.setFontSize(5.5);
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.text("/3.0", cardX + 43.5, cardY + 31);
+    }
 
     // Entorno especificado
     doc.setFontSize(5.5);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-    const cleanEnvLabel = radarData.environmentLabel.replace(/[^\w\s-()+/·]/gi, "").trim();
+    const cleanEnvLabel = radarData.environmentLabel.replace(/[^\w\sáéíóúÁÉÍÓÚñÑ()+/·-]/gi, "").trim();
     doc.text(cleanEnvLabel, cardX + 3.5, cardY + 37);
     doc.text(`Meta Verde: ${radarData.greenTarget}%`, cardX + 3.5, cardY + 40.5);
 

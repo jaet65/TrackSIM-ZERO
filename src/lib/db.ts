@@ -784,6 +784,7 @@ export async function driverData(driverId: string, filter?: DateFilter) {
     phases,
     breakdown,
     overall,
+    rawOverall,
     completedExercises,
     expectedExercises,
     criticalErrors,
