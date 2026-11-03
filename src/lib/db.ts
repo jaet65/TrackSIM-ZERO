@@ -487,28 +487,40 @@ async function fetchEvaluations(field?: "phase" | "driverId", value?: number | s
     id: d.id,
   }));
 
-  // Si hay un grupo especificado o si las evaluaciones pertenecen a grupos, calcular los benchmarks del grupo
-  let groupBenchmarks: Map<string, ExerciseBenchmark> | undefined;
-  const targetGroupId = filter?.groupId || (field === "driverId" && rawDocs[0]?.doc?.groupId);
-  if (targetGroupId) {
-    // Si estamos filtrando por un solo conductor (field === "driverId"), necesitamos las evaluaciones de todo el grupo
-    // para poder calcular la media de todos los conductores del grupo.
-    let groupRawDocs: EvaluationDoc[] = [];
-    if (field === "driverId") {
+  // Calcular benchmarks por grupo para aplicar penalizaciones de ritmo de forma consistente
+  const benchmarksByGroup = new Map<string, Map<string, ExerciseBenchmark>>();
+
+  if (field === "driverId") {
+    // Si estamos consultando un conductor individual, cargamos las evaluaciones de su grupo
+    // para obtener el benchmark completo del grupo al que pertenece.
+    const targetGroupId = filter?.groupId || rawDocs[0]?.doc?.groupId;
+    if (targetGroupId) {
       const groupQ = query(evaluations(), where("groupId", "==", targetGroupId));
       const groupSnap = await safeGetDocs(groupQ);
-      groupRawDocs = groupSnap.docs.map((d) => d.data() as EvaluationDoc);
-    } else {
-      groupRawDocs = rawDocs
-        .map((r) => r.doc)
-        .filter((d) => d.groupId === targetGroupId);
+      const groupRawDocs = groupSnap.docs.map((d) => d.data() as EvaluationDoc);
+      benchmarksByGroup.set(targetGroupId, computeGroupBenchmarks(groupRawDocs));
     }
-    groupBenchmarks = computeGroupBenchmarks(groupRawDocs);
+  } else {
+    // En consultas globales o de fase, agrupamos todas las evaluaciones leídas por groupId
+    // y calculamos los benchmarks específicos de cada grupo presente.
+    const docsByGroup = new Map<string, EvaluationDoc[]>();
+    for (const { doc } of rawDocs) {
+      const gId = doc.groupId || filter?.groupId;
+      if (!gId) continue;
+      const list = docsByGroup.get(gId) || [];
+      list.push(doc);
+      docsByGroup.set(gId, list);
+    }
+    for (const [gId, gDocs] of docsByGroup.entries()) {
+      benchmarksByGroup.set(gId, computeGroupBenchmarks(gDocs));
+    }
   }
 
-  const docs = rawDocs.map(({ doc, id }) =>
-    withCurrentScore(doc, filter?.groupId, id, groupBenchmarks)
-  );
+  const docs = rawDocs.map(({ doc, id }) => {
+    const effectiveGId = doc.groupId || filter?.groupId;
+    const groupBenchmarks = effectiveGId ? benchmarksByGroup.get(effectiveGId) : undefined;
+    return withCurrentScore(doc, filter?.groupId, id, groupBenchmarks);
+  });
   
   return docs.filter((d) => {
     if (!matchesDateRange(d.date, filter)) return false;
