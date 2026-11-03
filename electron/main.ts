@@ -433,6 +433,7 @@ async function createWindow() {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+
 }
 
 // IPC Handlers
@@ -563,8 +564,37 @@ let isBackgroundDownloading = false;
 let downloadedInstallerPath: string | null = null;
 let downloadedVersion: string | null = null;
 let lastDownloadProgress: { percent: number; transferredMB: number; totalMB: number } | null = null;
-let installOnQuit = true;
 let installingNow = false;
+
+function getPendingUpdateFile(): string {
+  return path.join(app.getPath("userData"), "pending-update.json");
+}
+
+function savePendingUpdate(installerPath: string, version: string) {
+  try {
+    fs.writeFileSync(getPendingUpdateFile(), JSON.stringify({ installerPath, version }), "utf-8");
+  } catch {}
+}
+
+// Si quedó una actualización descargada, se instala al abrir la app (no al cerrarla)
+function applyPendingUpdateOnStartup(): boolean {
+  if (!app.isPackaged) return false;
+  const file = getPendingUpdateFile();
+  try {
+    if (!fs.existsSync(file)) return false;
+    const { installerPath, version } = JSON.parse(fs.readFileSync(file, "utf-8"));
+    fs.unlinkSync(file);
+    if (!installerPath || !fs.existsSync(installerPath) || !isNewerVersion(app.getVersion(), version)) {
+      return false;
+    }
+    downloadedVersion = version;
+    launchSilentInstaller(installerPath, true);
+    setTimeout(() => app.exit(0), 300);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function parseSemver(v: string): number[] {
   const clean = (v || "").trim().replace(/^[vV]/, "").split("-")[0];
@@ -713,6 +743,7 @@ async function startBackgroundDownload(
       if (!expectedBytes || stat.size === expectedBytes || stat.size > 10 * 1024 * 1024) {
         downloadedInstallerPath = destPath;
         downloadedVersion = version;
+        savePendingUpdate(destPath, version);
         lastDownloadProgress = {
           percent: 100,
           transferredMB: Number((stat.size / (1024 * 1024)).toFixed(1)),
@@ -756,6 +787,7 @@ async function startBackgroundDownload(
 
     downloadedInstallerPath = destPath;
     downloadedVersion = version;
+    savePendingUpdate(destPath, version);
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("updater:downloaded", {
@@ -912,8 +944,26 @@ if ($win) {
 }
 
 # 4. Relanzar TrackSIM ZERO si corresponde
-if ($restart -and (Test-Path -LiteralPath $appExe)) {
-  Start-Process -FilePath $appExe
+if ($restart) {
+  $logFile = Join-Path $env:TEMP 'tracksim-update.log'
+  $candidates = @($appExe, (Join-Path $env:LOCALAPPDATA 'Programs\\TrackSIM ZERO\\TrackSIM ZERO.exe'), (Join-Path $env:ProgramFiles 'TrackSIM ZERO\\TrackSIM ZERO.exe')) | Where-Object { $_ }
+  $launched = $false
+  Start-Sleep -Milliseconds 1500
+  for ($attempt = 0; $attempt -lt 10 -and -not $launched; $attempt++) {
+    foreach ($c in $candidates) {
+      if (Test-Path -LiteralPath $c) {
+        try {
+          Start-Process -FilePath $c -WorkingDirectory (Split-Path -Parent $c) -ErrorAction Stop
+          Start-Sleep -Milliseconds 1500
+          if (Get-Process -Name 'TrackSIM ZERO' -ErrorAction SilentlyContinue) { $launched = $true; break }
+        } catch {
+          Add-Content -LiteralPath $logFile -Value ("$(Get-Date -Format o) fallo al relanzar $c : $($_.Exception.Message)")
+        }
+      }
+    }
+    if (-not $launched) { Start-Sleep -Milliseconds 1000 }
+  }
+  if (-not $launched) { Add-Content -LiteralPath $logFile -Value ("$(Get-Date -Format o) no se pudo relanzar la app") }
 }
 `;
 
@@ -1094,6 +1144,7 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(() => {
+    if (applyPendingUpdateOnStartup()) return;
     createWindow();
 
     app.on("activate", () => {
@@ -1101,13 +1152,6 @@ if (!gotTheLock) {
     });
   });
 }
-
-app.on("will-quit", () => {
-  // Si hay una actualización ya descargada en segundo plano, aplicarla silenciosamente al cerrar la app
-  if (!installingNow && installOnQuit && downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
-    launchSilentInstaller(downloadedInstallerPath, false);
-  }
-});
 
 app.on("window-all-closed", () => {
   if (localStaticServer) {
