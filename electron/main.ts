@@ -380,8 +380,8 @@ function startEmbeddedStaticServer(): Promise<number> {
 let mainWindow: BrowserWindow | null = null;
 
 async function createWindow() {
-  const distIcon = path.join(__dirname, "../dist/favicon.ico");
-  const pubIcon = path.join(__dirname, "../public/favicon.ico");
+  const distIcon = path.join(__dirname, "../dist/favicon.png");
+  const pubIcon = path.join(__dirname, "../public/favicon.png");
   const iconPath = fs.existsSync(distIcon) ? distIcon : fs.existsSync(pubIcon) ? pubIcon : undefined;
 
   mainWindow = new BrowserWindow({

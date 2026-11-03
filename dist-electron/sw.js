@@ -1,5 +1,5 @@
 const CACHE_NAME = "tracksim-zero-shell-v1";
-const PRECACHE_URLS = ["/", "/index.html", "/favicon.ico", "/Logo.png"];
+const PRECACHE_URLS = ["/", "/index.html", "/favicon.png", "/Logo.png"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -98,4 +98,3 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
-

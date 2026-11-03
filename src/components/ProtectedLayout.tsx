@@ -9,6 +9,7 @@ import BackupRestoreModal from "./BackupRestoreModal";
 export default function ProtectedLayout() {
   const { user, loading, error, signIn, logout } = useAuth();
   const [showBackupModal, setShowBackupModal] = useState(false);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
 
   if (loading) {
     return (
@@ -73,106 +74,152 @@ export default function ProtectedLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col selection:bg-indigo-600 selection:text-white">
-      {/* Top Header */}
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <Link to="/" className="flex items-center gap-3 group">
-              <img
-                src="/Logo.png"
-                alt="TrackSIM Logo"
-                className="h-12 w-12 object-contain rounded-full shadow-sm group-hover:scale-105 transition"
-              />
-              <div>
-                <span className="font-bold tracking-tight text-slate-900 group-hover:text-indigo-600 transition">
-                  TrackSIM
-                </span>
-                <span className="ml-1.5 rounded-md bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
-                  PRO
-                </span>
-              </div>
-            </Link>
-            <UpdateNotifier />
-          </div>
+    <div className="flex min-h-screen bg-slate-50 text-slate-900 selection:bg-indigo-600 selection:text-white">
+      <aside className={`sticky top-0 flex h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200 ${isSidebarExpanded ? "w-64" : "w-16"}`}>
+          <Link to="/" className={`flex h-[73px] items-center gap-3 border-b border-slate-100 px-3 ${isSidebarExpanded ? "justify-start px-5" : "justify-center"}`}>
+            <img src="/Logo.png" alt="TrackSIM Logo" className="h-10 w-10 shrink-0 rounded-full object-contain shadow-sm" />
+            {isSidebarExpanded && <span className="whitespace-nowrap font-bold tracking-tight text-slate-900">
+              TrackSIM <span className="ml-1 rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700">PRO</span>
+            </span>}
+          </Link>
 
-          <nav className="flex items-center gap-1 sm:gap-2">
+          <nav aria-label="Navegación principal" className={`flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto py-4 ${isSidebarExpanded ? "px-3" : "px-2"}`}>
             <NavLink
               to="/"
               end
+              title="Resultados"
               className={({ isActive }) =>
-                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${isActive
-                  ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
+                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${isSidebarExpanded ? "" : "justify-center"} ${isActive
+                  ? "border border-indigo-200/60 bg-indigo-50 text-indigo-700 shadow-sm"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`
               }
             >
-              Resultados
+              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.5h5.25V21H3zM9.375 3h5.25v18h-5.25zM15.75 8.25H21V21h-5.25z" />
+              </svg>
+              {isSidebarExpanded && <span>Resultados</span>}
             </NavLink>
             <NavLink
               to="/grupos"
+              title="Grupos"
               className={({ isActive }) =>
-                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${isActive
-                  ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
+                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${isSidebarExpanded ? "" : "justify-center"} ${isActive
+                  ? "border border-indigo-200/60 bg-indigo-50 text-indigo-700 shadow-sm"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`
               }
             >
-              Grupos
+              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m18 0v-2a4 4 0 0 0-3-3.87M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8-7.87a4 4 0 0 1 0 7.75" />
+              </svg>
+              {isSidebarExpanded && <span>Grupos</span>}
             </NavLink>
             <NavLink
               to="/ejercicios"
+              title="Ejercicios"
               className={({ isActive }) =>
-                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${isActive
-                  ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
+                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${isSidebarExpanded ? "" : "justify-center"} ${isActive
+                  ? "border border-indigo-200/60 bg-indigo-50 text-indigo-700 shadow-sm"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`
               }
             >
-              Ejercicios
+              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m5-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              </svg>
+              {isSidebarExpanded && <span>Ejercicios</span>}
             </NavLink>
             <NavLink
               to="/catalogo"
+              title="Errores"
               className={({ isActive }) =>
-                `rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${isActive
-                  ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-200/60"
+                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${isSidebarExpanded ? "" : "justify-center"} ${isActive
+                  ? "border border-indigo-200/60 bg-indigo-50 text-indigo-700 shadow-sm"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`
               }
             >
-              Errores
+              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.7 3.86a2 2 0 0 0-3.42 0Z" />
+              </svg>
+              {isSidebarExpanded && <span>Errores</span>}
             </NavLink>
+
+            <div className="my-3 border-t border-slate-100" />
 
             <button
               type="button"
               onClick={() => setShowBackupModal(true)}
-              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:border-indigo-300 hover:bg-indigo-50/70 hover:text-indigo-700 transition"
               title="Copia de Seguridad y Restauración de Base de Datos"
+              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-indigo-50/70 hover:text-indigo-700 ${isSidebarExpanded ? "" : "justify-center"}`}
             >
-              <span>💾</span>
-              <span>Respaldo</span>
+              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 0L8 8m4-4 4 4M4 16.5v2A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5v-2" />
+              </svg>
+              {isSidebarExpanded && <span>Respaldo</span>}
             </button>
+            <a
+              href="https://tracksim-cloud.web.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abrir TrackSIM Cloud"
+              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-sky-50 hover:text-sky-700 ${isSidebarExpanded ? "" : "justify-center"}`}
+            >
+              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.5 19h11a4 4 0 0 0 .58-7.958A6 6 0 0 0 6.35 9.16 4.5 4.5 0 0 0 6.5 19Z" />
+              </svg>
+              {isSidebarExpanded && <span>TrackSIM Cloud</span>}
+            </a>
           </nav>
 
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            <NetworkStatusBadge />
-            <div className="hidden sm:flex flex-col text-right">
-              <span className="text-xs font-semibold text-slate-800">{user.displayName || "Usuario"}</span>
-              <span className="text-[11px] text-slate-500">{user.email}</span>
-            </div>
+          <div className={`shrink-0 border-t border-slate-100 bg-white p-2 ${isSidebarExpanded ? "px-3" : ""}`}>
             <button
-              onClick={logout}
-              title="Cerrar sesión"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 transition"
+              type="button"
+              onClick={() => setIsSidebarExpanded((expanded) => !expanded)}
+              aria-label={isSidebarExpanded ? "Contraer navegación" : "Expandir navegación"}
+              aria-expanded={isSidebarExpanded}
+              title={isSidebarExpanded ? "Contraer navegación" : "Expandir navegación"}
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 ${isSidebarExpanded ? "" : "justify-center"}`}
             >
-              Salir
+              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+              {isSidebarExpanded && <span>Contraer</span>}
             </button>
           </div>
-        </div>
-      </header>
+      </aside>
 
-      <div className="flex-1">
-        <Outlet />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-md">
+          <div className="flex min-h-[73px] items-center justify-between gap-3 px-4 sm:px-6">
+            <div className="flex min-w-0 items-center gap-3">
+              {!isSidebarExpanded && (
+                <div className="truncate text-sm font-bold tracking-tight text-slate-900 sm:text-base">TrackSIM <span className="text-indigo-700">PRO</span></div>
+              )}
+              <UpdateNotifier />
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+              <NetworkStatusBadge />
+              <div className="hidden flex-col text-right sm:flex">
+                <span className="text-xs font-semibold text-slate-800">{user.displayName || "Usuario"}</span>
+                <span className="text-[11px] text-slate-500">{user.email}</span>
+              </div>
+              <button
+                onClick={logout}
+                title="Cerrar sesión"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+              >
+                Salir
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1">
+          <Outlet />
+        </main>
       </div>
 
       {/* Modal Global de Respaldo y Restauración de Base de Datos */}

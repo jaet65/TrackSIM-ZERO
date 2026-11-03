@@ -18,7 +18,7 @@
   "build": {
     "appId": "com.tracksim.zero",
     "productName": "TrackSIM PRO",
-    "icon": "public/favicon.ico",
+    "icon": "public/favicon.png",
     "protocols": [
       {
         "name": "TrackSIM PRO",
@@ -42,7 +42,7 @@
     ],
     "asar": true,
     "win": {
-      "icon": "public/favicon.ico",
+      "icon": "public/favicon.png",
       "artifactName": "TrackSIM-PRO-Setup-${version}.${ext}",
       "target": [
         {
@@ -56,10 +56,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "installerIcon": "public/favicon.ico",
-      "uninstallerIcon": "public/favicon.ico",
-      "installerHeaderIcon": "public/favicon.ico"
+      "createDesktopShortcut": true
     }
   },
   "dependencies": {
