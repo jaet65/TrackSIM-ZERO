@@ -39,7 +39,7 @@ npm test            # vitest (una sola ejecución)
 npm run test:watch  # vitest en modo watch
 ```
 
-Las pruebas viven junto al código como `src/**/*.test.ts`.
+Las pruebas viven junto al código como `src/**/*.test.ts` y cubren parseo y evaluación de CSV, configuración de ejercicios y catálogo, benchmarks de ritmo, radar de telemetría y recomendaciones pedagógicas.
 
 ## Compilación
 
