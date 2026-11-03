@@ -29,7 +29,7 @@ export default function Groups() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
-  const [newGroupType, setNewGroupType] = useState<GroupType>("escuela");
+  const [newGroupType, setNewGroupType] = useState<GroupType>("curso");
   const [sourceGroupId, setSourceGroupId] = useState("");
   const [creating, setCreating] = useState(false);
 
@@ -109,7 +109,7 @@ export default function Groups() {
       setShowCreateModal(false);
       setNewGroupName("");
       setNewGroupDesc("");
-      setNewGroupType("escuela");
+      setNewGroupType("curso");
       setSourceGroupId("");
       setActiveId(created.id);
       setSuccess(`Grupo «${created.name}» creado y fijado como grupo de trabajo activo.`);
@@ -724,4 +724,3 @@ export default function Groups() {
     </div>
   );
 }
-

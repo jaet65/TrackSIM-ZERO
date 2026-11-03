@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import JSZip from "jszip";
-import { driverData, type DateFilter, type EvaluationView } from "./db";
+import { driverData, type DateFilter, type EvaluationView, type ReportExerciseSummary } from "./db";
 import { phaseName, CRITICAL_LIMIT } from "./config";
 import { SEVERITIES, type Severity } from "./catalog";
 import { computeTelemetryAxes } from "./telemetryRadar";
@@ -16,10 +16,6 @@ const COLOR_BG_LIGHT = [248, 250, 252]; // slate-50
 const COLOR_INDIGO = [79, 70, 229]; // indigo-600
 
 function drawHeader(doc: jsPDF, title: string, subtitle?: string) {
-  // Fondo de barra superior (#fe7443)
-  doc.setFillColor(254, 116, 67);
-  doc.rect(0, 0, 210, 20, "F");
-
   // Logo Oficial TrackSIM
   try {
     doc.addImage(TRACKSIM_LOGO_BASE64, "PNG", 12, 2, 16, 16);
@@ -27,16 +23,16 @@ function drawHeader(doc: jsPDF, title: string, subtitle?: string) {
     console.error("Error cargando logo en PDF:", e);
   }
 
-  // Título de la app
-  doc.setTextColor(255, 255, 255);
+  // Encabezado neutro para mantener legibilidad sin la franja de color
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
-  doc.text("TrackSIM Report", 32, 12);
+  doc.text("TrackSIM", 32, 12);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.setTextColor(255, 245, 240);
-  doc.text("Sistema de Telemetría y Evaluación en Simulador", 72, 12);
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text("Sistema de Telemetría y Evaluación en Simulador", 32, 16);
 
   const nowStr = new Date().toLocaleDateString("es-MX", {
     year: "numeric",
@@ -445,30 +441,27 @@ export function generateExecutiveSummaryPdf(
   groupName: string,
   rows: DisplayRow[],
   filterSubtitle: string,
-  metrics?: { total: number; promedio: number; aptos: number; noAptos: number }
+  metrics?: { total: number; promedio: number; aptos: number; noAptos: number },
+  exercises: ReportExerciseSummary[] = []
 ): Uint8Array {
   const doc = new jsPDF({ format: "a4", unit: "mm" });
   let y = 14;
 
-  // Cabecera ejecutiva con Logo TrackSIM
   try {
     doc.addImage(TRACKSIM_LOGO_BASE64, "PNG", 14, y - 2, 16, 16);
   } catch (e) {
     console.error("Error cargando logo en resumen ejecutivo:", e);
   }
 
-  // Título e identificación
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
   doc.text("Resumen Ejecutivo de Capacitación", 34, y + 5);
-
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text(`Programa: ${filterSubtitle}`, 34, y + 10);
+  doc.text(`Grupo: ${groupName}`, 34, y + 10);
 
-  // Badge institucional a la derecha
   const nowStr = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "short", day: "numeric" });
   doc.setFillColor(241, 245, 249);
   doc.roundedRect(148, y, 48, 10, 2, 2, "F");
@@ -480,311 +473,400 @@ export function generateExecutiveSummaryPdf(
   doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
   doc.text(`Fecha: ${nowStr}`, 172, y + 8, { align: "center" });
 
-  y += 18;
+  y += 19;
+  doc.setFontSize(7);
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text(`Alcance: ${filterSubtitle}`, 14, y);
+  y += 4;
   doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
   doc.line(14, y, 196, y);
   y += 5;
 
-  // Cálculos estadísticos
   const total = rows.length;
   const aptos = rows.filter((r) => r.verdict.startsWith("APTO") && !r.verdict.includes("OBSERVACIONES")).length;
   const aptosObs = rows.filter((r) => r.verdict.includes("OBSERVACIONES")).length;
   const noAptos = rows.filter((r) => r.verdict.includes("NO APTO")).length;
-  const incompletos = rows.filter((r) => r.verdict === "INCOMPLETO" || r.verdict === "NO REALIZADO").length;
-
+  const dictamenIncompleto = rows.filter((r) => r.verdict === "INCOMPLETO").length;
+  const noRealizados = rows.filter((r) => r.verdict === "NO REALIZADO").length;
+  const sinConfigurar = rows.filter((r) => r.verdict === "SIN CONFIGURAR").length;
+  const incompleteRows = rows.filter(
+    (r) => r.isIncomplete || r.verdict === "INCOMPLETO" || r.verdict === "NO REALIZADO"
+  );
+  const criticalRows = rows.filter((r) => r.criticalErrors > 0);
+  const observationRows = rows.filter((r) => r.verdict.includes("OBSERVACIONES"));
+  const followUpRows = rows.filter(
+    (r) =>
+      r.criticalErrors > 0 ||
+      r.verdict.includes("NO APTO") ||
+      r.verdict.includes("OBSERVACIONES") ||
+      r.isIncomplete ||
+      r.verdict === "INCOMPLETO" ||
+      r.verdict === "NO REALIZADO"
+  );
   const avgGlobal = metrics?.promedio ?? (total > 0 ? Math.round((rows.reduce((a, b) => a + b.avgScore, 0) / total) * 10) / 10 : 0);
-  const totalCritical = rows.reduce((a, b) => a + b.criticalErrors, 0);
+  const totalCritical = rows.reduce((a, b) => a + (b.criticalErrors || 0), 0);
   const passRate = total > 0 ? Math.round(((aptos + aptosObs) / total) * 100) : 0;
+  const exerciseTotals = rows.reduce(
+    (totals, row) => {
+      const match = row.exercisesText.match(/(\d+)\s*\/\s*(\d+)/);
+      if (match) {
+        totals.completed += Number(match[1]);
+        totals.expected += Number(match[2]);
+      }
+      return totals;
+    },
+    { completed: 0, expected: 0 }
+  );
+  const completionRate = exerciseTotals.expected > 0
+    ? Math.round((exerciseTotals.completed / exerciseTotals.expected) * 100)
+    : 0;
+  const evaluatedScores = rows
+    .filter((r) => r.progressValue > 0 && Number.isFinite(r.avgScore))
+    .map((r) => r.avgScore)
+    .sort((a, b) => a - b);
+  const evaluatedCount = evaluatedScores.length;
+  const medianScore = evaluatedScores.length > 0
+    ? evaluatedScores.length % 2 === 0
+      ? Math.round(((evaluatedScores[evaluatedScores.length / 2 - 1] + evaluatedScores[evaluatedScores.length / 2]) / 2) * 10) / 10
+      : evaluatedScores[Math.floor(evaluatedScores.length / 2)]
+    : 0;
 
-  // 1. KPI Cards (4 columnas)
   const kpiW = 43.5;
-  const kpiH = 20;
+  const kpiH = 23;
+  const kpis = [
+    { title: "PROMEDIO DEL GRUPO", value: `${avgGlobal}/10`, detail: "Calificación promedio", color: COLOR_INDIGO },
+    { title: "APROBACIÓN", value: `${passRate}%`, detail: `${aptos + aptosObs} de ${total} conductores`, color: [5, 150, 105] },
+    { title: "CON SEGUIMIENTO", value: String(followUpRows.length), detail: "Casos con señales de atención", color: followUpRows.length > 0 ? [217, 119, 6] : [5, 150, 105] },
+    { title: "FALTAS CRÍTICAS", value: String(totalCritical), detail: `${criticalRows.length} conductores involucrados`, color: totalCritical > 0 ? [225, 29, 72] : [5, 150, 105] },
+  ];
 
-  // Card 1: Promedio General
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(14, y, kpiW, kpiH, 2, 2, "F");
-  doc.roundedRect(14, y, kpiW, kpiH, 2, 2, "S");
-  doc.setFontSize(6.5);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text("PROMEDIO GLOBAL", 18, y + 5);
-  doc.setFontSize(16);
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text(`${avgGlobal}`, 18, y + 13);
-  doc.setFontSize(7.5);
-  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text("/ 10 pts", 34, y + 13);
-  doc.setFontSize(6);
-  doc.setTextColor(avgGlobal >= 8 ? 5 : avgGlobal >= 6 ? 217 : 225, avgGlobal >= 8 ? 150 : avgGlobal >= 6 ? 119 : 29, avgGlobal >= 8 ? 105 : avgGlobal >= 6 ? 6 : 72);
-  doc.text(avgGlobal >= 8 ? "Rendimiento Alto" : avgGlobal >= 6 ? "Riesgo Moderado" : "Requiere Atención", 18, y + 17.5);
-
-  // Card 2: Tasa de Aprobación
-  const c2X = 14 + kpiW + 2.5;
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(c2X, y, kpiW, kpiH, 2, 2, "F");
-  doc.roundedRect(c2X, y, kpiW, kpiH, 2, 2, "S");
-  doc.setFontSize(6.5);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text("TASA DE APROBACIÓN", c2X + 4, y + 5);
-  doc.setFontSize(16);
-  doc.setTextColor(5, 150, 105);
-  doc.text(`${passRate}%`, c2X + 4, y + 13);
-  doc.setFontSize(6);
-  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text(`${aptos + aptosObs} de ${total} aprobados`, c2X + 4, y + 17.5);
-
-  // Card 3: Evaluados & Estatus
-  const c3X = c2X + kpiW + 2.5;
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(c3X, y, kpiW, kpiH, 2, 2, "F");
-  doc.roundedRect(c3X, y, kpiW, kpiH, 2, 2, "S");
-  doc.setFontSize(6.5);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text("CONDUCTORES EVALUADOS", c3X + 4, y + 5);
-  doc.setFontSize(16);
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text(`${total}`, c3X + 4, y + 13);
-  doc.setFontSize(6);
-  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text(`Aptos: ${aptos} · Obs: ${aptosObs} · No: ${noAptos}`, c3X + 4, y + 17.5);
-
-  // Card 4: Faltas Críticas de Riesgo (Críticas)
-  const c4X = c3X + kpiW + 2.5;
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(c4X, y, kpiW, kpiH, 2, 2, "F");
-  doc.roundedRect(c4X, y, kpiW, kpiH, 2, 2, "S");
-  doc.setFontSize(6.5);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text("FALTAS CRÍTICAS", c4X + 4, y + 5);
-  doc.setFontSize(16);
-  doc.setTextColor(totalCritical > 0 ? 225 : 5, totalCritical > 0 ? 29 : 150, totalCritical > 0 ? 72 : 105);
-  doc.text(`${totalCritical}`, c4X + 4, y + 13);
-  doc.setFontSize(6);
-  doc.setTextColor(totalCritical > 0 ? 225 : 5, totalCritical > 0 ? 29 : 150, totalCritical > 0 ? 72 : 105);
-  doc.text(totalCritical > 0 ? "Faltas eliminatorias graves" : "Conducción segura (0 críticas)", c4X + 4, y + 17.5);
-
-  y += kpiH + 5;
-
-  // 2. Barra Visual Proporcional de Estatus
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(14, y, 182, 14, 2, 2, "F");
-  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
-  doc.roundedRect(14, y, 182, 14, 2, 2, "S");
-
-  doc.setFontSize(6.5);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-  doc.text("DISTRIBUCIÓN DEL DICTAMEN FINAL", 18, y + 4);
-
-  const barX = 18;
-  const barY = y + 5.5;
-  const barW = 174;
-  const barH = 3;
-
-  const wApto = total > 0 ? (aptos / total) * barW : 0;
-  const wObs = total > 0 ? (aptosObs / total) * barW : 0;
-  const wNo = total > 0 ? (noAptos / total) * barW : 0;
-  const wInc = total > 0 ? (incompletos / total) * barW : 0;
-
-  let bCurX = barX;
-  if (wApto > 0) { doc.setFillColor(16, 185, 129); doc.rect(bCurX, barY, wApto, barH, "F"); bCurX += wApto; }
-  if (wObs > 0) { doc.setFillColor(245, 158, 11); doc.rect(bCurX, barY, wObs, barH, "F"); bCurX += wObs; }
-  if (wNo > 0) { doc.setFillColor(244, 63, 94); doc.rect(bCurX, barY, wNo, barH, "F"); bCurX += wNo; }
-  if (wInc > 0) { doc.setFillColor(148, 163, 184); doc.rect(bCurX, barY, wInc, barH, "F"); }
-
-  doc.setFontSize(6);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text(`Apto: ${aptos} (${total > 0 ? Math.round((aptos / total) * 100) : 0}%)`, 18, y + 11.5);
-  doc.text(`Con Observaciones: ${aptosObs} (${total > 0 ? Math.round((aptosObs / total) * 100) : 0}%)`, 62, y + 11.5);
-  doc.text(`No Apto: ${noAptos} (${total > 0 ? Math.round((noAptos / total) * 100) : 0}%)`, 120, y + 11.5);
-  doc.text(`Incompletos: ${incompletos}`, 165, y + 11.5);
-
-  y += 18;
-
-  // 3. Dos Columnas: TOP 5 CONDUCTORES vs RECOMENDACIÓN INSTITUCIONAL
-  const colW = 89;
-  const colH = 68;
-
-  // Columna Izquierda: Ranking TOP 5
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(14, y, colW, colH, 2, 2, "F");
-  doc.roundedRect(14, y, colW, colH, 2, 2, "S");
-
-  // Icono vectorial decorativo para Cuadro de Honor (Premio/Trofeo estilizado)
-  doc.setFillColor(245, 158, 11); // Amber-500
-  doc.circle(19, y + 5.2, 1.8, "F");
-  doc.setFillColor(255, 255, 255);
-  doc.circle(19, y + 5.2, 0.9, "F");
-
-  doc.setFontSize(7.5);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text("CUADRO DE HONOR · Mejores Conductores", 23, y + 6);
-  doc.line(18, y + 8, 14 + colW - 4, y + 8);
-
-  const topDrivers = [...rows].sort((a, b) => b.avgScore - a.avgScore || a.criticalErrors - b.criticalErrors).slice(0, 5);
-  let topY = y + 14;
-  topDrivers.forEach((d, idx) => {
-    doc.setFontSize(7);
+  kpis.forEach((kpi, index) => {
+    const x = 14 + index * (kpiW + 2.5);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(x, y, kpiW, kpiH, 2, 2, "F");
+    doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+    doc.roundedRect(x, y, kpiW, kpiH, 2, 2, "S");
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-    doc.text(`#${idx + 1}`, 18, topY);
-
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-    const dName = d.driver.length > 24 ? `${d.driver.substring(0, 22)}…` : d.driver;
-    doc.text(dName, 26, topY);
-
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(d.avgScore >= 8 ? 5 : 217, d.avgScore >= 8 ? 150 : 119, d.avgScore >= 8 ? 105 : 6);
-    doc.text(`${d.avgScore}/10`, 14 + colW - 6, topY, { align: "right" });
-
-    doc.setFontSize(5.5);
-    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.2);
     doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-    doc.text(`${d.errors} err. · ${d.criticalErrors} crít.`, 26, topY + 3.2);
-
-    topY += 9.5;
+    doc.text(kpi.title, x + 3.5, y + 5);
+    doc.setFontSize(14);
+    doc.setTextColor(kpi.color[0], kpi.color[1], kpi.color[2]);
+    doc.text(kpi.value, x + 3.5, y + 13);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(5.8);
+    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+    doc.text(kpi.detail, x + 3.5, y + 19);
   });
 
-  // Columna Derecha: Directrices Pedagógicas y Diagnóstico de la Generación
-  const colRX = 14 + colW + 4;
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(colRX, y, colW, colH, 2, 2, "F");
-  doc.roundedRect(colRX, y, colW, colH, 2, 2, "S");
+  y += kpiH + 6;
 
-  // Icono vectorial decorativo para Diagnóstico (Radar / Faro estilizado)
-  doc.setFillColor(79, 70, 229); // Indigo-600
-  doc.circle(colRX + 6, y + 5.2, 1.8, "F");
+  const panelY = y;
+  const panelH = 37;
+  const panelW = 89;
+  const rightPanelX = 107;
   doc.setFillColor(255, 255, 255);
-  doc.circle(colRX + 6, y + 5.2, 0.9, "F");
+  doc.roundedRect(14, panelY, panelW, panelH, 2, 2, "F");
+  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+  doc.roundedRect(14, panelY, panelW, panelH, 2, 2, "S");
+  doc.roundedRect(rightPanelX, panelY, panelW, panelH, 2, 2, "F");
+  doc.roundedRect(rightPanelX, panelY, panelW, panelH, 2, 2, "S");
 
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
-  doc.setFont("helvetica", "bold");
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text("DIAGNÓSTICO Y DIRECTRICES DE FLOTA", colRX + 10, y + 6);
-  doc.line(colRX + 4, y + 8, colRX + colW - 4, y + 8);
+  doc.text("RESULTADO DEL GRUPO", 18, panelY + 6);
+  doc.text("COBERTURA Y DESEMPEÑO", rightPanelX + 4, panelY + 6);
 
-  doc.setFontSize(6.5);
+  const resultSegments = [
+    { label: "Apto", count: aptos, color: [16, 185, 129] },
+    { label: "Observaciones", count: aptosObs, color: [245, 158, 11] },
+    { label: "No apto", count: noAptos, color: [244, 63, 94] },
+    { label: "Incompleto", count: dictamenIncompleto, color: [217, 119, 6] },
+    { label: "No realizado", count: noRealizados, color: [148, 163, 184] },
+    { label: "Sin configurar", count: sinConfigurar, color: [203, 213, 225] },
+  ];
+  const classifiedTotal = resultSegments.reduce((sum, segment) => sum + segment.count, 0);
+  const resultBarX = 18;
+  const resultBarY = panelY + 11;
+  const resultBarW = 81;
+  let segmentX = resultBarX;
+  resultSegments.forEach((segment) => {
+    if (segment.count === 0 || classifiedTotal === 0) return;
+    const segmentW = (segment.count / classifiedTotal) * resultBarW;
+    doc.setFillColor(segment.color[0], segment.color[1], segment.color[2]);
+    doc.rect(segmentX, resultBarY, segmentW, 3.5, "F");
+    segmentX += segmentW;
+  });
+
+  resultSegments.forEach((segment, index) => {
+    const columnX = 18 + (index % 3) * 27;
+    const rowY = panelY + 21 + Math.floor(index / 3) * 9;
+    doc.setFillColor(segment.color[0], segment.color[1], segment.color[2]);
+    doc.circle(columnX + 1, rowY - 1, 1.1, "F");
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(5.8);
+    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+    doc.text(`${segment.label}: ${segment.count}`, columnX + 3, rowY);
+  });
   doc.setFont("helvetica", "bold");
-  doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-  doc.text("1. Foco en Seguridad Crítica:", colRX + 4, y + 13.5);
+  doc.setFontSize(6.2);
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  doc.text(`Avance de ejercicios: ${exerciseTotals.completed} de ${exerciseTotals.expected}`, rightPanelX + 4, panelY + 14);
+  doc.setFillColor(226, 232, 240);
+  doc.roundedRect(rightPanelX + 4, panelY + 17, 81, 3, 1, 1, "F");
+  if (completionRate > 0) {
+    doc.setFillColor(79, 70, 229);
+    doc.roundedRect(rightPanelX + 4, panelY + 17, 81 * completionRate / 100, 3, 1, 1, "F");
+  }
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  const secTxt = totalCritical > 0
-    ? `Se registraron ${totalCritical} faltas críticas. Es imperativo reforzar el entrenamiento en anticipación de frenada y mantenimiento de carril.`
-    : "Excelente comportamiento: cero faltas críticas acumuladas en este grupo de evaluación.";
-  const secLines = doc.splitTextToSize(secTxt, colW - 8) as string[];
-  doc.text(secLines, colRX + 4, y + 17);
+  doc.setFontSize(6.2);
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  doc.text(
+    exerciseTotals.expected > 0 ? `${completionRate}% completado` : "Sin ejercicios configurados",
+    rightPanelX + 4,
+    panelY + 24
+  );
+  doc.text(
+    evaluatedScores.length > 0
+      ? `Mediana: ${medianScore}/10 · Rango: ${evaluatedScores[0]}–${evaluatedScores[evaluatedScores.length - 1]}`
+      : "Sin calificaciones disponibles",
+    rightPanelX + 4,
+    panelY + 31
+  );
 
-  doc.setFontSize(6.5);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-  doc.text("2. Eficiencia & Telemetría:", colRX + 4, y + 31);
+  y += panelH + 6;
+  const insight = total === 0
+    ? "No hay conductores en el alcance seleccionado. Ajuste los filtros o complete evaluaciones para generar un diagnóstico."
+    : evaluatedCount === 0
+      ? `Hay ${total} conductores en el alcance, pero ninguno registra ejercicios completados. Complete o configure las evaluaciones antes de interpretar el promedio del grupo.`
+    : followUpRows.length === 0
+      ? `El grupo registra ${passRate}% de aprobación y no presenta casos con señales de intervención en este alcance. El promedio es ${avgGlobal}/10 y la mediana de los ${evaluatedCount} conductores evaluados es ${medianScore}/10.`
+      : `La aprobación es de ${passRate}% y ${followUpRows.length} de ${total} conductores requieren seguimiento. El foco prioritario son ${criticalRows.length} casos con faltas críticas; además, ${noAptos} tienen dictamen no apto y ${incompleteRows.length} presentan avance incompleto.`;
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  const ecoTxt = avgGlobal >= 7.5
-    ? "El grupo mantiene un buen régimen de RPM y dosificación progresiva del acelerador. Fomentar el uso proactivo del retarder."
-    : "Se detecta oportunidad de mejora en el uso de freno auxiliar y permanencia en zona verde para reducir desgaste mecánico y consumo de diésel.";
-  const ecoLines = doc.splitTextToSize(ecoTxt, colW - 8) as string[];
-  doc.text(ecoLines, colRX + 4, y + 34.5);
-
-  doc.setFontSize(6.5);
+  doc.setFontSize(7.2);
+  const insightLines = doc.splitTextToSize(insight, 170) as string[];
+  const insightH = Math.max(24, insightLines.length * 4.2 + 12);
+  doc.setFillColor(238, 242, 255);
+  doc.roundedRect(14, y, 182, insightH, 2, 2, "F");
   doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
   doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-  doc.text("3. Conclusión Institucional:", colRX + 4, y + 49);
+  doc.text("LECTURA EJECUTIVA", 18, y + 6);
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.2);
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  const planTxt = passRate >= 80
-    ? `Grupo con alto nivel de aprobación (${passRate}%). Se valida la aptitud general para la operación en ruta.`
-    : `Tasa de aprobación del ${passRate}%. Se sugiere programar una jornada de refuerzo práctico para los operadores en riesgo antes de su liberación.`;
-  const planLines = doc.splitTextToSize(planTxt, colW - 8) as string[];
-  doc.text(planLines, colRX + 4, y + 52.5);
+  doc.text(insightLines, 18, y + 12);
+  y += insightH + 7;
 
-  y += colH + 6;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  doc.text("Prioridades de acción", 14, y);
+  y += 4;
 
-  // 4. Tabla Síntesis de Conductores (Compacta 1 página)
+  const actionRows = [
+    {
+      label: "Faltas críticas",
+      count: criticalRows.length,
+      action: "Revisar los expedientes involucrados y definir refuerzo de seguridad antes de la siguiente validación.",
+      color: [225, 29, 72],
+    },
+    {
+      label: "Dictamen no apto",
+      count: noAptos,
+      action: "Revisar el expediente, definir un plan correctivo y programar reevaluación conforme a los criterios operativos vigentes.",
+      color: [225, 29, 72],
+    },
+    {
+      label: "Avance incompleto",
+      count: incompleteRows.length,
+      action: "Completar los ejercicios pendientes para contar con resultados comparables y un dictamen integral.",
+      color: [217, 119, 6],
+    },
+    {
+      label: "Con observaciones",
+      count: observationRows.length,
+      action: "Dar seguimiento a las observaciones y verificar su cierre en la próxima evaluación.",
+      color: [217, 119, 6],
+    },
+  ].filter((item) => item.count > 0);
+
+  if (actionRows.length === 0) {
+    actionRows.push({
+      label: evaluatedCount === 0 ? "Evaluación pendiente" : "Seguimiento regular",
+      count: total,
+      action: evaluatedCount === 0
+        ? "Configurar y completar los ejercicios del grupo para generar resultados y definir prioridades de capacitación."
+        : "Mantener el seguimiento periódico y conservar estos resultados como línea base del grupo.",
+      color: evaluatedCount === 0 ? [217, 119, 6] : [5, 150, 105],
+    });
+  }
+
+  const tableX = 14;
+  const tableW = 182;
   doc.setFillColor(241, 245, 249);
-  doc.rect(14, y, 182, 6, "F");
+  doc.roundedRect(tableX, y, tableW, 8, 1.5, 1.5, "F");
   doc.setFontSize(6.5);
   doc.setFont("helvetica", "bold");
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text("CONDUCTOR", 18, y + 4.2);
-  doc.text("PROGRESO", 80, y + 4.2);
-  doc.text("FALTAS", 112, y + 4.2);
-  doc.text("CRÍTICAS", 132, y + 4.2);
-  doc.text("PROMEDIO", 154, y + 4.2);
-  doc.text("DICTAMEN", 192, y + 4.2, { align: "right" });
+  doc.setTextColor(71, 85, 105);
+  doc.text("SEÑAL", 18, y + 5.2);
+  doc.text("CASOS", 68, y + 5.2, { align: "center" });
+  doc.text("ACCIÓN SUGERIDA", 78, y + 5.2);
+  y += 8;
+
+  actionRows.forEach((item, index) => {
+    const actionLines = doc.splitTextToSize(item.action, 111) as string[];
+    const rowH = Math.max(15, actionLines.length * 3.2 + 7);
+    if (index % 2 === 1) {
+      doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
+      doc.rect(tableX, y, tableW, rowH, "F");
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.setTextColor(item.color[0], item.color[1], item.color[2]);
+    doc.text(item.label, 18, y + 5.5);
+    doc.setFontSize(8);
+    doc.text(String(item.count), 68, y + 5.5, { align: "center" });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.6);
+    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+    doc.text(actionLines, 78, y + 5.5);
+    doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+    doc.setLineWidth(0.2);
+    doc.line(tableX, y + rowH, tableX + tableW, y + rowH);
+    y += rowH;
+  });
 
   y += 6;
-  const displayLimit = Math.min(rows.length, 12);
-  for (let i = 0; i < displayLimit; i++) {
-    const r = rows[i];
-    if (i % 2 === 1) {
-      doc.setFillColor(248, 250, 252);
-      doc.rect(14, y, 182, 5.5, "F");
-    }
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+  doc.text("Ejercicios realizados", 14, y);
+  y += 4;
 
+  let firstPageExerciseCount = 0;
+  if (exercises.length === 0) {
+    doc.setFont("helvetica", "normal");
     doc.setFontSize(6.5);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-    const cName = r.driver.length > 28 ? `${r.driver.substring(0, 26)}…` : r.driver;
-    doc.text(cName, 18, y + 3.8);
-
-    doc.setFont("helvetica", "normal");
     doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-    doc.text(r.exercisesText || "—", 80, y + 3.8);
+    doc.text("No se encontraron ejercicios realizados con los filtros seleccionados.", 14, y + 3);
+    y += 7;
+  } else {
+    const availableRows = Math.max(0, Math.floor((274 - y - 18) / 5.2));
+    const shownExercises = exercises.slice(0, availableRows * 2);
+    firstPageExerciseCount = shownExercises.length;
+    const columnWidth = 89;
 
-    doc.text(`${r.errors}`, 112, y + 3.8);
+    shownExercises.forEach((exercise, index) => {
+      const column = index % 2;
+      const row = Math.floor(index / 2);
+      const x = 14 + column * 93;
+      const rowY = y + row * 5.2;
+      const phaseLabel = exercise.phase > 0 ? `${phaseName(exercise.phase)} · ` : "";
+      const suffix = ` · ${exercise.drivers} cond.`;
+      const availableWidth = columnWidth - 5;
 
-    if (r.criticalErrors > 0) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(5.8);
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.circle(x + 0.8, rowY + 2.7, 0.45, "F");
+      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+
+      let label = `${phaseLabel}${exercise.name}${suffix}`;
+      while (label.length > 1 && doc.getTextWidth(label) > availableWidth) {
+        label = `${label.slice(0, -2).trimEnd()}…`;
+      }
+      doc.text(label, x + 3, rowY + 3.5);
+    });
+
+    const rowsUsed = Math.ceil(shownExercises.length / 2);
+    y += rowsUsed * 5.2;
+    if (shownExercises.length < exercises.length) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(5.8);
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.text(
+        `El listado continúa en las páginas siguientes (${exercises.length - shownExercises.length} ejercicios más).`,
+        14,
+        y + 3
+      );
+      y += 5;
+    }
+  }
+
+  y += 3;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.2);
+  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+  const note = "Los conteos no son excluyentes. Consulte el Reporte Global para el detalle por conductor.";
+  const noteLines = doc.splitTextToSize(note, 165) as string[];
+  doc.text(noteLines, 14, y);
+
+  let remainingExercises = exercises.slice(firstPageExerciseCount);
+
+  while (remainingExercises.length > 0) {
+    doc.addPage();
+    let pageY = drawHeader(doc, "Ejercicios realizados (Continuación)", filterSubtitle);
+    const drawExerciseHeader = () => {
+      doc.setFillColor(241, 245, 249);
+      doc.roundedRect(14, pageY, 182, 8, 1.5, 1.5, "F");
       doc.setFont("helvetica", "bold");
-      doc.setTextColor(225, 29, 72);
-      doc.text(`${r.criticalErrors}`, 132, y + 3.8);
-    } else {
-      doc.setTextColor(16, 185, 129);
-      doc.text("0", 132, y + 3.8);
+      doc.setFontSize(6.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text("FASE / MODALIDAD", 18, pageY + 5.2);
+      doc.text("EJERCICIO REALIZADO", 52, pageY + 5.2);
+      doc.text("CONDUCTORES", 192, pageY + 5.2, { align: "right" });
+      pageY += 8;
+    };
+    drawExerciseHeader();
+
+    while (remainingExercises.length > 0) {
+      const exercise = remainingExercises[0];
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      let nameLines = doc.splitTextToSize(exercise.name, 132) as string[];
+      const maxNameLines = Math.max(1, Math.floor((272 - pageY - 3) / 3.8));
+      if (nameLines.length > maxNameLines) {
+        nameLines = [...nameLines.slice(0, maxNameLines - 1), "…"];
+      }
+      const rowH = Math.max(8, nameLines.length * 3.8 + 3);
+
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.text(exercise.phase > 0 ? phaseName(exercise.phase) : "Curso (sin fases)", 18, pageY + 5);
+      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+      doc.text(nameLines, 52, pageY + 5);
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.text(String(exercise.drivers), 192, pageY + 5, { align: "right" });
+      doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+      doc.setLineWidth(0.2);
+      doc.line(14, pageY + rowH, 196, pageY + rowH);
+      pageY += rowH;
+      remainingExercises = remainingExercises.slice(1);
     }
 
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-    doc.text(`${r.avgScore}`, 154, y + 3.8);
-
-    const isApto = r.verdict.startsWith("APTO") && !r.verdict.includes("OBSERVACIONES");
-    const isObs = r.verdict.includes("OBSERVACIONES");
-    const vColor = isApto ? [5, 150, 105] : isObs ? [217, 119, 6] : [225, 29, 72];
-    doc.setTextColor(vColor[0], vColor[1], vColor[2]);
-    doc.text(r.verdict, 192, y + 3.8, { align: "right" });
-
-    y += 5.5;
+    if (remainingExercises.length > 0 && pageY <= 280) {
+      throw new Error("No se pudo acomodar el listado de ejercicios en el PDF.");
+    }
   }
 
-  if (rows.length > 12) {
-    doc.setFontSize(5.5);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-    doc.text(`* Mostrando los primeros 12 de ${rows.length} conductores. Para el desglose completo ver el Reporte Global extendido.`, 18, y + 3.5);
-    y += 4;
+  const totalPages = doc.getNumberOfPages();
+  for (let page = 1; page <= totalPages; page++) {
+    doc.setPage(page);
+    drawFooter(doc, page, totalPages);
   }
-
-  drawFooter(doc, 1, 1);
   return doc.output("arraybuffer") as unknown as Uint8Array;
 }
-
-// -------------------------------------------------------------
 // Descarga directa del Resumen Ejecutivo en 1 página
 // -------------------------------------------------------------
 export function downloadExecutiveSummaryPdf(
   groupName: string,
   rows: DisplayRow[],
   filterSubtitle: string,
-  metrics?: { total: number; promedio: number; aptos: number; noAptos: number }
+  metrics?: { total: number; promedio: number; aptos: number; noAptos: number },
+  exercises?: ReportExerciseSummary[]
 ): void {
-  const bytes = generateExecutiveSummaryPdf(groupName, rows, filterSubtitle, metrics);
+  const bytes = generateExecutiveSummaryPdf(groupName, rows, filterSubtitle, metrics, exercises);
   const blob = new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -1005,7 +1087,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
 
     doc.setFontSize(8);
     doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-    const pName = p.phase === 0 ? "Ejercicios Directos del Curso" : phaseName(p.phase);
+    const pName = p.phase === 0 ? "Ejercicios del Curso" : phaseName(p.phase);
     doc.text(pName.length > 28 ? `${pName.substring(0, 26)}…` : pName, cardX + 3.5, cardY + 9);
 
     // Badge de la fase (solo si son múltiples fases para no duplicar en Curso)
@@ -1683,7 +1765,8 @@ export async function downloadBulkReportsZip(
   metrics: { total: number; promedio: number; aptos: number; noAptos: number },
   onProgress?: (current: number, total: number, currentName: string) => void,
   filter?: DateFilter,
-  groupName?: string
+  groupName?: string,
+  exercises?: ReportExerciseSummary[]
 ): Promise<void> {
   const zip = new JSZip();
 
@@ -1694,7 +1777,13 @@ export async function downloadBulkReportsZip(
 
   // 2. Generar resumen ejecutivo de 1 página para Dirección
   if (onProgress) onProgress(0, rows.length, "Generando Resumen Ejecutivo (1 página)");
-  const executivePdfBytes = generateExecutiveSummaryPdf(groupName || "Flota General", rows, filterSubtitle, metrics);
+  const executivePdfBytes = generateExecutiveSummaryPdf(
+    groupName || "Flota General",
+    rows,
+    filterSubtitle,
+    metrics,
+    exercises
+  );
   zip.file("01_Resumen_Ejecutivo_Direccion.pdf", executivePdfBytes);
 
   // Carpeta para expedientes individuales

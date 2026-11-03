@@ -65,7 +65,7 @@ export default function UploadForm({
   const [selectedExistingGroupId, setSelectedExistingGroupId] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
-  const [newGroupType, setNewGroupType] = useState<"escuela" | "curso">("escuela");
+  const [newGroupType, setNewGroupType] = useState<"escuela" | "curso">("curso");
   const [sourceGroupId, setSourceGroupId] = useState("");
   const [allGroupsList, setAllGroupsList] = useState<GroupDoc[]>([]);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -177,7 +177,7 @@ export default function UploadForm({
       setShowOpenGroupModal(false);
       setNewGroupName("");
       setNewGroupDesc("");
-      setNewGroupType("escuela");
+      setNewGroupType("curso");
       setSourceGroupId("");
       onDone();
     } catch (err) {
@@ -497,15 +497,6 @@ export default function UploadForm({
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setShowBackupModal(true)}
-              className="text-[11px] font-semibold text-slate-600 hover:text-indigo-600 flex items-center gap-1 transition"
-              title="Descargar copia de seguridad o restaurar datos JSON"
-            >
-              <span>💾</span>
-              <span>Respaldar / Restaurar</span>
-            </button>
             {results.length > 0 && (
               <button
                 type="button"

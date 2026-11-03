@@ -4,6 +4,7 @@ import UploadForm from "../components/UploadForm";
 import { isAdminEmail, PHASES } from "../lib/config";
 import {
   getPhasesWithEvaluations,
+  listReportExercises,
   overallSummaries,
   phaseSummaries,
   type DateFilter,
@@ -272,7 +273,11 @@ export default function Home() {
         ? "Promedio General (Todas las fases)"
         : `Fase ${selectedPhase}: ${PHASES.find((p) => p.id === selectedPhase)?.name || ""}`;
       const groupTitle = currentGroupObj ? `Grupo: ${currentGroupObj.name}` : "Todos los grupos";
-      const filterSubtitle = `${groupTitle} · ${phaseTitle}`;
+      const dateSubtitle = hasDateFilter
+        ? (startDate && endDate ? `${startDate} al ${endDate}` : startDate ? `Desde ${startDate}` : `Hasta ${endDate}`)
+        : "Histórico completo";
+      const filterSubtitle = `${groupTitle} · ${phaseTitle} · ${dateSubtitle}`;
+      const reportExercises = await listReportExercises(dateFilter, selectedPhase ?? undefined);
 
       await downloadBulkReportsZip(
         rows,
@@ -287,7 +292,8 @@ export default function Home() {
           setExportProgress({ current, total, name });
         },
         dateFilter,
-        currentGroupObj?.name || "Todos los Grupos"
+        currentGroupObj?.name || "Todos los Grupos",
+        reportExercises
       );
     } catch (err: any) {
       console.error("Error al exportar lote PDF/ZIP:", err);
@@ -306,7 +312,7 @@ export default function Home() {
     ? Math.round((rows!.reduce((acc, r) => acc + r.avgScore, 0) / totalConductores) * 10) / 10
     : 0;
 
-  const handleExportExecutiveSummary = () => {
+  const handleExportExecutiveSummary = async () => {
     if (!sortedRows || sortedRows.length === 0) return;
     const phaseTitle = selectedPhase === null
       ? "Promedio General (Todas las fases)"
@@ -317,17 +323,24 @@ export default function Home() {
       : "Histórico completo";
     const filterSubtitle = `${groupTitle} · ${phaseTitle} · ${dateSubtitle}`;
 
-    downloadExecutiveSummaryPdf(
-      groupTitle,
-      sortedRows,
-      filterSubtitle,
-      {
-        total: totalConductores,
-        promedio: promedioGeneral,
-        aptos,
-        noAptos,
-      }
-    );
+    try {
+      const reportExercises = await listReportExercises(dateFilter, selectedPhase ?? undefined);
+      downloadExecutiveSummaryPdf(
+        groupTitle,
+        sortedRows,
+        filterSubtitle,
+        {
+          total: totalConductores,
+          promedio: promedioGeneral,
+          aptos,
+          noAptos,
+        },
+        reportExercises
+      );
+    } catch (err: any) {
+      console.error("Error al cargar los ejercicios del resumen ejecutivo:", err);
+      alert("No se pudieron cargar los ejercicios del reporte: " + (err?.message || "Error desconocido"));
+    }
   };
 
   return (

@@ -568,6 +568,47 @@ export async function listUploadedExerciseNames(groupId?: string | null): Promis
   return [...byKey.values()].sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
 }
 
+export type ReportExerciseSummary = {
+  phase: number;
+  name: string;
+  drivers: number;
+};
+
+export async function listReportExercises(
+  dateFilter?: DateFilter,
+  onlyPhase?: number
+): Promise<ReportExerciseSummary[]> {
+  const docs = await fetchEvaluations(undefined, undefined, dateFilter);
+  const exerciseMap = new Map<string, ReportExerciseSummary & { driverIds: Set<string> }>();
+
+  for (const evaluation of docs) {
+    const evaluationGroupId = evaluation.groupId || dateFilter?.groupId;
+    const phase = evaluationGroupId && getGroupType(evaluationGroupId) === "curso"
+      ? 0
+      : evaluation.phase;
+    if (onlyPhase !== undefined && phase !== onlyPhase) continue;
+    const name = (evaluation.unit || evaluation.exercise || "").trim();
+    if (!name) continue;
+
+    const key = `${phase}:${exerciseKey(name)}`;
+    let exercise = exerciseMap.get(key);
+    if (!exercise) {
+      exercise = {
+        phase,
+        name,
+        drivers: 0,
+        driverIds: new Set<string>(),
+      };
+      exerciseMap.set(key, exercise);
+    }
+    exercise.driverIds.add(evaluation.driverId);
+  }
+
+  return [...exerciseMap.values()]
+    .map(({ driverIds, ...exercise }) => ({ ...exercise, drivers: driverIds.size }))
+    .sort((a, b) => a.phase - b.phase || a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
+}
+
 // Resumen del Promedio General agrupando todos los conductores en todas las fases con filtros
 export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverOverallSummary[]> {
   const allDocs = await fetchEvaluations(undefined, undefined, dateFilter);
