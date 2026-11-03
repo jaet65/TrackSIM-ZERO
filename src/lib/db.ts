@@ -2,7 +2,7 @@ import { collection, doc, query, setDoc, updateDoc, where, writeBatch } from "fi
 import { firestore, getDb, safeGetDoc, safeGetDocs, fastWrite } from "./firebase";
 import type { Mark, ParsedReport, TelemetryMetrics } from "./parse";
 import { evaluateMarks, normalizeRpmZones } from "./parse";
-import { classify } from "./catalog";
+import { classify, type Severity } from "./catalog";
 import { loadCatalog } from "./catalogStore";
 import { CRITICAL_LIMIT, verdictFor } from "./config";
 import {
@@ -687,10 +687,36 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
   return results.sort((a, b) => a.driver.localeCompare(b.driver));
 }
 
-export async function driverData(driverId: string, filter?: DateFilter) {
-  const rawEvals = (await fetchEvaluations("driverId", driverId, filter)).sort(
-    (a, b) => a.phase - b.phase || a.date.localeCompare(b.date) || a.createdAt - b.createdAt,
-  );
+export type DriverData = {
+  name: string;
+  evals: EvaluationView[];
+  missingExercises: { phase: number; exercise: string }[];
+  phases: PhaseSummary[];
+  breakdown: {
+    description: string;
+    rawDescription: string;
+    count: number;
+    environment: string;
+    severity: Severity;
+    weight: number;
+  }[];
+  overall: number;
+  rawOverall: number;
+  completedExercises: number;
+  expectedExercises: number;
+  criticalErrors: number;
+  verdict: string;
+  color: string;
+  groupType: "curso" | "escuela";
+  groupEvals: EvaluationView[];
+};
+
+export function buildDriverDataFromEvals(
+  driverId: string,
+  rawEvals: EvaluationView[],
+  filter?: DateFilter,
+  groupEvals: EvaluationView[] = []
+): DriverData | null {
   if (!rawEvals.length) return null;
 
   const phases = summarizeDriverPhases(driverId, rawEvals[0].driverName, rawEvals, filter?.groupId);
@@ -762,21 +788,6 @@ export async function driverData(driverId: string, filter?: DateFilter) {
 
   const isCurso = getGroupType(filter?.groupId || rawEvals[0].groupId) === "curso";
 
-  // Obtener telemetrías del resto del grupo para benchmark comparativo si existe un grupo
-  let groupEvals: EvaluationView[] = [];
-  const targetGroupId = filter?.groupId || rawEvals[0]?.groupId;
-  try {
-    const allGroupDocs = await fetchEvaluations(undefined, undefined, targetGroupId ? { groupId: targetGroupId } : undefined);
-    if (targetGroupId) {
-      groupEvals = allGroupDocs.filter((d) => d.groupId === targetGroupId);
-    } else {
-      // Si no hay grupo asignado o filtrado, comparar contra todas las evaluaciones disponibles (flota global)
-      groupEvals = allGroupDocs;
-    }
-  } catch (e) {
-    console.warn("No se pudieron cargar evaluaciones del grupo para benchmark:", e);
-  }
-
   return {
     name: rawEvals[0].driverName,
     evals,
@@ -793,6 +804,30 @@ export async function driverData(driverId: string, filter?: DateFilter) {
     groupType: isCurso ? ("curso" as const) : ("escuela" as const),
     groupEvals,
   };
+}
+
+export async function driverData(driverId: string, filter?: DateFilter): Promise<DriverData | null> {
+  const rawEvals = (await fetchEvaluations("driverId", driverId, filter)).sort(
+    (a, b) => a.phase - b.phase || a.date.localeCompare(b.date) || a.createdAt - b.createdAt,
+  );
+  if (!rawEvals.length) return null;
+
+  // Obtener telemetrías del resto del grupo para benchmark comparativo si existe un grupo
+  let groupEvals: EvaluationView[] = [];
+  const targetGroupId = filter?.groupId || rawEvals[0]?.groupId;
+  try {
+    const allGroupDocs = await fetchEvaluations(undefined, undefined, targetGroupId ? { groupId: targetGroupId } : undefined);
+    if (targetGroupId) {
+      groupEvals = allGroupDocs.filter((d) => d.groupId === targetGroupId);
+    } else {
+      // Si no hay grupo asignado o filtrado, comparar contra todas las evaluaciones disponibles (flota global)
+      groupEvals = allGroupDocs;
+    }
+  } catch (e) {
+    console.warn("No se pudieron cargar evaluaciones del grupo para benchmark:", e);
+  }
+
+  return buildDriverDataFromEvals(driverId, rawEvals, filter, groupEvals);
 }
 
 /**

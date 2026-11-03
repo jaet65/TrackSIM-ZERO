@@ -889,7 +889,7 @@ export function downloadExecutiveSummaryPdf(
 // -------------------------------------------------------------
 // 3. EXPEDIENTE INDIVIDUAL IDÉNTICO AL EXPEDIENTE DE PANTALLA
 // -------------------------------------------------------------
-function generateDeterministicFolio(driverId: string, data: NonNullable<Awaited<ReturnType<typeof driverData>>>): string {
+export function generateDeterministicFolio(driverId: string, data: NonNullable<Awaited<ReturnType<typeof driverData>>>): string {
   // Construir una cadena canónica basada en los datos inmutables y sesiones del expediente
   const sortedSessions = [...data.evals]
     .map((e) => `${e.docId || e.fileName}_${e.score}_${e.errorCount}_${e.date}`)
@@ -1490,7 +1490,8 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   };
   let totalErrorsSum = 0;
   for (const item of data.breakdown) {
-    bySev[item.severity].push(item);
+    const sev = item.severity as Severity;
+    if (bySev[sev]) bySev[sev].push(item);
     totalErrorsSum += item.count;
   }
 

@@ -33,6 +33,7 @@ import {
   removeGroupCatalog,
   type CatalogConfig,
 } from "./catalog";
+import { exportClosedGroupToCloud, type CloudExportStatus } from "./cloudExport";
 
 export type GroupStatus = "open" | "closed";
 
@@ -52,6 +53,12 @@ export type GroupDoc = {
   closedByEmail?: string;
   evaluationCount?: number;
   driverCount?: number;
+  // Sincronización con TrackSIM-CLOUD
+  cloudExportId?: string;
+  cloudExportStatus?: CloudExportStatus;
+  cloudExportedAt?: number;
+  cloudExportCount?: number;
+  cloudExportError?: string | null;
   // Reglas independientes por grupo (catálogo de errores y catálogo de ejercicios)
   catalog?: CatalogConfig;
   catalogUpdatedAt?: number;
@@ -177,7 +184,7 @@ export async function createGroup(
 export async function closeAndFreezeGroup(
   groupId: string,
   user: { name: string; email: string }
-): Promise<{ evaluationsFrozen: number }> {
+): Promise<{ evaluationsFrozen: number; cloudExported?: boolean; cloudExportCount?: number }> {
   await Promise.all([loadCatalog(false, groupId), loadExercises(false, groupId)]);
 
   const grpRef = doc(groupsCol(), groupId);
@@ -227,10 +234,11 @@ export async function closeAndFreezeGroup(
   }
 
   // Actualizar el estado del grupo a "closed"
+  const closedAt = Date.now();
   await fastWrite(
     updateDoc(grpRef, {
       status: "closed",
-      closedAt: Date.now(),
+      closedAt,
       closedBy: user.name || user.email,
       closedByEmail: user.email,
       evaluationCount: docs.length,
@@ -238,7 +246,27 @@ export async function closeAndFreezeGroup(
     })
   );
 
-  return { evaluationsFrozen: docs.length };
+  // Generar snapshot inmutable para CLOUD
+  let cloudExportCount = 0;
+  try {
+    const exportRes = await exportClosedGroupToCloud(groupId, user);
+    cloudExportCount = exportRes.exportedCount;
+  } catch (err) {
+    console.error("[CloudExport] Error exportando grupo cerrado a CLOUD:", err);
+    throw err;
+  }
+
+  return { evaluationsFrozen: docs.length, cloudExported: true, cloudExportCount };
+}
+
+/**
+ * Reintenta la exportación de un grupo cerrado hacia TrackSIM-CLOUD de forma segura e idempotente.
+ */
+export async function retryCloudExport(
+  groupId: string,
+  user: { name: string; email: string }
+) {
+  return await exportClosedGroupToCloud(groupId, user);
 }
 
 /**
@@ -312,6 +340,22 @@ export async function updateGroupDetails(
 }
 export async function deleteGroup(groupId: string): Promise<void> {
   await deleteGroupEvaluations(groupId);
+
+  // Limpiar snapshot en cloud_exports si existía
+  try {
+    const exportEvalsSnap = await safeGetDocs(collection(getDb(), "cloud_exports", groupId, "evaluations"));
+    if (!exportEvalsSnap.empty) {
+      const batch = writeBatch(firestore);
+      for (const d of exportEvalsSnap.docs) {
+        batch.delete(d.ref);
+      }
+      await fastWrite(batch.commit());
+    }
+    await fastWrite(deleteDoc(doc(collection(getDb(), "cloud_exports"), groupId)));
+  } catch (e) {
+    console.warn("No se pudo limpiar cloud_exports al eliminar grupo:", e);
+  }
+
   const grpRef = doc(groupsCol(), groupId);
   await fastWrite(deleteDoc(grpRef));
   removeGroupCatalog(groupId);

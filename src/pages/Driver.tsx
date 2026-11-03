@@ -96,7 +96,8 @@ export default function Driver() {
     let maxCount = 1;
 
     for (const item of breakdownList) {
-      bySev[item.severity].push(item);
+      const sev = item.severity as Severity;
+      if (bySev[sev]) bySev[sev].push(item);
       total += item.count;
       if (item.count > maxCount) maxCount = item.count;
     }

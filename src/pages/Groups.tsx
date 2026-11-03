@@ -4,6 +4,7 @@ import {
   listGroups,
   createGroup,
   closeAndFreezeGroup,
+  retryCloudExport,
   deleteGroup,
   updateGroupDetails,
   getActiveGroupId,
@@ -122,6 +123,8 @@ export default function Groups() {
     }
   };
 
+  const [retryingCloudId, setRetryingCloudId] = useState<string | null>(null);
+
   const handleCloseGroup = async () => {
     if (!closingGroup) return;
     setClosing(true);
@@ -131,7 +134,9 @@ export default function Groups() {
         name: user?.displayName || user?.email || "",
         email: user?.email || "",
       });
-      setSuccess(`Grupo «${closingGroup.name}» cerrado exitosamente. Se congelaron ${res.evaluationsFrozen} evaluaciones.`);
+      setSuccess(
+        `Grupo «${closingGroup.name}» cerrado y congelado exitosamente (${res.evaluationsFrozen} evaluaciones). Exportación a CLOUD completada (${res.cloudExportCount} expedientes).`
+      );
       setTimeout(() => setSuccess(""), 5000);
       setClosingGroup(null);
       await loadData();
@@ -139,6 +144,24 @@ export default function Groups() {
       setError((err as Error).message);
     } finally {
       setClosing(false);
+    }
+  };
+
+  const handleRetryCloudExport = async (g: GroupDoc) => {
+    setRetryingCloudId(g.id);
+    setError("");
+    try {
+      const res = await retryCloudExport(g.id, {
+        name: user?.displayName || user?.email || "",
+        email: user?.email || "",
+      });
+      setSuccess(`Exportación a CLOUD del grupo «${g.name}» completada exitosamente (${res.exportedCount} expedientes).`);
+      setTimeout(() => setSuccess(""), 5000);
+      await loadData();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRetryingCloudId(null);
     }
   };
 
@@ -393,6 +416,31 @@ export default function Groups() {
                               {new Date(g.closedAt).toLocaleDateString("es-MX", { dateStyle: "medium" })}
                             </div>
                             <div className="text-slate-400 font-normal">{g.closedBy}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
+                              {g.cloudExportStatus === "complete" ? (
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700"
+                                  title={`Exportación a CLOUD completada (${g.cloudExportCount ?? 0} expedientes)`}
+                                >
+                                  ☁️ Cloud ({g.cloudExportCount ?? 0})
+                                </span>
+                              ) : g.cloudExportStatus === "pending" ? (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                                  ☁️ Exportando...
+                                </span>
+                              ) : g.cloudExportStatus === "error" ? (
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-md bg-rose-50 border border-rose-200 px-1.5 py-0.5 text-[10px] font-bold text-rose-700"
+                                  title={g.cloudExportError || "Error al exportar a CLOUD"}
+                                >
+                                  ☁️ Error Cloud
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                                  ☁️ Sin exportar
+                                </span>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           <span className="text-slate-400 font-normal italic">En progreso</span>
@@ -400,6 +448,21 @@ export default function Groups() {
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {isClosed && (
+                            <button
+                              type="button"
+                              disabled={retryingCloudId === g.id}
+                              onClick={() => handleRetryCloudExport(g)}
+                              className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 transition shadow-xs"
+                              title="Exportar o reintentar snapshot del grupo hacia TrackSIM-CLOUD"
+                            >
+                              {retryingCloudId === g.id
+                                ? "Exportando..."
+                                : g.cloudExportStatus === "complete"
+                                ? "☁️ Re-exportar"
+                                : "☁️ Exportar a Cloud"}
+                            </button>
+                          )}
                           {!isClosed && (
                             <>
                               <button

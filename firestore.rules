@@ -53,6 +53,30 @@ service cloud.firestore {
     //   - closedByEmail: string (opcional) - Correo de quien cerró
     //   - evaluationCount: number (opcional) - Cantidad de evaluaciones congeladas
     //   - driverCount: number (opcional) - Cantidad de conductores participantes
+    //   - cloudExportId: string (opcional) - ID de la exportación asociada en cloud_exports
+    //   - cloudExportStatus: string ('pending' | 'complete' | 'error', opcional) - Estado de exportación a nube
+    //   - cloudExportedAt: int / timestamp (opcional) - Fecha y hora de exportación a nube
+    //   - cloudExportCount: number (opcional) - Número de evaluaciones sincronizadas
+    //   - cloudExportError: string (opcional) - Detalle de error si falló la exportación
+    //
+    // Collection: cloud_exports
+    // Document ID: {groupId} (mismo ID del grupo exportado)
+    // Fields:
+    //   - groupId: string - ID del grupo asociado
+    //   - schemaVersion: string - Versión del esquema de sincronización (ej. '1.0')
+    //   - status: string ('pending' | 'complete' | 'error') - Estado del lote de exportación
+    //   - exportedAt: int / timestamp (opcional) - Fecha de la exportación
+    //   - exportedByEmail: string (opcional) - Correo del usuario staff exportador
+    //   - evaluationCount: number (opcional) - Total de evaluaciones del lote
+    //   - error: string (opcional) - Mensaje en caso de falla
+    //
+    // Subcollection: cloud_exports/{groupId}/evaluations
+    // Document ID: {evaluationId}
+    // Fields:
+    //   - groupId: string - ID del grupo contenedor
+    //   - evaluationId: string (opcional) - ID de la evaluación
+    //   - schemaVersion: string - Versión de esquema
+    //   - payload: map (opcional) - Datos completos y telemetría de la evaluación sincronizada
     //
     // ===============================================================
 
@@ -123,8 +147,18 @@ service cloud.firestore {
         && request.resource.data.createdByEmail == resource.data.createdByEmail
         && (!('description' in request.resource.data) || (request.resource.data.description is string && request.resource.data.description.size() <= 1000))
         && (
-          // Si el grupo ya estaba cerrado, no puede reabrirse y solo un admin puede editar metadatos
-          (resource.data.status == 'closed' && isAdmin() && request.resource.data.status == 'closed')
+          // Si el grupo ya estaba cerrado, no puede reabrirse:
+          // 1) Admins pueden editar metadatos manteniendo status == 'closed'
+          // 2) Staff puede actualizar metadatos de sincronización a la nube manteniendo status == 'closed' y nombre original
+          (resource.data.status == 'closed' && request.resource.data.status == 'closed' && (
+            isAdmin()
+            || (
+              request.resource.data.name == resource.data.name
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'cloudExportId', 'cloudExportStatus', 'cloudExportedAt', 'cloudExportCount', 'cloudExportError'
+              ])
+            )
+          ))
           // Si el grupo está abierto, staff puede actualizar metadatos o cerrarlo
           || (resource.data.status == 'open' && (
             (request.resource.data.status == 'open')
@@ -150,6 +184,28 @@ service cloud.firestore {
       allow create: if isStaff() && isValidGroupCreate();
       allow update: if isStaff() && isValidGroupUpdate();
       allow delete: if isAdmin();
+    }
+
+    // Reglas para exportaciones consolidadas a la nube
+    match /cloud_exports/{groupId} {
+      allow read: if isStaff();
+      allow create: if isStaff()
+        && request.resource.data.groupId == groupId
+        && request.resource.data.schemaVersion is string
+        && request.resource.data.status in ['pending', 'complete', 'error'];
+      allow update: if isStaff()
+        && request.resource.data.groupId == resource.data.groupId
+        && request.resource.data.status in ['pending', 'complete', 'error'];
+      allow delete: if isAdmin();
+
+      // Subcolección de evaluaciones exportadas dentro del lote
+      match /evaluations/{evaluationId} {
+        allow read: if isStaff();
+        allow create, update: if isStaff()
+          && request.resource.data.groupId == groupId
+          && request.resource.data.schemaVersion is string;
+        allow delete: if isAdmin();
+      }
     }
 
     // Configuración de catálogo y ponderación
