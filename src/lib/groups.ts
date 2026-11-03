@@ -20,6 +20,7 @@ import {
   setGroupExercises,
   setGroupTypeMemory,
   removeGroupExercises,
+  hasPendingExerciseSave,
   waitForExerciseSaves,
   type ExerciseSettingsData,
 } from "./exercises";
@@ -88,7 +89,7 @@ export function hydrateGroupRules(g: GroupDoc): void {
   if (g.catalog) {
     setGroupCatalog(g.id, sanitizeCatalog(g.catalog));
   }
-  if (g.exercises) {
+  if (g.exercises && !hasPendingExerciseSave(g.id)) {
     const { phases, environments } = sanitizeExercises(g.exercises);
     setGroupExercises(g.id, phases, environments);
   }

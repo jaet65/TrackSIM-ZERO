@@ -4,6 +4,7 @@ import {
   restoreDatabaseBackup,
   type DatabaseBackupPackage,
 } from "../lib/backupRestore";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 export default function BackupRestoreModal({
   isOpen,
@@ -20,6 +21,8 @@ export default function BackupRestoreModal({
   const [restoring, setRestoring] = useState(false);
   const [progressMsg, setProgressMsg] = useState("");
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  useEscapeKey(isOpen && !downloading && !restoring, onClose);
 
   if (!isOpen) return null;
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { decodeCsv, parseReport } from "../lib/parse";
 import { saveEvaluation } from "../lib/db";
@@ -17,6 +17,7 @@ import SimulatorSyncModal from "./SimulatorSyncModal";
 import ConfigureExercisesModal from "./ConfigureExercisesModal";
 import BackupRestoreModal from "./BackupRestoreModal";
 import { isElectronApp } from "../lib/streamdbClient";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 const GITHUB_OWNER = "jaet65";
 const GITHUB_REPO = "TrackSIM-ZERO";
@@ -73,7 +74,13 @@ export default function UploadForm({
 
   // Modal para configurar ejercicios si no han sido definidos
   const [showConfigExercisesModal, setShowConfigExercisesModal] = useState(false);
+  const pendingUploadRef = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const [showBackupModal, setShowBackupModal] = useState(false);
+
+  useEscapeKey(showOpenGroupModal && !modalBusy, () => setShowOpenGroupModal(false));
+  useEscapeKey(showDesktopModal, () => setShowDesktopModal(false));
+  useEscapeKey(showResultsModal, () => setShowResultsModal(false));
 
   const refreshActiveGroup = async (explicitGroupId?: string) => {
     setLoadingGroup(true);
@@ -182,23 +189,27 @@ export default function UploadForm({
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    await runUpload(e.currentTarget);
+  }
+
+  async function runUpload(form: HTMLFormElement, skipConfigCheck = false) {
     if (!activeGroup) {
       handleOpenModal();
       return;
     }
 
-    const form = e.currentTarget;
     const files = Array.from(new FormData(form).getAll("files")).filter((f): f is File => f instanceof File);
     if (!files.length) return;
 
     // Verificar si el grupo activo ya tiene ejercicios configurados
     try {
-      const currentExercises = await loadExercises(false, activeGroup.id);
+      const currentExercises = skipConfigCheck ? null : await loadExercises(false, activeGroup.id);
       const totalExercisesConfigured = Object.values(currentExercises || {}).reduce(
         (acc, list) => acc + (list?.length || 0),
         0
       );
-      if (totalExercisesConfigured === 0) {
+      if (!skipConfigCheck && totalExercisesConfigured === 0) {
+        pendingUploadRef.current = true;
         setShowConfigExercisesModal(true);
         return;
       }
@@ -514,7 +525,7 @@ export default function UploadForm({
         </div>
       )}
 
-      <form onSubmit={onSubmit} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 flex-col gap-1.5 sm:flex-row sm:items-center">
           <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-2.5 text-xs font-medium text-slate-700 hover:border-indigo-500 hover:bg-indigo-50/40 transition">
             <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -609,11 +620,20 @@ export default function UploadForm({
       {/* Modal de configuración obligatoria de ejercicios si el grupo está vacío */}
       <ConfigureExercisesModal
         isOpen={showConfigExercisesModal}
-        onClose={() => setShowConfigExercisesModal(false)}
+        onClose={() => {
+          pendingUploadRef.current = false;
+          setShowConfigExercisesModal(false);
+        }}
         group={activeGroup}
         onSaved={async () => {
+          const resumeUpload = pendingUploadRef.current;
+          pendingUploadRef.current = false;
           if (activeGroup) {
             await loadExercises(true, activeGroup.id);
+          }
+          // Si la configuración se abrió por un intento de subida, continuarla automáticamente
+          if (resumeUpload && formRef.current) {
+            await runUpload(formRef.current, true);
           }
         }}
       />

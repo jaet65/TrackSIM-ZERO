@@ -14,6 +14,7 @@ import {
 import type { GroupDoc } from "../lib/groups";
 import { listUploadedExerciseNames } from "../lib/db";
 import { useAuth } from "./AuthProvider";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 export default function ConfigureExercisesModal({
   isOpen,
@@ -59,6 +60,8 @@ export default function ConfigureExercisesModal({
         setLoading(false);
       });
   }, [isOpen, group?.id]);
+
+  useEscapeKey(isOpen && !saving, onClose);
 
   if (!isOpen) return null;
 
@@ -160,7 +163,7 @@ export default function ConfigureExercisesModal({
           ) : (
             <div className="space-y-4">
               {isCurso ? (
-                // MODO CURSO (FASE 0)
+                // MODO CURSO (lista única en la fase 1)
                 <div className="rounded-xl border border-purple-200 bg-purple-50/40 p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
@@ -172,13 +175,13 @@ export default function ConfigureExercisesModal({
                       </p>
                     </div>
                     <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-[10px] font-bold text-purple-800">
-                      {(cfg["0"] ?? []).length} ejercicio(s)
+                      {(cfg["1"] ?? []).length} ejercicio(s)
                     </span>
                   </div>
 
-                  {/* Lista de ejercicios en Fase 0 */}
+                  {/* Lista de ejercicios del curso */}
                   <div className="flex flex-wrap gap-1.5">
-                    {(cfg["0"] ?? []).map((ex) => (
+                    {(cfg["1"] ?? []).map((ex) => (
                       <span
                         key={ex}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-white px-2.5 py-1 text-xs font-medium text-purple-900 shadow-xs"
@@ -186,7 +189,7 @@ export default function ConfigureExercisesModal({
                         {ex}
                         <button
                           type="button"
-                          onClick={() => handleRemoveExercise(0, ex)}
+                          onClick={() => handleRemoveExercise(1, ex)}
                           className="text-purple-400 hover:text-rose-600 font-bold"
                           title="Eliminar ejercicio"
                         >
@@ -194,7 +197,7 @@ export default function ConfigureExercisesModal({
                         </button>
                       </span>
                     ))}
-                    {(cfg["0"] ?? []).length === 0 && (
+                    {(cfg["1"] ?? []).length === 0 && (
                       <span className="text-xs text-slate-400 italic">No hay ejercicios asignados al curso.</span>
                     )}
                   </div>
@@ -204,14 +207,14 @@ export default function ConfigureExercisesModal({
                     <input
                       type="text"
                       placeholder="Nombre del ejercicio (ej. 01 - Inspección o 02 - Montaña)"
-                      value={drafts[0] ?? ""}
-                      onChange={(e) => setDrafts({ ...drafts, 0: e.target.value })}
-                      onKeyDown={(e) => e.key === "Enter" && handleAddExercise(0)}
+                      value={drafts[1] ?? ""}
+                      onChange={(e) => setDrafts({ ...drafts, 1: e.target.value })}
+                      onKeyDown={(e) => e.key === "Enter" && handleAddExercise(1)}
                       className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
                     />
                     <button
                       type="button"
-                      onClick={() => handleAddExercise(0)}
+                      onClick={() => handleAddExercise(1)}
                       className="rounded-xl bg-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 transition"
                     >
                       + Agregar
@@ -301,7 +304,7 @@ export default function ConfigureExercisesModal({
                         (list ?? []).some((n) => exerciseKey(n) === exerciseKey(name))
                       );
                       if (isAssigned) return null;
-                      const targetPhase = isCurso ? 0 : 1;
+                      const targetPhase = 1;
                       return (
                         <button
                           key={name}

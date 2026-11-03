@@ -19,6 +19,7 @@ import {
 } from "../lib/groups";
 import { useAuth } from "../components/AuthProvider";
 import { downloadBulkReportsZip, downloadExecutiveSummaryPdf } from "../lib/pdfExport";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 export type DisplayRow = {
   driverId: string;
@@ -72,6 +73,7 @@ export default function Home() {
 
   // Estado de exportación de reporte global + expedientes ZIP
   const [isExportingZip, setIsExportingZip] = useState(false);
+  useEscapeKey(showConfirmModal && !isDeleting, () => setShowConfirmModal(false));
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number; name: string } | null>(null);
 
   const isAdmin = isAdminEmail(user?.email);

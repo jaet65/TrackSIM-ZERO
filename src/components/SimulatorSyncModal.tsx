@@ -12,6 +12,7 @@ import { loadCatalog } from "../lib/catalogStore";
 import { loadExercises, phaseForExercise } from "../lib/exercises";
 import { getActiveGroupId, getGroup, type GroupDoc } from "../lib/groups";
 import { useAuth } from "./AuthProvider";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 export default function SimulatorSyncModal({
   isOpen,
@@ -212,6 +213,8 @@ export default function SimulatorSyncModal({
       setProgress(null);
     }
   }
+
+  useEscapeKey(isOpen && !syncing, onClose);
 
   if (!isOpen) return null;
 

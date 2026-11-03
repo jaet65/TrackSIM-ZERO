@@ -13,6 +13,7 @@ import {
 } from "../lib/groups";
 import { useAuth } from "../components/AuthProvider";
 import { isAdminEmail } from "../lib/config";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 export default function Groups() {
   const { user } = useAuth();
@@ -45,6 +46,11 @@ export default function Groups() {
   // Eliminar grupo
   const [deletingGroup, setDeletingGroup] = useState<GroupDoc | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  useEscapeKey(showCreateModal && !creating, () => setShowCreateModal(false));
+  useEscapeKey(!!editingGroup && !savingEdit, () => setEditingGroup(null));
+  useEscapeKey(!!closingGroup && !closing, () => setClosingGroup(null));
+  useEscapeKey(!!deletingGroup && !deleting, () => setDeletingGroup(null));
   const [confirmDeleteText, setConfirmDeleteText] = useState("");
 
   async function loadData() {

@@ -93,6 +93,13 @@ export function hasGroupExercises(groupId: string): boolean {
   return groupExercises.has(groupId);
 }
 
+// Grupos con una escritura de ejercicios aún sin confirmar por el servidor: la memoria es más reciente que cualquier lectura
+const pendingGroupSaves = new Set<string>();
+
+export function hasPendingExerciseSave(groupId: string): boolean {
+  return pendingGroupSaves.has(groupId);
+}
+
 export const getExercises = (groupId?: string | null): ExerciseConfig => {
   if (groupId && groupExercises.has(groupId)) {
     return groupExercises.get(groupId)!.phases;
@@ -142,7 +149,14 @@ export function sanitizeExercises(raw: unknown): { phases: ExerciseConfig; envir
   const outEnvs: ExerciseEnvironmentsMap = {};
 
   const r = raw as { phases?: Record<string, unknown>; environments?: Record<string, string> } | undefined;
-  const phasesRaw = r?.phases ?? {};
+  const phasesRaw: Record<string, unknown> = { ...r?.phases };
+  // Compatibilidad: versiones previas guardaban la lista de un Curso bajo la fase "0"; ahora es la fase 1
+  if (Array.isArray(phasesRaw["0"])) {
+    const legacy = phasesRaw["0"] as unknown[];
+    delete phasesRaw["0"];
+    const existing = Array.isArray(phasesRaw["1"]) ? (phasesRaw["1"] as unknown[]) : [];
+    phasesRaw["1"] = [...existing, ...legacy];
+  }
   for (const [phase, list] of Object.entries(phasesRaw)) {
     if (!Array.isArray(list)) continue;
     const seen = new Set<string>();
@@ -184,6 +198,9 @@ export async function loadExercises(force = false, groupId?: string | null): Pro
   const basePhases = await loading;
 
   if (groupId) {
+    if (pendingGroupSaves.has(groupId)) {
+      return getExercises(groupId);
+    }
     const grpSnap = await safeGetDoc(groupRef(groupId));
     if (grpSnap.exists()) {
       const grpData = grpSnap.data();
@@ -211,18 +228,22 @@ export async function saveExercises(
   if (groupId) {
     // Actualizar en memoria de inmediato para evitar lecturas obsoletas al cambiar de pestaña
     setGroupExercises(groupId, clean.phases, clean.environments);
-    const task = savingPromise.then(() =>
-      fastWrite(
-        updateDoc(groupRef(groupId), {
-          exercises: {
-            phases: clean.phases,
-            environments: clean.environments,
-          },
-          exercisesUpdatedAt: Date.now(),
-          exercisesUpdatedBy: editorEmail,
-        })
-      )
-    );
+    pendingGroupSaves.add(groupId);
+    const task = savingPromise.then(() => {
+      const write = updateDoc(groupRef(groupId), {
+        exercises: {
+          phases: clean.phases,
+          environments: clean.environments,
+        },
+        exercisesUpdatedAt: Date.now(),
+        exercisesUpdatedBy: editorEmail,
+      });
+      write.then(
+        () => pendingGroupSaves.delete(groupId),
+        () => pendingGroupSaves.delete(groupId)
+      );
+      return fastWrite(write);
+    });
     savingPromise = task.catch(() => {});
     await task;
     return;

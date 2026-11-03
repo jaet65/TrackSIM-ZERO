@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import pkg from "../../package.json";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 export interface UpdateCheckResult {
   ok: boolean;
@@ -66,6 +67,7 @@ export default function UpdateNotifier() {
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [upToDateNotice, setUpToDateNotice] = useState(false);
+  useEscapeKey(modalOpen && !applyingUpdate, () => setModalOpen(false));
 
   const currentVersion = info?.currentVersion || pkg.version || "1.0.0";
   const isElectron = Boolean(getLanderBridge()?.checkForUpdates);

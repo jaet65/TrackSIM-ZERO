@@ -9,6 +9,7 @@ import { generatePedagogicalRecommendations } from "../lib/recommendations";
 import { downloadDriverPdf } from "../lib/pdfExport";
 import { useAuth } from "../components/AuthProvider";
 import type { Mark } from "../lib/parse";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 type Data = NonNullable<Awaited<ReturnType<typeof driverData>>>;
 type BreakdownItem = Data["breakdown"][number];
@@ -37,6 +38,7 @@ export default function Driver() {
   const [data, setData] = useState<Data | null | undefined>(undefined);
   const [error, setError] = useState("");
   const [selectedEval, setSelectedEval] = useState<EvaluationView | null>(null);
+  useEscapeKey(!!selectedEval, () => setSelectedEval(null));
 
   // Filtro de severidad para la sección Puntos Débiles (ALL = todas)
   const [activeSeverityTab, setActiveSeverityTab] = useState<Severity | "ALL">("ALL");
