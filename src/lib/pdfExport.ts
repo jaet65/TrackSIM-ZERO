@@ -2,7 +2,7 @@ import jsPDF from "jspdf";
 import JSZip from "jszip";
 import { driverData, type DateFilter, type EvaluationView, type ReportExerciseSummary } from "./db";
 import { phaseName, CRITICAL_LIMIT } from "./config";
-import { SEVERITIES, type Severity } from "./catalog";
+import { SEVERITIES, SEVERITY_ORDER, type Severity } from "./catalog";
 import { computeTelemetryAxes } from "./telemetryRadar";
 import { generatePedagogicalRecommendations } from "./recommendations";
 import { TRACKSIM_LOGO_BASE64 } from "./logoBase64";
@@ -1340,7 +1340,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
 
   // -------------------------------------------------------------
   // Sección: Puntos Débiles (Análisis por Gravedad con Stacked Bar)
-  // Filtrado de alto impacto: se priorizan Críticas y Graves
+  // Desglose de todas las incidencias (Crítico, Grave, Moderado, Leve)
   // -------------------------------------------------------------
   // Agrupamiento por severidad
   const bySev: Record<Severity, typeof data.breakdown> = {
@@ -1355,19 +1355,21 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     totalErrorsSum += item.count;
   }
 
-  // Conteo de faltas relevantes de riesgo (Críticas y Graves)
-  const countCriticas = bySev.CRITICO.reduce((a, b) => a + b.count, 0);
-  const countGraves = bySev.GRAVE.reduce((a, b) => a + b.count, 0);
-  const totalRelevantes = countCriticas + countGraves;
-
   doc.setFontSize(10.5);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
   doc.text("Puntos Débiles (Análisis por Gravedad)", 14, y);
   y += 4;
 
-  if (totalRelevantes > 0) {
-    // Tarjeta del gráfico visual apilado centrado en Críticas y Graves
+  const severityColors: Record<Severity, [number, number, number]> = {
+    CRITICO: [244, 63, 94],   // rose-500
+    GRAVE: [249, 115, 22],     // orange-500
+    MODERADO: [245, 158, 11],  // amber-500
+    LEVE: [148, 163, 184],     // slate-400
+  };
+
+  if (totalErrorsSum > 0) {
+    // Tarjeta del gráfico visual apilado con todas las severidades
     doc.setFillColor(255, 255, 255);
     doc.roundedRect(14, y, 182, 22, 3, 3, "F");
     doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
@@ -1376,35 +1378,34 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     doc.setFontSize(7.5);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-    doc.text(`Incidencias de Riesgo (${totalRelevantes} eventos: Críticas y Graves)`, 18, y + 5.5);
+    doc.text(`Proporción de Incidencias Totales (${totalErrorsSum} eventos acumulados)`, 18, y + 5.5);
 
-    // Barra compuesta horizontal para Crítico y Grave
+    // Barra compuesta horizontal para todas las severidades
     const barX = 18;
     const barY = y + 7.5;
     const barW = 174;
     const barH = 3.5;
 
     let curX = barX;
-    const relevantSeverities: Severity[] = ["CRITICO", "GRAVE"];
-    relevantSeverities.forEach((s) => {
+    SEVERITY_ORDER.forEach((s) => {
       const itemsInS = bySev[s];
       const sum = itemsInS.reduce((a, b) => a + b.count, 0);
-      const segW = totalRelevantes > 0 ? (sum / totalRelevantes) * barW : 0;
+      const segW = totalErrorsSum > 0 ? (sum / totalErrorsSum) * barW : 0;
       if (segW > 0) {
-        const segColor = s === "CRITICO" ? [244, 63, 94] : [249, 115, 22];
+        const segColor = severityColors[s];
         doc.setFillColor(segColor[0], segColor[1], segColor[2]);
         doc.rect(curX, barY, segW, barH, "F");
         curX += segW;
       }
     });
 
-    // Leyenda de 2 columnas destacadas (Críticas y Graves)
+    // Leyenda de 4 columnas (todas las severidades)
     const legY = y + 17;
-    const legCols = [18, 90];
-    relevantSeverities.forEach((s, idx) => {
+    const legCols = [18, 62, 106, 150];
+    SEVERITY_ORDER.forEach((s, idx) => {
       const sum = bySev[s].reduce((a, b) => a + b.count, 0);
-      const pct = totalRelevantes > 0 ? ((sum / totalRelevantes) * 100).toFixed(1) : "0";
-      const segColor = s === "CRITICO" ? [244, 63, 94] : [249, 115, 22];
+      const pct = totalErrorsSum > 0 ? ((sum / totalErrorsSum) * 100).toFixed(1) : "0";
+      const segColor = severityColors[s];
 
       doc.setFillColor(segColor[0], segColor[1], segColor[2]);
       doc.circle(legCols[idx], legY - 1, 1.2, "F");
@@ -1415,16 +1416,16 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
       doc.text(`${SEVERITIES[s].label}:`, legCols[idx] + 3, legY);
 
       doc.setFont("helvetica", "bold");
-      doc.text(String(sum), legCols[idx] + 20, legY);
+      doc.text(String(sum), legCols[idx] + 19, legY);
 
       doc.setFont("helvetica", "normal");
       doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-      doc.text(`(${pct}%)`, legCols[idx] + 27, legY);
+      doc.text(`(${pct}%)`, legCols[idx] + 25, legY);
     });
 
     y += 26;
   } else {
-    // Si no tuvo ni críticas ni graves
+    // Si no tuvo incidencias
     doc.setFillColor(240, 253, 244);
     doc.roundedRect(14, y, 182, 12, 2.5, 2.5, "F");
     doc.setDrawColor(187, 247, 208);
@@ -1432,22 +1433,20 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     doc.setFontSize(7.5);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(22, 101, 52);
-    doc.text("Conducción Segura: Sin faltas críticas ni graves registradas en las sesiones evaluadas.", 18, y + 7.5);
+    doc.text("Conducción Segura: Sin incidencias registradas en las sesiones evaluadas.", 18, y + 7.5);
     y += 16;
   }
 
   // -------------------------------------------------------------
-  // Tarjetas agrupadas por Nivel de Gravedad (Solo Crítico y Grave)
+  // Tarjetas agrupadas por Nivel de Gravedad (Todas las severidades)
   // -------------------------------------------------------------
-  const relevantList = [...bySev.CRITICO, ...bySev.GRAVE];
-  const maxErrCount = Math.max(...relevantList.map((b) => b.count), 1);
+  const maxErrCount = Math.max(...data.breakdown.map((b) => b.count), 1);
 
-  const displaySeverities: Severity[] = ["CRITICO", "GRAVE"];
-  displaySeverities.forEach((sev) => {
+  SEVERITY_ORDER.forEach((sev) => {
     const items = bySev[sev];
     if (items.length === 0) return;
 
-    // Si no cabe, saltar a página 2
+    // Si no cabe, saltar a página siguiente
     if (y + 16 + items.length * 8 > 275) {
       drawFooter(doc, doc.getNumberOfPages(), 0);
       doc.addPage();
