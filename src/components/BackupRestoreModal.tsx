@@ -4,8 +4,6 @@ import {
   restoreDatabaseBackup,
   type DatabaseBackupPackage,
 } from "../lib/backupRestore";
-import { isAdminEmail } from "../lib/config";
-import { useAuth } from "./AuthProvider";
 
 export default function BackupRestoreModal({
   isOpen,
@@ -16,7 +14,6 @@ export default function BackupRestoreModal({
   onClose: () => void;
   onRestored?: () => void;
 }) {
-  const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [downloading, setDownloading] = useState(false);
@@ -25,8 +22,6 @@ export default function BackupRestoreModal({
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   if (!isOpen) return null;
-
-  const canManage = isAdminEmail(user?.email);
 
   const handleDownload = async () => {
     setStatusMessage(null);

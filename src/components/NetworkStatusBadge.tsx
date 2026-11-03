@@ -6,7 +6,7 @@ export default function NetworkStatusBadge() {
     online: typeof navigator !== "undefined" ? navigator.onLine : true,
     degraded: false,
     pendingWrites: 0,
-    lastSyncedAt: Date.now(),
+    lastSyncedAt: 0,
   });
 
   useEffect(() => {

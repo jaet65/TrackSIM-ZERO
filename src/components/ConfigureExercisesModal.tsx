@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PHASES } from "../lib/config";
 import {
-  getExercises,
   getExerciseEnvironments,
   loadExercises,
   saveExercises,
@@ -34,7 +33,7 @@ export default function ConfigureExercisesModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [drafts, setDrafts] = useState<Record<number, string>>({});
-  const [draftEnvs, setDraftEnvs] = useState<Record<number, ExerciseEnvironment>>({});
+  const [draftEnvs] = useState<Record<number, ExerciseEnvironment>>({});
   const [detectedNames, setDetectedNames] = useState<string[]>([]);
 
   const isCurso = group ? getGroupType(group.id) === "curso" : false;

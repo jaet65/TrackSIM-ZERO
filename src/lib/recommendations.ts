@@ -39,7 +39,6 @@ export function generatePedagogicalRecommendations(
 
   // 1. RECOMENDACIONES DE SEGURIDAD (Faltas Críticas y Graves)
   const criticalItems = data.breakdown.filter((b) => b.severity === "CRITICO" && b.count > 0);
-  const graveItems = data.breakdown.filter((b) => b.severity === "GRAVE" && b.count > 0);
 
   // Detección de salida de vía / carril
   const offRoadErrors = data.breakdown.filter((b) =>

@@ -31,6 +31,16 @@ npm run dev            # versión web (Vite, puerto 5173)
 npm run electron:dev   # aplicación de escritorio con recarga en vivo
 ```
 
+## Calidad de código
+
+```bash
+npm run lint        # oxlint
+npm test            # vitest (una sola ejecución)
+npm run test:watch  # vitest en modo watch
+```
+
+Las pruebas viven junto al código como `src/**/*.test.ts`.
+
 ## Compilación
 
 ```bash

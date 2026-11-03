@@ -5,7 +5,6 @@ import {
   createGroup,
   closeAndFreezeGroup,
   deleteGroup,
-  updateGroupType,
   updateGroupDetails,
   getActiveGroupId,
   setActiveGroupId,

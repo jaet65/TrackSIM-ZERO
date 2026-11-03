@@ -2,7 +2,7 @@ import jsPDF from "jspdf";
 import JSZip from "jszip";
 import { driverData, type DateFilter, type EvaluationView } from "./db";
 import { phaseName, CRITICAL_LIMIT } from "./config";
-import { SEVERITIES, SEVERITY_ORDER, type Severity } from "./catalog";
+import { SEVERITIES, type Severity } from "./catalog";
 import { computeTelemetryAxes } from "./telemetryRadar";
 import { generatePedagogicalRecommendations } from "./recommendations";
 import { TRACKSIM_LOGO_BASE64 } from "./logoBase64";
@@ -83,7 +83,7 @@ function drawFooter(doc: jsPDF, pageNum: number, totalPages: number) {
 export function generateGlobalReportPdf(
   rows: DisplayRow[],
   filterSubtitle: string,
-  metrics?: { total: number; promedio: number; aptos: number; noAptos: number }
+  _metrics?: { total: number; promedio: number; aptos: number; noAptos: number }
 ): Uint8Array {
   const doc = new jsPDF({ format: "a4", unit: "mm" });
   let y = drawHeader(doc, "Reporte Global de Evaluaciones", filterSubtitle);
@@ -99,7 +99,6 @@ export function generateGlobalReportPdf(
     (r) => r.verdict === "INCOMPLETO" || r.verdict === "NO REALIZADO"
   ).length;
 
-  const totalErrors = rows.reduce((acc, r) => acc + (r.errors || 0), 0);
   const totalCriticos = rows.reduce((acc, r) => acc + (r.criticalErrors || 0), 0);
   const sumaScore = rows.reduce((acc, r) => acc + (r.avgScore || 0), 0);
   const promedio = total > 0 ? Math.round((sumaScore / total) * 10) / 10 : 0;
@@ -494,7 +493,6 @@ export function generateExecutiveSummaryPdf(
   const incompletos = rows.filter((r) => r.verdict === "INCOMPLETO" || r.verdict === "NO REALIZADO").length;
 
   const avgGlobal = metrics?.promedio ?? (total > 0 ? Math.round((rows.reduce((a, b) => a + b.avgScore, 0) / total) * 10) / 10 : 0);
-  const totalErrors = rows.reduce((a, b) => a + b.errors, 0);
   const totalCritical = rows.reduce((a, b) => a + b.criticalErrors, 0);
   const passRate = total > 0 ? Math.round(((aptos + aptosObs) / total) * 100) : 0;
 

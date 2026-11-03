@@ -112,15 +112,20 @@ export default function Home() {
   };
 
   const load = useCallback(() => {
+    const filter: DateFilter = {
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      groupId: selectedGroupId || undefined,
+    };
     setRows(null);
     setError("");
 
     // Cargar las fases que tienen resultados que cumplan los filtros
-    getPhasesWithEvaluations(dateFilter).then(setAvailablePhases).catch(() => { });
+    getPhasesWithEvaluations(filter).then(setAvailablePhases).catch(() => { });
 
     if (selectedPhase === null) {
       // Promedio General por defecto
-      overallSummaries(dateFilter)
+      overallSummaries(filter)
         .then((data: DriverOverallSummary[]) => {
           setRows(
             data.map((d) => ({
@@ -141,7 +146,7 @@ export default function Home() {
         .catch((e: Error) => setError(e.message));
     } else {
       // Filtrado por Fase específica seleccionada
-      phaseSummaries(selectedPhase, dateFilter)
+      phaseSummaries(selectedPhase, filter)
         .then((data: PhaseSummary[]) => {
           setRows(
             data.map((d) => ({
@@ -265,9 +270,6 @@ export default function Home() {
         ? "Promedio General (Todas las fases)"
         : `Fase ${selectedPhase}: ${PHASES.find((p) => p.id === selectedPhase)?.name || ""}`;
       const groupTitle = currentGroupObj ? `Grupo: ${currentGroupObj.name}` : "Todos los grupos";
-      const dateSubtitle = hasDateFilter
-        ? (startDate && endDate ? `${startDate} al ${endDate}` : startDate ? `Desde ${startDate}` : `Hasta ${endDate}`)
-        : "Sin filtro de fecha (Histórico completo)";
       const filterSubtitle = `${groupTitle} · ${phaseTitle}`;
 
       await downloadBulkReportsZip(

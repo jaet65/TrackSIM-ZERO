@@ -58,6 +58,8 @@ export default function Catalog() {
         }
       })
       .catch(() => {});
+    // Solo al montar: valida el grupo inicial una única vez
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

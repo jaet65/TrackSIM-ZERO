@@ -1,6 +1,6 @@
 import { PENALTY_PER_ERROR_RATE } from "./config";
 import { classify, type Severity } from "./catalog";
-import { resolveExerciseEnvironment, type ExerciseEnvironment } from "./exercises";
+import { resolveExerciseEnvironment } from "./exercises";
 
 export type Mark = {
   time: string;
@@ -88,7 +88,7 @@ export function normalizeRpmZones(telemetry: TelemetryMetrics): TelemetryMetrics
   let normYellow = yellow;
   let normRed = red;
 
-  if (sumReported > 100 && sumReported > 0) {
+  if (sumReported > 100) {
     // Escalar proporcionalmente al 100% como tope máximo
     const scale = 100 / sumReported;
     normGreen = Math.round(green * scale * 10) / 10;
