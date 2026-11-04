@@ -730,3 +730,54 @@ export async function getCloudExportEvaluations(
   const snap = await safeGetDocs(groupEvaluationsSubcol(exportDoc.groupId));
   return snap.docs.map((d) => d.data() as CloudExportEvaluationDoc);
 }
+
+/**
+ * Elimina completamente un documento de exportación en cloud_exports y todos los expedientes
+ * de su subcolección 'evaluations', ya sea que se proporcione el exportId amigable o el groupId de ZERO.
+ */
+export async function deleteCloudExport(exportOrGroupId: string): Promise<void> {
+  if (!exportOrGroupId) return;
+
+  const exportDoc = await getCloudExport(exportOrGroupId);
+  const targetExportId = exportDoc?.groupId || exportOrGroupId;
+
+  try {
+    const subcol = groupEvaluationsSubcol(targetExportId);
+    const snap = await safeGetDocs(subcol);
+
+    if (!snap.empty) {
+      // Eliminar en lotes de hasta 400 documentos por límites de Firestore Batch
+      const docs = snap.docs;
+      for (let i = 0; i < docs.length; i += 400) {
+        const chunk = docs.slice(i, i + 400);
+        const batch = writeBatch(firestore);
+        for (const d of chunk) {
+          batch.delete(d.ref);
+        }
+        await fastWrite(batch.commit());
+      }
+    }
+
+    await fastWrite(deleteDoc(doc(cloudExportsCol(), targetExportId)));
+  } catch (err) {
+    console.warn(`No se pudo eliminar cloud_exports para ${targetExportId}:`, err);
+  }
+
+  // Si el exportId era amigable y distinto al ID de grupo directo (grp_...), asegurar también limpiar el ID crudo si existiera
+  if (targetExportId !== exportOrGroupId) {
+    try {
+      const fallbackSnap = await safeGetDocs(groupEvaluationsSubcol(exportOrGroupId));
+      if (!fallbackSnap.empty) {
+        const batch = writeBatch(firestore);
+        for (const d of fallbackSnap.docs) {
+          batch.delete(d.ref);
+        }
+        await fastWrite(batch.commit());
+      }
+      await fastWrite(deleteDoc(doc(cloudExportsCol(), exportOrGroupId)));
+    } catch {
+      // Ignorar si no existía documento con el ID crudo
+    }
+  }
+}
+

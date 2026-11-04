@@ -759,41 +759,59 @@ export function generateExecutiveSummaryPdf(
     doc.text("No se encontraron ejercicios realizados con los filtros seleccionados.", 14, y + 3);
     y += 7;
   } else {
-    const availableRows = Math.max(0, Math.floor((274 - y - 18) / 5.2));
-    const shownExercises = exercises.slice(0, availableRows * 2);
-    firstPageExerciseCount = shownExercises.length;
-    const columnWidth = 89;
+    // Modo de lista escalonada a UNA SOLA COLUMNA para dar ancho completo a las descripciones
+    const fullWidth = 182;
+    const contentWidth = fullWidth - 6;
 
-    shownExercises.forEach((exercise, index) => {
-      const column = index % 2;
-      const row = Math.floor(index / 2);
-      const x = 14 + column * 93;
-      const rowY = y + row * 5.2;
+    while (firstPageExerciseCount < exercises.length) {
+      const exercise = exercises[firstPageExerciseCount];
       const phaseLabel = exercise.phase > 0 ? `${phaseName(exercise.phase)} · ` : "";
       const suffix = ` · ${exercise.drivers} cond.`;
-      const availableWidth = columnWidth - 5;
 
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(5.8);
-      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-      doc.circle(x + 0.8, rowY + 2.7, 0.45, "F");
-      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-
-      let label = `${phaseLabel}${exercise.name}${suffix}`;
-      while (label.length > 1 && doc.getTextWidth(label) > availableWidth) {
-        label = `${label.slice(0, -2).trimEnd()}…`;
+      doc.setFontSize(5.4);
+      let descLines: string[] = [];
+      if (exercise.description) {
+        descLines = doc.splitTextToSize(exercise.description, contentWidth) as string[];
       }
-      doc.text(label, x + 3, rowY + 3.5);
-    });
 
-    const rowsUsed = Math.ceil(shownExercises.length / 2);
-    y += rowsUsed * 5.2;
-    if (shownExercises.length < exercises.length) {
+      // Altura del ítem: título (3.6mm) + líneas de descripción (2.7mm c/u) + márgenes
+      const itemH = 3.8 + (descLines.length > 0 ? descLines.length * 2.7 + 1.2 : 1.5);
+
+      // Verificar si cabe en la primera página (respetando margen inferior y la nota al pie)
+      if (y + itemH > 270) {
+        break;
+      }
+
+      // Viñeta
+      doc.setFillColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+      doc.circle(15, y + 2.3, 0.5, "F");
+
+      // 1er Escalón: Título del ejercicio en negrita
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.3);
+      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+      const titleLabel = `${phaseLabel}${exercise.name}${suffix}`;
+      doc.text(titleLabel, 17.5, y + 2.7);
+
+      // 2do Escalón: Descripción multilínea completa sin truncar
+      if (descLines.length > 0) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(5.4);
+        doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+        doc.text(descLines, 17.5, y + 5.7);
+      }
+
+      y += itemH;
+      firstPageExerciseCount++;
+    }
+
+    if (firstPageExerciseCount < exercises.length) {
       doc.setFont("helvetica", "italic");
       doc.setFontSize(5.8);
       doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
       doc.text(
-        `El listado continúa en las páginas siguientes (${exercises.length - shownExercises.length} ejercicios más).`,
+        `El listado continúa en las páginas siguientes (${exercises.length - firstPageExerciseCount} ejercicios más).`,
         14,
         y + 3
       );
@@ -831,19 +849,39 @@ export function generateExecutiveSummaryPdf(
       const exercise = remainingExercises[0];
       doc.setFont("helvetica", "normal");
       doc.setFontSize(7);
+      
       let nameLines = doc.splitTextToSize(exercise.name, 132) as string[];
-      const maxNameLines = Math.max(1, Math.floor((272 - pageY - 3) / 3.8));
-      if (nameLines.length > maxNameLines) {
-        nameLines = [...nameLines.slice(0, maxNameLines - 1), "…"];
+      let descLines: string[] = [];
+      if (exercise.description) {
+        doc.setFontSize(6);
+        descLines = doc.splitTextToSize(exercise.description, 132) as string[];
+        doc.setFontSize(7);
       }
-      const rowH = Math.max(8, nameLines.length * 3.8 + 3);
+
+      const totalTextH = nameLines.length * 3.8 + (descLines.length > 0 ? descLines.length * 3.0 + 1.5 : 0);
+      const rowH = Math.max(9, totalTextH + 3.5);
 
       doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-      doc.text(exercise.phase > 0 ? phaseName(exercise.phase) : "Curso (sin fases)", 18, pageY + 5);
+      doc.text(exercise.phase > 0 ? phaseName(exercise.phase) : "Curso (sin fases)", 18, pageY + 4.5);
+      
+      // Nombre del ejercicio (escalón superior)
+      doc.setFont("helvetica", "bold");
       doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-      doc.text(nameLines, 52, pageY + 5);
+      doc.text(nameLines, 52, pageY + 4.5);
+
+      // Descripción del ejercicio (escalón inferior)
+      if (descLines.length > 0) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6);
+        doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+        const descY = pageY + 4.5 + nameLines.length * 3.8;
+        doc.text(descLines, 52, descY);
+      }
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
       doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-      doc.text(String(exercise.drivers), 192, pageY + 5, { align: "right" });
+      doc.text(String(exercise.drivers), 192, pageY + 4.5, { align: "right" });
       doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
       doc.setLineWidth(0.2);
       doc.line(14, pageY + rowH, 196, pageY + rowH);

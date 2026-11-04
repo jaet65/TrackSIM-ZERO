@@ -7,6 +7,7 @@ import { loadCatalog } from "./catalogStore";
 import { CRITICAL_LIMIT, verdictFor } from "./config";
 import {
   exerciseKey,
+  getExerciseDescription,
   getExercises,
   getGroupType,
   loadExercises,
@@ -583,6 +584,7 @@ export async function listUploadedExerciseNames(groupId?: string | null): Promis
 export type ReportExerciseSummary = {
   phase: number;
   name: string;
+  description?: string;
   drivers: number;
 };
 
@@ -608,6 +610,7 @@ export async function listReportExercises(
       exercise = {
         phase,
         name,
+        description: getExerciseDescription(name, evaluationGroupId),
         drivers: 0,
         driverIds: new Set<string>(),
       };

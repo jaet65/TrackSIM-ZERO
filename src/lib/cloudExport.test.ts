@@ -12,25 +12,34 @@ const {
   safeGetDocs,
   fastWrite,
   batchSet,
+  batchDelete,
   batchCommit,
+  deleteDoc,
 } = vi.hoisted(() => {
   const bSet = vi.fn();
+  const bDelete = vi.fn();
   const bCommit = vi.fn(() => Promise.resolve());
   return {
     collection: vi.fn((_db: unknown, ...names: string[]) => ({ path: names.join("/") })),
-    doc: vi.fn((_first: unknown, ...parts: string[]) => ({
-      path: parts.join("/"),
-      id: parts[parts.length - 1],
-    })),
+    doc: vi.fn((_first: unknown, ...parts: string[]) => {
+      const basePath = typeof _first === "object" && _first !== null && "path" in _first ? (_first as { path: string }).path : "";
+      const fullParts = basePath ? [basePath, ...parts] : parts;
+      return {
+        path: fullParts.join("/"),
+        id: parts[parts.length - 1],
+      };
+    }),
     query: vi.fn((col: unknown, ...constraints: unknown[]) => ({ col, constraints })),
     where: vi.fn((field: string, op: string, val: unknown) => ({ field, op, val })),
     setDoc: vi.fn(() => Promise.resolve()),
     updateDoc: vi.fn(() => Promise.resolve()),
-    writeBatch: vi.fn(() => ({ set: bSet, commit: bCommit })),
+    deleteDoc: vi.fn(() => Promise.resolve()),
+    writeBatch: vi.fn(() => ({ set: bSet, delete: bDelete, commit: bCommit })),
     safeGetDoc: vi.fn(),
     safeGetDocs: vi.fn(),
     fastWrite: vi.fn((promise: Promise<unknown>) => promise),
     batchSet: bSet,
+    batchDelete: bDelete,
     batchCommit: bCommit,
   };
 });
@@ -50,6 +59,7 @@ vi.mock("firebase/firestore", () => ({
   where,
   setDoc,
   updateDoc,
+  deleteDoc,
   writeBatch,
   orderBy: vi.fn(),
 }));
@@ -58,6 +68,7 @@ import {
   buildCloudExportEvaluation,
   calculateDestrezaAndEco,
   countIncidents,
+  deleteCloudExport,
   exportClosedGroupToCloud,
   getCloudExport,
   getCloudExportEvaluations,
@@ -509,5 +520,38 @@ describe("cloudExport - Flujo de Exportación, Batches e Idempotencia", () => {
     const complete = await getCloudExportEvaluations("grp_ready");
     expect(complete).toHaveLength(1);
     expect(complete[0].conductor).toBe("Conductor 1");
+  });
+
+  it("10. deleteCloudExport elimina el documento maestro y las evaluaciones de la subcolección", async () => {
+    // 1. Simular búsqueda de getCloudExport para un grupo con friendly exportId
+    safeGetDoc.mockResolvedValueOnce({ exists: () => false }); // directSnap no coincide
+    safeGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ name: "Almex Prueba", id: "grp_test", cloudExportId: "Almex_Prueba_grp_test" }),
+    }); // grpSnap
+    safeGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ status: "complete", groupId: "Almex_Prueba_grp_test" }),
+    }); // friendlySnap
+
+    // 2. Simular subcolección con 2 expedientes para eliminar
+    safeGetDocs.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        { ref: { path: "cloud_exports/Almex_Prueba_grp_test/evaluations/eval_1" } },
+        { ref: { path: "cloud_exports/Almex_Prueba_grp_test/evaluations/eval_2" } },
+      ],
+    });
+
+    // 3. Fallback para ID crudo vacío
+    safeGetDocs.mockResolvedValueOnce({ empty: true, docs: [] });
+
+    await deleteCloudExport("grp_test");
+
+    expect(batchDelete).toHaveBeenCalledTimes(2);
+    expect(batchCommit).toHaveBeenCalled();
+    expect(deleteDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "cloud_exports/Almex_Prueba_grp_test" })
+    );
   });
 });

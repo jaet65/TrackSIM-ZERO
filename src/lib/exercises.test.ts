@@ -54,10 +54,14 @@ describe("exercise settings", () => {
           ruta: "MONTANA",
           invalid: "OTHER",
         },
+        descriptions: {
+          ruta: "Pista con curvas",
+        },
       })
     ).toEqual({
       phases: { "1": ["Ruta Uno", " Ruta "] },
       environments: { ruta: "MONTANA" },
+      descriptions: { ruta: "Pista con curvas" },
     });
   });
 

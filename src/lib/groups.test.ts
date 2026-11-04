@@ -50,9 +50,14 @@ const {
     loadExercises: vi.fn(() => Promise.resolve({})),
     getExercises: vi.fn(() => ({})),
     getExerciseEnvironments: vi.fn(() => ({})),
-    sanitizeExercises: vi.fn((value: { phases?: Record<string, string[]>; environments?: Record<string, string> }) => ({
+    sanitizeExercises: vi.fn((value: {
+      phases?: Record<string, string[]>;
+      environments?: Record<string, string>;
+      descriptions?: Record<string, string>;
+    }) => ({
       phases: value?.phases ?? {},
       environments: value?.environments ?? {},
+      descriptions: value?.descriptions ?? {},
     })),
     setGroupExercises: vi.fn(),
     setGroupTypeMemory: vi.fn(),
@@ -145,6 +150,7 @@ describe("group helpers and persistence", () => {
     sanitizeExercises.mockImplementation((value) => ({
       phases: value?.phases ?? {},
       environments: value?.environments ?? {},
+      descriptions: value?.descriptions ?? {},
     }));
   });
 
@@ -168,7 +174,7 @@ describe("group helpers and persistence", () => {
     hydrateGroupRules(group);
 
     expect(setGroupTypeMemory).toHaveBeenCalledWith("group-1", "curso");
-    expect(setGroupExercises).toHaveBeenCalledWith("group-1", { "1": ["Ruta"] }, {});
+    expect(setGroupExercises).toHaveBeenCalledWith("group-1", { "1": ["Ruta"] }, {}, {});
     expect(hasPendingExerciseSave).toHaveBeenCalledWith("group-1");
   });
 

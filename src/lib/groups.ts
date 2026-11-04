@@ -33,7 +33,11 @@ import {
   removeGroupCatalog,
   type CatalogConfig,
 } from "./catalog";
-import { exportClosedGroupToCloud, type CloudExportStatus } from "./cloudExport";
+import {
+  exportClosedGroupToCloud,
+  deleteCloudExport,
+  type CloudExportStatus,
+} from "./cloudExport";
 
 export type GroupStatus = "open" | "closed";
 
@@ -98,8 +102,8 @@ export function hydrateGroupRules(g: GroupDoc): void {
     setGroupCatalog(g.id, sanitizeCatalog(g.catalog));
   }
   if (g.exercises && !hasPendingExerciseSave(g.id)) {
-    const { phases, environments } = sanitizeExercises(g.exercises);
-    setGroupExercises(g.id, phases, environments);
+    const { phases, environments, descriptions } = sanitizeExercises(g.exercises);
+    setGroupExercises(g.id, phases, environments, descriptions);
   }
 }
 
@@ -341,20 +345,8 @@ export async function updateGroupDetails(
 export async function deleteGroup(groupId: string): Promise<void> {
   await deleteGroupEvaluations(groupId);
 
-  // Limpiar snapshot en cloud_exports si existía
-  try {
-    const exportEvalsSnap = await safeGetDocs(collection(getDb(), "cloud_exports", groupId, "evaluations"));
-    if (!exportEvalsSnap.empty) {
-      const batch = writeBatch(firestore);
-      for (const d of exportEvalsSnap.docs) {
-        batch.delete(d.ref);
-      }
-      await fastWrite(batch.commit());
-    }
-    await fastWrite(deleteDoc(doc(collection(getDb(), "cloud_exports"), groupId)));
-  } catch (e) {
-    console.warn("No se pudo limpiar cloud_exports al eliminar grupo:", e);
-  }
+  // Limpiar exportación y colección en cloud_exports si existía (grupos congelados o exportados)
+  await deleteCloudExport(groupId);
 
   const grpRef = doc(groupsCol(), groupId);
   await fastWrite(deleteDoc(grpRef));

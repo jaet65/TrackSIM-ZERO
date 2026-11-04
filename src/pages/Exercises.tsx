@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../components/AuthProvider";
 import { PHASES, isAdminEmail } from "../lib/config";
@@ -8,10 +8,12 @@ import {
   saveExercises,
   getExercises,
   getExerciseEnvironments,
+  getExerciseDescriptions,
   detectEnvironmentFromName,
   type ExerciseConfig,
   type ExerciseEnvironment,
   type ExerciseEnvironmentsMap,
+  type ExerciseDescriptionsMap,
 } from "../lib/exercises";
 import {
   listGroups,
@@ -22,6 +24,8 @@ import {
   type GroupType,
 } from "../lib/groups";
 import { listUploadedExerciseNames } from "../lib/db";
+import { exportExercisesToCsv, parseExerciseCsv, type ParsedExerciseCsvRow } from "../lib/exerciseCsv";
+import PhaseAssignmentModal from "../components/PhaseAssignmentModal";
 
 export default function Exercises() {
   const { user } = useAuth();
@@ -36,6 +40,7 @@ export default function Exercises() {
 
   const [cfg, setCfg] = useState<ExerciseConfig | null>(null);
   const [envs, setEnvs] = useState<ExerciseEnvironmentsMap>({});
+  const [descriptions, setDescriptions] = useState<ExerciseDescriptionsMap>({});
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [draftEnvs, setDraftEnvs] = useState<Record<number, ExerciseEnvironment>>({});
   const [dirty, setDirty] = useState(false);
@@ -44,6 +49,11 @@ export default function Exercises() {
   const [loadingRules, setLoadingRules] = useState(true);
   const [copySourceId, setCopySourceId] = useState<string>("");
   const [uploadedNames, setUploadedNames] = useState<string[]>([]);
+
+  // Estado para Import / Export CSV
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingCsvRows, setPendingCsvRows] = useState<ParsedExerciseCsvRow[]>([]);
+  const [isPhaseModalOpen, setIsPhaseModalOpen] = useState(false);
 
   const selectedGroup = useMemo(
     () => groups.find((g) => g.id === selectedGroupId) || null,
@@ -94,6 +104,7 @@ export default function Exercises() {
       .then(([c, detected]) => {
         setCfg(structuredClone(c));
         setEnvs(structuredClone(getExerciseEnvironments(selectedGroupId || null)));
+        setDescriptions(structuredClone(getExerciseDescriptions(selectedGroupId || null)));
         setUploadedNames(detected);
       })
       .catch((e: Error) => setMsg(e.message))
@@ -125,6 +136,7 @@ export default function Exercises() {
       await loadExercises(false, targetId);
       setCfg(structuredClone(getExercises(targetId)));
       setEnvs(structuredClone(getExerciseEnvironments(targetId)));
+      setDescriptions(structuredClone(getExerciseDescriptions(targetId)));
       setDirty(true);
       setCopySourceId("");
       setMsg(
@@ -148,9 +160,14 @@ export default function Exercises() {
     );
   }
 
-  const update = (next: ExerciseConfig, nextEnvs?: ExerciseEnvironmentsMap) => {
+  const update = (
+    next: ExerciseConfig,
+    nextEnvs?: ExerciseEnvironmentsMap,
+    nextDescs?: ExerciseDescriptionsMap
+  ) => {
     setCfg(next);
     if (nextEnvs) setEnvs(nextEnvs);
+    if (nextDescs) setDescriptions(nextDescs);
     setDirty(true);
     setMsg("");
   };
@@ -205,10 +222,109 @@ export default function Exercises() {
     setMsg("");
   };
 
+  const handleExportCsv = () => {
+    if (!cfg) return;
+    const csvContent = exportExercisesToCsv(cfg, isCurso, envs, descriptions);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const scopeLabel = selectedGroup ? selectedGroup.name.replace(/[^a-zA-Z0-9_-]/g, "_") : "plantilla_global";
+    const fileName = `catalogo_ejercicios_${scopeLabel}_${dateStr}.csv`;
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = parseExerciseCsv(text);
+      if (parsed.length === 0) {
+        alert("El archivo CSV no contiene ejercicios reconocibles.");
+        return;
+      }
+
+      if (isCurso) {
+        // En los grupos tipo curso se agregan directamente
+        const currentList = cfg?.[1] ?? [];
+        const nextList = [...currentList];
+        const nextEnvs = { ...envs };
+        const nextDescs = { ...descriptions };
+        let addedCount = 0;
+
+        for (const item of parsed) {
+          const key = exerciseKey(item.nombre);
+          if (!nextList.some((n) => exerciseKey(n) === key)) {
+            nextList.push(item.nombre);
+            nextEnvs[key] = item.entorno || (detectEnvironmentFromName(item.nombre) as ExerciseEnvironment);
+            if (item.descripcion) {
+              nextDescs[key] = item.descripcion;
+            }
+            addedCount++;
+          }
+        }
+
+        update({ ...cfg, 1: nextList }, nextEnvs, nextDescs);
+        setMsg(`Se importaron ${addedCount} ejercicio(s) directamente al curso.`);
+      } else {
+        // En los grupos tipo escuela se abre modal extra para seleccionar fase
+        setPendingCsvRows(parsed);
+        setIsPhaseModalOpen(true);
+      }
+    } catch (err) {
+      alert("Error al leer el archivo CSV: " + (err as Error).message);
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleConfirmPhaseImport = (
+    assignments: Array<{ name: string; phase: number; env?: string; descripcion?: string }>
+  ) => {
+    if (!cfg) return;
+
+    const nextCfg: ExerciseConfig = { ...cfg };
+    const nextEnvs: ExerciseEnvironmentsMap = { ...envs };
+    const nextDescs: ExerciseDescriptionsMap = { ...descriptions };
+
+    for (const item of assignments) {
+      const key = exerciseKey(item.name);
+      const chosenEnv = (item.env as ExerciseEnvironment) || detectEnvironmentFromName(item.name);
+      nextEnvs[key] = chosenEnv;
+      if (item.descripcion) {
+        nextDescs[key] = item.descripcion;
+      }
+
+      // Quitar de cualquier otra fase para evitar duplicados
+      for (const p of Object.keys(nextCfg)) {
+        nextCfg[p] = (nextCfg[p] ?? []).filter((n) => exerciseKey(n) !== key);
+      }
+
+      const pKey = String(item.phase);
+      const list = nextCfg[pKey] ?? [];
+      nextCfg[pKey] = [...list, item.name];
+    }
+
+    update(nextCfg, nextEnvs, nextDescs);
+    setIsPhaseModalOpen(false);
+    setPendingCsvRows([]);
+    setMsg(`Se importaron e integraron ${assignments.length} ejercicio(s) en sus fases correspondientes.`);
+  };
+
   const save = async () => {
     setBusy(true);
     try {
-      await saveExercises(cfg, user?.email ?? "", envs, selectedGroupId || null);
+      await saveExercises(cfg, user?.email ?? "", envs, selectedGroupId || null, descriptions);
       setDirty(false);
       setMsg(
         selectedGroup
@@ -338,13 +454,47 @@ export default function Exercises() {
 
           {canEdit && (
             <div className="flex flex-wrap items-center gap-2 border-t lg:border-t-0 pt-3 lg:pt-0 border-indigo-100">
-              <span className="text-xs font-semibold text-slate-600">Copiar ejercicios desde:</span>
+              {/* Acciones de Import / Export CSV */}
+              <div className="flex items-center gap-1.5 mr-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  id="csv-file-input"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-xs hover:bg-indigo-50 hover:border-indigo-300 transition cursor-pointer"
+                  title="Importar catálogo de ejercicios desde archivo CSV"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Importar CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportCsv}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 hover:border-slate-300 transition cursor-pointer"
+                  title="Descargar configuración actual de ejercicios en CSV"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Exportar CSV
+                </button>
+              </div>
+
+              <span className="text-xs font-semibold text-slate-600">Copiar desde:</span>
               <select
                 value={copySourceId}
                 onChange={(e) => handleCopyFrom(e.target.value)}
                 className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs focus:border-indigo-500 focus:outline-none"
               >
-                <option value="">-- Seleccionar origen para importar --</option>
+                <option value="">-- Seleccionar origen --</option>
                 {selectedGroupId !== "" && (
                   <option value="__GLOBAL__">🌐 Plantilla Global</option>
                 )}
@@ -404,9 +554,16 @@ export default function Exercises() {
                           key={n}
                           className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 text-xs text-slate-800"
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="font-semibold text-slate-900 truncate text-sm">{n}</span>
-                            {envBadge(effective, isAuto)}
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-2.5">
+                              <span className="font-semibold text-slate-900 truncate text-sm">{n}</span>
+                              {envBadge(effective, isAuto)}
+                            </div>
+                            {descriptions[key] && (
+                              <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5" title={descriptions[key]}>
+                                {descriptions[key]}
+                              </p>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-2 ml-auto">
@@ -539,9 +696,16 @@ export default function Exercises() {
                           key={n}
                           className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 text-xs text-slate-800"
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="font-semibold text-slate-900 truncate">{n}</span>
-                            {envBadge(effective, isAuto)}
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-2.5">
+                              <span className="font-semibold text-slate-900 truncate">{n}</span>
+                              {envBadge(effective, isAuto)}
+                            </div>
+                            {descriptions[key] && (
+                              <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5" title={descriptions[key]}>
+                                {descriptions[key]}
+                              </p>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-2 ml-auto">
@@ -684,6 +848,17 @@ export default function Exercises() {
           {msg && <span className="text-xs text-emerald-700 font-medium">{msg}</span>}
         </div>
       )}
+
+      {/* Modal de asignación de fase para importación en grupos Escuela */}
+      <PhaseAssignmentModal
+        isOpen={isPhaseModalOpen}
+        onClose={() => {
+          setIsPhaseModalOpen(false);
+          setPendingCsvRows([]);
+        }}
+        parsedRows={pendingCsvRows}
+        onConfirm={handleConfirmPhaseImport}
+      />
     </main>
   );
 }
