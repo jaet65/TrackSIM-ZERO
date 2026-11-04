@@ -16,6 +16,7 @@ const {
   loadExercises,
   getExercises,
   getExerciseEnvironments,
+  getPhaseNames,
   sanitizeExercises,
   setGroupExercises,
   setGroupTypeMemory,
@@ -50,14 +51,17 @@ const {
     loadExercises: vi.fn(() => Promise.resolve({})),
     getExercises: vi.fn(() => ({})),
     getExerciseEnvironments: vi.fn(() => ({})),
+    getPhaseNames: vi.fn(() => ({})),
     sanitizeExercises: vi.fn((value: {
       phases?: Record<string, string[]>;
       environments?: Record<string, string>;
       descriptions?: Record<string, string>;
+      phaseNames?: Record<number, string>;
     }) => ({
       phases: value?.phases ?? {},
       environments: value?.environments ?? {},
       descriptions: value?.descriptions ?? {},
+      phaseNames: value?.phaseNames ?? {},
     })),
     setGroupExercises: vi.fn(),
     setGroupTypeMemory: vi.fn(),
@@ -101,6 +105,7 @@ vi.mock("./exercises", () => ({
   loadExercises,
   getExercises,
   getExerciseEnvironments,
+  getPhaseNames,
   sanitizeExercises,
   setGroupExercises,
   setGroupTypeMemory,
@@ -147,10 +152,12 @@ describe("group helpers and persistence", () => {
     loadExercises.mockResolvedValue({});
     getExercises.mockReturnValue({});
     getExerciseEnvironments.mockReturnValue({});
+    getPhaseNames.mockReturnValue({});
     sanitizeExercises.mockImplementation((value) => ({
       phases: value?.phases ?? {},
       environments: value?.environments ?? {},
       descriptions: value?.descriptions ?? {},
+      phaseNames: value?.phaseNames ?? {},
     }));
   });
 
@@ -174,7 +181,7 @@ describe("group helpers and persistence", () => {
     hydrateGroupRules(group);
 
     expect(setGroupTypeMemory).toHaveBeenCalledWith("group-1", "curso");
-    expect(setGroupExercises).toHaveBeenCalledWith("group-1", { "1": ["Ruta"] }, {}, {});
+    expect(setGroupExercises).toHaveBeenCalledWith("group-1", { "1": ["Ruta"] }, {}, {}, {});
     expect(hasPendingExerciseSave).toHaveBeenCalledWith("group-1");
   });
 

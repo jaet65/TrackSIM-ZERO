@@ -459,8 +459,8 @@ export default function Groups() {
                               {retryingCloudId === g.id
                                 ? "Exportando..."
                                 : g.cloudExportStatus === "complete"
-                                ? "☁️ Re-exportar"
-                                : "☁️ Exportar a Cloud"}
+                                  ? "☁️ Re-exportar"
+                                  : "☁️ Exportar a Cloud"}
                             </button>
                           )}
                           {!isClosed && (
@@ -560,28 +560,26 @@ export default function Groups() {
                   <button
                     type="button"
                     onClick={() => setNewGroupType("escuela")}
-                    className={`flex flex-col items-start p-3 rounded-xl border text-left transition ${
-                      newGroupType === "escuela"
+                    className={`flex flex-col items-start p-3 rounded-xl border text-left transition ${newGroupType === "escuela"
                         ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-600"
                         : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
-                    }`}
+                      }`}
                   >
                     <span className="text-xs font-bold flex items-center gap-1.5">
                       🏫 Escuela
                     </span>
                     <span className="text-[10px] text-slate-500 mt-0.5">
-                      Estructura de 6 Fases progresivas
+                      Estructura de Fases progresivas
                     </span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setNewGroupType("curso")}
-                    className={`flex flex-col items-start p-3 rounded-xl border text-left transition ${
-                      newGroupType === "curso"
+                    className={`flex flex-col items-start p-3 rounded-xl border text-left transition ${newGroupType === "curso"
                         ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-600"
                         : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
-                    }`}
+                      }`}
                   >
                     <span className="text-xs font-bold flex items-center gap-1.5">
                       🎯 Curso

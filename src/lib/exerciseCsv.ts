@@ -4,12 +4,13 @@
 import {
   detectEnvironmentFromName,
   exerciseKey,
+  getPhasesList,
   type ExerciseConfig,
   type ExerciseDescriptionsMap,
   type ExerciseEnvironment,
   type ExerciseEnvironmentsMap,
 } from "./exercises";
-import { PHASES } from "./config";
+import { type PhaseItem } from "./config";
 
 export interface ParsedExerciseCsvRow {
   nombre: string;
@@ -133,7 +134,7 @@ export function parseExerciseCsv(csvText: string): ParsedExerciseCsvRow[] {
     let fase: number | undefined;
     if (phaseCol !== -1 && row[phaseCol]) {
       const parsedPhase = parseInt(row[phaseCol].replace(/\D/g, ""), 10);
-      if (parsedPhase >= 1 && parsedPhase <= 6) {
+      if (parsedPhase >= 1 && parsedPhase <= 30) {
         fase = parsedPhase;
       }
     }
@@ -165,7 +166,8 @@ export function exportExercisesToCsv(
   cfg: ExerciseConfig,
   isCurso: boolean,
   envs?: ExerciseEnvironmentsMap,
-  descriptions?: ExerciseDescriptionsMap
+  descriptions?: ExerciseDescriptionsMap,
+  phasesList?: PhaseItem[]
 ): string {
   const lines: string[] = [];
 
@@ -180,7 +182,8 @@ export function exportExercisesToCsv(
     }
   } else {
     lines.push("fase,nombre_fase,nombre,descripcion,entorno");
-    for (const p of PHASES) {
+    const effectivePhases = phasesList && phasesList.length > 0 ? phasesList : getPhasesList(null, cfg);
+    for (const p of effectivePhases) {
       const list = cfg[p.id] ?? [];
       for (const name of list) {
         const key = exerciseKey(name);

@@ -1,5 +1,6 @@
 import { doc, setDoc, updateDoc } from "firebase/firestore";
 import { firestore, safeGetDoc, fastWrite } from "./firebase";
+import { DEFAULT_PHASES, type PhaseItem } from "./config";
 
 export type ExerciseEnvironment = "AUTO" | "CARRETERA" | "MONTANA" | "CIUDAD";
 
@@ -7,11 +8,19 @@ export type ExerciseEnvironment = "AUTO" | "CARRETERA" | "MONTANA" | "CIUDAD";
 export type ExerciseConfig = Record<string, string[]>;
 export type ExerciseEnvironmentsMap = Record<string, ExerciseEnvironment>; // exerciseKey -> environment
 export type ExerciseDescriptionsMap = Record<string, string>; // exerciseKey -> descripción
+export type PhaseNamesMap = Record<number, string>; // phaseId -> custom name
 
 export type ExerciseSettingsData = {
   phases: ExerciseConfig;
   environments?: ExerciseEnvironmentsMap;
   descriptions?: ExerciseDescriptionsMap;
+  phaseNames?: PhaseNamesMap;
+  globalType?: "escuela" | "curso";
+  cursoExercises?: {
+    phases: ExerciseConfig;
+    environments?: ExerciseEnvironmentsMap;
+    descriptions?: ExerciseDescriptionsMap;
+  };
 };
 
 const ref = () => doc(firestore, "settings", "exercises");
@@ -58,6 +67,13 @@ export function detectEnvironmentFromName(name: string): "CARRETERA" | "MONTANA"
 let current: ExerciseConfig = {};
 let currentEnvs: ExerciseEnvironmentsMap = {};
 let currentDescriptions: ExerciseDescriptionsMap = {};
+let currentPhaseNames: PhaseNamesMap = {};
+let currentGlobalType: "escuela" | "curso" = "escuela";
+
+let currentCursoPhases: ExerciseConfig = {};
+let currentCursoEnvs: ExerciseEnvironmentsMap = {};
+let currentCursoDescriptions: ExerciseDescriptionsMap = {};
+
 let loading: Promise<ExerciseConfig> | null = null;
 let savingPromise: Promise<void> = Promise.resolve();
 
@@ -67,7 +83,12 @@ export function waitForExerciseSaves(): Promise<void> {
 
 const groupExercises = new Map<
   string,
-  { phases: ExerciseConfig; environments: ExerciseEnvironmentsMap; descriptions: ExerciseDescriptionsMap }
+  {
+    phases: ExerciseConfig;
+    environments: ExerciseEnvironmentsMap;
+    descriptions: ExerciseDescriptionsMap;
+    phaseNames: PhaseNamesMap;
+  }
 >();
 const groupTypes = new Map<string, "escuela" | "curso">();
 
@@ -75,9 +96,16 @@ export function setGroupTypeMemory(groupId: string, type: "escuela" | "curso") {
   groupTypes.set(groupId, type);
 }
 
+export function setGlobalTypeMemory(type: "escuela" | "curso") {
+  currentGlobalType = type;
+}
+
 export function getGroupType(groupId?: string | null): "escuela" | "curso" {
   if (groupId && groupTypes.has(groupId)) {
     return groupTypes.get(groupId)!;
+  }
+  if (!groupId) {
+    return currentGlobalType;
   }
   return "escuela";
 }
@@ -86,9 +114,10 @@ export function setGroupExercises(
   groupId: string,
   phases: ExerciseConfig,
   environments: ExerciseEnvironmentsMap = {},
-  descriptions: ExerciseDescriptionsMap = {}
+  descriptions: ExerciseDescriptionsMap = {},
+  phaseNames: PhaseNamesMap = {}
 ) {
-  groupExercises.set(groupId, { phases, environments, descriptions });
+  groupExercises.set(groupId, { phases, environments, descriptions, phaseNames });
 }
 
 export function removeGroupExercises(groupId: string) {
@@ -107,28 +136,85 @@ export function hasPendingExerciseSave(groupId: string): boolean {
   return pendingGroupSaves.has(groupId);
 }
 
-export const getExercises = (groupId?: string | null): ExerciseConfig => {
+export const getExercises = (groupId?: string | null, groupType?: "escuela" | "curso"): ExerciseConfig => {
   if (groupId && groupExercises.has(groupId)) {
     return groupExercises.get(groupId)!.phases;
+  }
+  const effectiveType = groupType ?? (groupId ? getGroupType(groupId) : currentGlobalType);
+  if (!groupId && effectiveType === "curso") {
+    return currentCursoPhases;
   }
   return current;
 };
 
-export const getExerciseEnvironments = (groupId?: string | null): ExerciseEnvironmentsMap => {
+export const getExerciseEnvironments = (groupId?: string | null, groupType?: "escuela" | "curso"): ExerciseEnvironmentsMap => {
   if (groupId && groupExercises.has(groupId)) {
     const grp = groupExercises.get(groupId)!;
     return { ...currentEnvs, ...grp.environments };
   }
+  const effectiveType = groupType ?? (groupId ? getGroupType(groupId) : currentGlobalType);
+  if (!groupId && effectiveType === "curso") {
+    return currentCursoEnvs;
+  }
   return currentEnvs;
 };
 
-export const getExerciseDescriptions = (groupId?: string | null): ExerciseDescriptionsMap => {
+export const getExerciseDescriptions = (groupId?: string | null, groupType?: "escuela" | "curso"): ExerciseDescriptionsMap => {
   if (groupId && groupExercises.has(groupId)) {
     const grp = groupExercises.get(groupId)!;
     return { ...currentDescriptions, ...grp.descriptions };
   }
+  const effectiveType = groupType ?? (groupId ? getGroupType(groupId) : currentGlobalType);
+  if (!groupId && effectiveType === "curso") {
+    return currentCursoDescriptions;
+  }
   return currentDescriptions;
 };
+
+export const getPhaseNames = (groupId?: string | null, groupType?: "escuela" | "curso"): PhaseNamesMap => {
+  if (groupId && groupExercises.has(groupId)) {
+    const grp = groupExercises.get(groupId)!;
+    return { ...currentPhaseNames, ...grp.phaseNames };
+  }
+  const effectiveType = groupType ?? (groupId ? getGroupType(groupId) : currentGlobalType);
+  if (!groupId && effectiveType === "curso") {
+    return {};
+  }
+  return currentPhaseNames;
+};
+
+/**
+ * Obtiene la lista ordenada de fases configuradas con su nombre personalizado o predeterminado.
+ */
+export function getPhasesList(groupId?: string | null, customPhasesConfig?: ExerciseConfig): PhaseItem[] {
+  const cfg = customPhasesConfig ?? getExercises(groupId);
+  const names = getPhaseNames(groupId);
+
+  const phaseKeys = Object.keys(cfg)
+    .map((k) => Number(k))
+    .filter((id) => !isNaN(id) && id > 0);
+
+  // Ordenar numéricamente
+  phaseKeys.sort((a, b) => a - b);
+
+  return phaseKeys.map((id) => {
+    const defaultPhase = DEFAULT_PHASES.find((p) => p.id === id);
+    const customName = names[id]?.trim();
+    const finalName = customName || defaultPhase?.name || `Fase ${id}`;
+    return { id, name: finalName };
+  });
+}
+
+/**
+ * Devuelve el nombre de una fase considerando la configuración del grupo o global.
+ */
+export function getPhaseName(id: number, groupId?: string | null): string {
+  if (id === 0) return "Curso (Sin Fases)";
+  const names = getPhaseNames(groupId);
+  if (names[id]?.trim()) return names[id].trim();
+  const def = DEFAULT_PHASES.find((p) => p.id === id);
+  return def?.name ?? `Fase ${id}`;
+}
 
 export function getExerciseDescription(name?: string, groupId?: string | null): string | undefined {
   if (!name) return undefined;
@@ -170,16 +256,37 @@ export function sanitizeExercises(raw: unknown): {
   phases: ExerciseConfig;
   environments: ExerciseEnvironmentsMap;
   descriptions: ExerciseDescriptionsMap;
+  phaseNames: PhaseNamesMap;
+  globalType: "escuela" | "curso";
+  cursoExercises?: {
+    phases: ExerciseConfig;
+    environments?: ExerciseEnvironmentsMap;
+    descriptions?: ExerciseDescriptionsMap;
+  };
 } {
   const outPhases: ExerciseConfig = {};
   const outEnvs: ExerciseEnvironmentsMap = {};
   const outDescriptions: ExerciseDescriptionsMap = {};
+  const outPhaseNames: PhaseNamesMap = {};
 
   const r = raw as {
     phases?: Record<string, unknown>;
     environments?: Record<string, string>;
     descriptions?: Record<string, string>;
+    phaseNames?: Record<string | number, string>;
+    globalType?: "escuela" | "curso";
+    cursoExercises?: {
+      phases?: Record<string, unknown>;
+      environments?: Record<string, string>;
+      descriptions?: Record<string, string>;
+    };
   } | undefined;
+
+  if (!raw) {
+    DEFAULT_PHASES.forEach((p) => {
+      outPhases[String(p.id)] = [];
+    });
+  }
   const phasesRaw: Record<string, unknown> = { ...r?.phases };
   // Compatibilidad: versiones previas guardaban la lista de un Curso bajo la fase "0"; ahora es la fase 1
   if (Array.isArray(phasesRaw["0"])) {
@@ -216,19 +323,97 @@ export function sanitizeExercises(raw: unknown): {
     }
   }
 
-  return { phases: outPhases, environments: outEnvs, descriptions: outDescriptions };
+  const namesRaw = r?.phaseNames ?? {};
+  if (typeof namesRaw === "object" && namesRaw !== null) {
+    for (const [k, v] of Object.entries(namesRaw)) {
+      const numId = Number(k);
+      if (!isNaN(numId) && numId > 0 && typeof v === "string" && v.trim()) {
+        outPhaseNames[numId] = v.trim();
+      }
+    }
+  }
+
+  const globalType = r?.globalType === "curso" ? "curso" : "escuela";
+
+  let outCursoExercises:
+    | {
+        phases: ExerciseConfig;
+        environments?: ExerciseEnvironmentsMap;
+        descriptions?: ExerciseDescriptionsMap;
+      }
+    | undefined = undefined;
+
+  if (r?.cursoExercises && typeof r.cursoExercises === "object") {
+    const cPhasesRaw = { ...r.cursoExercises.phases };
+    const cPhases: ExerciseConfig = {};
+    for (const [phase, list] of Object.entries(cPhasesRaw)) {
+      if (!Array.isArray(list)) continue;
+      const seen = new Set<string>();
+      cPhases[phase] = list.filter((n): n is string => {
+        if (typeof n !== "string" || !n.trim() || seen.has(exerciseKey(n))) return false;
+        seen.add(exerciseKey(n));
+        return true;
+      });
+    }
+
+    const cEnvs: ExerciseEnvironmentsMap = {};
+    const cEnvsRaw = r.cursoExercises.environments ?? {};
+    if (typeof cEnvsRaw === "object" && cEnvsRaw !== null) {
+      for (const [k, v] of Object.entries(cEnvsRaw)) {
+        if (v === "AUTO" || v === "CARRETERA" || v === "MONTANA" || v === "CIUDAD") {
+          cEnvs[k] = v;
+        }
+      }
+    }
+
+    const cDescs: ExerciseDescriptionsMap = {};
+    const cDescsRaw = r.cursoExercises.descriptions ?? {};
+    if (typeof cDescsRaw === "object" && cDescsRaw !== null) {
+      for (const [k, v] of Object.entries(cDescsRaw)) {
+        if (typeof v === "string" && v.trim()) {
+          cDescs[k] = v.trim();
+        }
+      }
+    }
+
+    outCursoExercises = {
+      phases: cPhases,
+      environments: cEnvs,
+      descriptions: cDescs,
+    };
+  }
+
+  return {
+    phases: outPhases,
+    environments: outEnvs,
+    descriptions: outDescriptions,
+    phaseNames: outPhaseNames,
+    globalType,
+    cursoExercises: outCursoExercises,
+  };
 }
 
-export async function loadExercises(force = false, groupId?: string | null): Promise<ExerciseConfig> {
+export async function loadExercises(
+  force = false,
+  groupId?: string | null,
+  groupType?: "escuela" | "curso"
+): Promise<ExerciseConfig> {
   await savingPromise;
 
   if (!loading || force) {
     loading = safeGetDoc(ref())
       .then((snap) => {
-        const { phases, environments, descriptions } = sanitizeExercises(snap.exists() ? snap.data() : undefined);
+        const { phases, environments, descriptions, phaseNames, globalType, cursoExercises } = sanitizeExercises(snap.exists() ? snap.data() : undefined);
         current = phases;
         currentEnvs = environments;
         currentDescriptions = descriptions;
+        currentPhaseNames = phaseNames;
+        currentGlobalType = globalType;
+
+        currentCursoPhases = cursoExercises?.phases ?? {};
+        currentCursoEnvs = cursoExercises?.environments ?? {};
+        currentCursoDescriptions = cursoExercises?.descriptions ?? {};
+
         return current;
       })
       .catch((e) => {
@@ -240,18 +425,23 @@ export async function loadExercises(force = false, groupId?: string | null): Pro
 
   if (groupId) {
     if (pendingGroupSaves.has(groupId)) {
-      return getExercises(groupId);
+      return getExercises(groupId, groupType);
     }
     const grpSnap = await safeGetDoc(groupRef(groupId));
     if (grpSnap.exists()) {
       const grpData = grpSnap.data();
       if (grpData?.exercises) {
-        const { phases, environments, descriptions } = sanitizeExercises(grpData.exercises);
-        setGroupExercises(groupId, phases, environments, descriptions);
+        const { phases, environments, descriptions, phaseNames } = sanitizeExercises(grpData.exercises);
+        setGroupExercises(groupId, phases, environments, descriptions, phaseNames);
         return phases;
       }
     }
-    return getExercises(groupId) || basePhases;
+    return getExercises(groupId, groupType) || basePhases;
+  }
+
+  const effectiveType = groupType ?? currentGlobalType;
+  if (effectiveType === "curso") {
+    return currentCursoPhases;
   }
 
   return basePhases;
@@ -262,19 +452,25 @@ export async function saveExercises(
   editorEmail: string,
   environments?: ExerciseEnvironmentsMap,
   groupId?: string | null,
-  descriptions?: ExerciseDescriptionsMap
+  descriptions?: ExerciseDescriptionsMap,
+  phaseNames?: PhaseNamesMap,
+  groupType?: "escuela" | "curso"
 ) {
-  const fallbackEnvs = getExerciseEnvironments(groupId);
-  const fallbackDescs = getExerciseDescriptions(groupId);
+  const targetType = groupType ?? (groupId ? getGroupType(groupId) : currentGlobalType);
+  const fallbackEnvs = getExerciseEnvironments(groupId, targetType);
+  const fallbackDescs = getExerciseDescriptions(groupId, targetType);
+  const fallbackNames = getPhaseNames(groupId, targetType);
   const clean = sanitizeExercises({
     phases: cfg,
     environments: environments ?? fallbackEnvs,
     descriptions: descriptions ?? fallbackDescs,
+    phaseNames: phaseNames ?? fallbackNames,
+    globalType: targetType,
   });
 
   if (groupId) {
     // Actualizar en memoria de inmediato para evitar lecturas obsoletas al cambiar de pestaña
-    setGroupExercises(groupId, clean.phases, clean.environments, clean.descriptions);
+    setGroupExercises(groupId, clean.phases, clean.environments, clean.descriptions, clean.phaseNames);
     pendingGroupSaves.add(groupId);
     const task = savingPromise.then(() => {
       const write = updateDoc(groupRef(groupId), {
@@ -282,6 +478,7 @@ export async function saveExercises(
           phases: clean.phases,
           environments: clean.environments,
           descriptions: clean.descriptions,
+          phaseNames: clean.phaseNames,
         },
         exercisesUpdatedAt: Date.now(),
         exercisesUpdatedBy: editorEmail,
@@ -297,20 +494,36 @@ export async function saveExercises(
     return;
   }
 
-  current = clean.phases;
-  currentEnvs = clean.environments;
-  currentDescriptions = clean.descriptions;
-  loading = Promise.resolve(clean.phases);
+  if (targetType === "curso") {
+    currentCursoPhases = clean.phases;
+    currentCursoEnvs = clean.environments;
+    currentCursoDescriptions = clean.descriptions;
+  } else {
+    current = clean.phases;
+    currentEnvs = clean.environments;
+    currentDescriptions = clean.descriptions;
+    currentPhaseNames = clean.phaseNames;
+  }
+  currentGlobalType = targetType;
+  loading = Promise.resolve(targetType === "curso" ? currentCursoPhases : current);
+
+  const docPayload = {
+    phases: current,
+    environments: currentEnvs,
+    descriptions: currentDescriptions,
+    phaseNames: currentPhaseNames,
+    globalType: currentGlobalType,
+    cursoExercises: {
+      phases: currentCursoPhases,
+      environments: currentCursoEnvs,
+      descriptions: currentCursoDescriptions,
+    },
+    updatedAt: Date.now(),
+    updatedBy: editorEmail,
+  };
+
   const task = savingPromise.then(() =>
-    fastWrite(
-      setDoc(ref(), {
-        phases: clean.phases,
-        environments: clean.environments,
-        descriptions: clean.descriptions,
-        updatedAt: Date.now(),
-        updatedBy: editorEmail,
-      })
-    )
+    fastWrite(setDoc(ref(), docPayload))
   );
   savingPromise = task.catch(() => {});
   await task;

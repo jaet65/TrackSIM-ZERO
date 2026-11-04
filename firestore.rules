@@ -10,7 +10,7 @@ service cloud.firestore {
     // Collection: evaluations
     // Document ID: f{phase}_{fileName}
     // Fields:
-    //   - phase: int (1..6) - Fase evaluada
+    //   - phase: int (1..30) - Fase evaluada
     //   - driverId: string - Slug del conductor
     //   - driverName: string (1..200 chars) - Nombre del conductor
     //   - fileName: string - Nombre de archivo procesado
@@ -98,7 +98,7 @@ service cloud.firestore {
     // Validador de creación de evaluación
     function isValidEvaluationCreate() {
       return request.resource.data.phase is int
-        && request.resource.data.phase >= 1 && request.resource.data.phase <= 6
+        && request.resource.data.phase >= 1 && request.resource.data.phase <= 30
         && request.resource.data.driverName is string
         && request.resource.data.driverName.size() > 0 && request.resource.data.driverName.size() <= 200
         && request.resource.data.score is number

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../components/AuthProvider";
-import { PHASES, isAdminEmail } from "../lib/config";
+import { isAdminEmail } from "../lib/config";
 import {
   exerciseKey,
   loadExercises,
@@ -9,11 +9,17 @@ import {
   getExercises,
   getExerciseEnvironments,
   getExerciseDescriptions,
+  getPhaseNames,
+  getPhasesList,
+  getGroupType,
+  setGlobalTypeMemory,
+  setGroupTypeMemory,
   detectEnvironmentFromName,
   type ExerciseConfig,
   type ExerciseEnvironment,
   type ExerciseEnvironmentsMap,
   type ExerciseDescriptionsMap,
+  type PhaseNamesMap,
 } from "../lib/exercises";
 import {
   listGroups,
@@ -41,6 +47,9 @@ export default function Exercises() {
   const [cfg, setCfg] = useState<ExerciseConfig | null>(null);
   const [envs, setEnvs] = useState<ExerciseEnvironmentsMap>({});
   const [descriptions, setDescriptions] = useState<ExerciseDescriptionsMap>({});
+  const [phaseNamesState, setPhaseNamesState] = useState<PhaseNamesMap>({});
+  const [editingPhaseNameId, setEditingPhaseNameId] = useState<number | null>(null);
+  const [phaseNameInput, setPhaseNameInput] = useState("");
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [draftEnvs, setDraftEnvs] = useState<Record<number, ExerciseEnvironment>>({});
   const [dirty, setDirty] = useState(false);
@@ -60,24 +69,54 @@ export default function Exercises() {
     [groups, selectedGroupId]
   );
 
+  const phasesList = useMemo(() => {
+    if (!cfg) return [];
+    return getPhasesList(selectedGroupId || null, cfg).map((p) => ({
+      ...p,
+      name: phaseNamesState[p.id]?.trim() || p.name,
+    }));
+  }, [selectedGroupId, cfg, phaseNamesState]);
+
+  // Modalidad para la plantilla global cuando no hay grupo seleccionado
+  const [globalTypeState, setGlobalTypeState] = useState<GroupType>(() => getGroupType(null));
+
   const isClosedGroup = selectedGroup?.status === "closed";
-  const groupType: GroupType = selectedGroup?.type || "escuela";
+  const groupType: GroupType = selectedGroupId ? (selectedGroup?.type || "escuela") : globalTypeState;
   const isCurso = groupType === "curso";
   const canEdit = selectedGroupId
     ? !isClosedGroup
     : isAdminEmail(user?.email);
 
   const toggleGroupType = async (newType: GroupType) => {
-    if (!selectedGroupId || isClosedGroup || newType === groupType) return;
-    try {
-      await updateGroupType(selectedGroupId, newType);
-      setGroups((prev) =>
-        prev.map((g) => (g.id === selectedGroupId ? { ...g, type: newType } : g))
-      );
-      setMsg(`Modalidad cambiada a «${newType === "curso" ? "Curso (Sin Fases)" : "Escuela (6 Fases)"}».`);
-    } catch (err) {
-      setMsg((err as Error).message);
+    if (newType === groupType) return;
+    if (!selectedGroupId) {
+      if (dirty && !window.confirm("Tienes cambios sin guardar en esta modalidad. ¿Deseas cambiar de modalidad y descartarlos?")) {
+        return;
+      }
+      setGlobalTypeState(newType);
+      setGlobalTypeMemory(newType);
+      const newCfg = getExercises(null, newType);
+      const newEnvs = getExerciseEnvironments(null, newType);
+      const newDescs = getExerciseDescriptions(null, newType);
+      const newNames = getPhaseNames(null, newType);
+      setCfg(structuredClone(newCfg));
+      setEnvs(structuredClone(newEnvs));
+      setDescriptions(structuredClone(newDescs));
+      setPhaseNamesState(structuredClone(newNames));
+      setDirty(false);
+      setMsg(`Mostrando Plantilla Global de «${newType === "curso" ? "Curso (Sin Fases)" : "Escuela (Con Fases)"}».`);
+      return;
     }
+    if (isClosedGroup) return;
+    if (!window.confirm(`¿Deseas cambiar la modalidad de «${selectedGroup?.name}» a «${newType === "curso" ? "Curso (Sin Fases)" : "Escuela (Con Fases)"}»? Deberás hacer clic en «Guardar Ejercicios» para aplicar el cambio.`)) {
+      return;
+    }
+    setGroups((prev) =>
+      prev.map((g) => (g.id === selectedGroupId ? { ...g, type: newType } : g))
+    );
+    setGroupTypeMemory(selectedGroupId, newType);
+    setDirty(true);
+    setMsg(`Modalidad cambiada temporalmente a «${newType === "curso" ? "Curso (Sin Fases)" : `Escuela (${phasesList.length} Fases)`}». Haz clic en «Guardar Ejercicios» para confirmar.`);
   };
 
   useEffect(() => {
@@ -88,7 +127,7 @@ export default function Exercises() {
           setSelectedGroupId("");
         }
       })
-      .catch(() => {});
+      .catch(() => { });
     // Solo al montar: valida el grupo inicial una única vez
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -97,14 +136,19 @@ export default function Exercises() {
     setLoadingRules(true);
     setMsg("");
     setDirty(false);
+    const effectiveGlobalType = !selectedGroupId ? getGroupType(null) : undefined;
     Promise.all([
-      loadExercises(true, selectedGroupId || null),
+      loadExercises(true, selectedGroupId || null, effectiveGlobalType),
       listUploadedExerciseNames(selectedGroupId || null).catch(() => [] as string[]),
     ])
       .then(([c, detected]) => {
         setCfg(structuredClone(c));
-        setEnvs(structuredClone(getExerciseEnvironments(selectedGroupId || null)));
-        setDescriptions(structuredClone(getExerciseDescriptions(selectedGroupId || null)));
+        setEnvs(structuredClone(getExerciseEnvironments(selectedGroupId || null, effectiveGlobalType)));
+        setDescriptions(structuredClone(getExerciseDescriptions(selectedGroupId || null, effectiveGlobalType)));
+        setPhaseNamesState(structuredClone(getPhaseNames(selectedGroupId || null, effectiveGlobalType)));
+        if (!selectedGroupId) {
+          setGlobalTypeState(effectiveGlobalType || "escuela");
+        }
         setUploadedNames(detected);
       })
       .catch((e: Error) => setMsg(e.message))
@@ -133,15 +177,15 @@ export default function Exercises() {
         : `el grupo «${groups.find((g) => g.id === sourceId)?.name || sourceId}»`;
 
     try {
-      await loadExercises(false, targetId);
-      setCfg(structuredClone(getExercises(targetId)));
-      setEnvs(structuredClone(getExerciseEnvironments(targetId)));
-      setDescriptions(structuredClone(getExerciseDescriptions(targetId)));
+      await loadExercises(false, targetId, groupType);
+      setCfg(structuredClone(getExercises(targetId, groupType)));
+      setEnvs(structuredClone(getExerciseEnvironments(targetId, groupType)));
+      setDescriptions(structuredClone(getExerciseDescriptions(targetId, groupType)));
+      setPhaseNamesState(structuredClone(getPhaseNames(targetId, groupType)));
       setDirty(true);
       setCopySourceId("");
       setMsg(
-        `Ejercicios copiados desde ${sourceLabel}. Haz clic en «Guardar Catálogo» para aplicarlos a ${
-          selectedGroup ? `«${selectedGroup.name}»` : "la Plantilla Global"
+        `Ejercicios copiados desde ${sourceLabel}. Haz clic en «Guardar Catálogo» para aplicarlos a ${selectedGroup ? `«${selectedGroup.name}»` : "la Plantilla Global"
         }.`
       );
     } catch (e) {
@@ -222,9 +266,65 @@ export default function Exercises() {
     setMsg("");
   };
 
+  const handleStartRenamePhase = (phaseId: number, currentName: string) => {
+    setEditingPhaseNameId(phaseId);
+    setPhaseNameInput(currentName);
+  };
+
+  const handleSavePhaseName = (phaseId: number) => {
+    const trimmed = phaseNameInput.trim();
+    if (!trimmed) {
+      // Si está vacío, resetear a la fase por defecto
+      const nextNames = { ...phaseNamesState };
+      delete nextNames[phaseId];
+      setPhaseNamesState(nextNames);
+    } else {
+      setPhaseNamesState({ ...phaseNamesState, [phaseId]: trimmed });
+    }
+    setEditingPhaseNameId(null);
+    setDirty(true);
+    setMsg("");
+  };
+
+  const handleAddPhase = () => {
+    if (!cfg) return;
+    const existingIds = phasesList.map((p) => p.id);
+    const nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+    if (nextId > 30) {
+      alert("Se ha alcanzado el límite máximo de 30 fases.");
+      return;
+    }
+    const nextCfg = { ...cfg, [nextId]: [] };
+    const nextNames = { ...phaseNamesState, [nextId]: `Fase ${nextId}` };
+    setPhaseNamesState(nextNames);
+    update(nextCfg, envs);
+    setMsg(`Fase ${nextId} agregada exitosamente.`);
+  };
+
+  const handleRemovePhase = (phaseId: number) => {
+    if (!cfg) return;
+    const count = (cfg[phaseId] ?? []).length;
+    if (count > 0 && !window.confirm(`La Fase ${phaseId} contiene ${count} ejercicio(s). Si la eliminas, sus ejercicios también se quitarán del catálogo. ¿Deseas continuar?`)) {
+      return;
+    }
+    if (phasesList.length <= 1) {
+      alert("Debe existir al menos una fase configurada en el modo Escuela.");
+      return;
+    }
+
+    const nextCfg = { ...cfg };
+    delete nextCfg[phaseId];
+    delete nextCfg[String(phaseId)];
+    const nextNames = { ...phaseNamesState };
+    delete nextNames[phaseId];
+    setPhaseNamesState(nextNames);
+    update(nextCfg, envs);
+    setMsg(`Fase ${phaseId} eliminada.`);
+  };
+
   const handleExportCsv = () => {
     if (!cfg) return;
-    const csvContent = exportExercisesToCsv(cfg, isCurso, envs, descriptions);
+    const csvContent = exportExercisesToCsv(cfg, isCurso, envs, descriptions, phasesList);
     const dateStr = new Date().toISOString().slice(0, 10);
     const scopeLabel = selectedGroup ? selectedGroup.name.replace(/[^a-zA-Z0-9_-]/g, "_") : "plantilla_global";
     const fileName = `catalogo_ejercicios_${scopeLabel}_${dateStr}.csv`;
@@ -324,11 +424,22 @@ export default function Exercises() {
   const save = async () => {
     setBusy(true);
     try {
-      await saveExercises(cfg, user?.email ?? "", envs, selectedGroupId || null, descriptions);
+      if (selectedGroupId && selectedGroup?.type) {
+        await updateGroupType(selectedGroupId, selectedGroup.type);
+      }
+      await saveExercises(
+        cfg,
+        user?.email ?? "",
+        envs,
+        selectedGroupId || null,
+        descriptions,
+        phaseNamesState,
+        selectedGroupId ? undefined : globalTypeState
+      );
       setDirty(false);
       setMsg(
         selectedGroup
-          ? `Catálogo de ejercicios guardado para el grupo «${selectedGroup.name}».`
+          ? `Catálogo y configuración guardados para el grupo «${selectedGroup.name}».`
           : "Plantilla global de ejercicios guardada correctamente."
       );
     } catch (e) {
@@ -422,7 +533,7 @@ export default function Exercises() {
             </div>
           </div>
 
-          {selectedGroupId && !isClosedGroup && (
+          {(!selectedGroupId || !isClosedGroup) && (
             <div className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-white p-1">
               <span className="text-[11px] font-bold text-slate-500 px-2 uppercase tracking-wider">
                 Modalidad:
@@ -430,24 +541,22 @@ export default function Exercises() {
               <button
                 type="button"
                 onClick={() => toggleGroupType("escuela")}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
-                  !isCurso
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${!isCurso
                     ? "bg-indigo-600 text-white shadow-xs"
                     : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-                }`}
+                  }`}
               >
-                🏫 Escuela (6 Fases)
+                🏫 Escuela ({phasesList.length} Fases)
               </button>
               <button
                 type="button"
                 onClick={() => toggleGroupType("curso")}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
-                  isCurso
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${isCurso
                     ? "bg-purple-600 text-white shadow-xs"
                     : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-                }`}
+                  }`}
               >
-                🎯 Curso (Sin Fases)
+                🎯 Curso
               </button>
             </div>
           )}
@@ -511,7 +620,7 @@ export default function Exercises() {
         </div>
       </section>
 
-      {/* Listado de Ejercicios: 6 Fases (Escuela) o Lista Directa (Curso) */}
+      {/* Listado de Ejercicios: Fases (Escuela) o Lista Directa (Curso) */}
       {isCurso ? (
         <section className="rounded-2xl border border-purple-200/80 bg-white p-5 shadow-sm space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-100 pb-3">
@@ -657,170 +766,260 @@ export default function Exercises() {
           })()}
         </section>
       ) : (
-        <div className="grid gap-4">
-          {PHASES.map((p) => {
-            const list = cfg[p.id] ?? [];
-            return (
-              <section
-                key={p.id}
-                className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-3"
+        <div className="space-y-4">
+          {/* Barra superior de control de fases */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-800">
+                Estructura de Fases ({phasesList.length} fase{phasesList.length === 1 ? "" : "s"} configurada{phasesList.length === 1 ? "" : "s"})
+              </span>
+              <span className="text-[11px] text-slate-500">
+                · Puedes editar el nombre o agregar/quitar fases según tu plan de capacitación
+              </span>
+            </div>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={handleAddPhase}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer"
+                title="Agregar una nueva fase a la estructura"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold">
-                      {p.id}
-                    </span>
-                    <h2 className="text-sm font-bold text-slate-900">
-                      Fase {p.id}: {p.name}
-                    </h2>
-                  </div>
-                  <span className="text-[11px] text-slate-500 font-mono">
-                    {list.length} ejercicio(s)
-                  </span>
-                </div>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                + Nueva Fase
+              </button>
+            )}
+          </div>
 
-                {list.length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500 bg-slate-50/50">
-                    Sin ejercicios asignados a esta fase.
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {list.map((n) => {
-                      const key = exerciseKey(n);
-                      const rawSetting = envs[key] ?? "AUTO";
-                      const isAuto = rawSetting === "AUTO";
-                      const effective = isAuto ? detectEnvironmentFromName(n) : rawSetting;
+          <div className="grid gap-4">
+            {phasesList.map((p) => {
+              const list = cfg[p.id] ?? [];
+              const isEditing = editingPhaseNameId === p.id;
 
-                      return (
-                        <li
-                          key={n}
-                          className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 text-xs text-slate-800"
-                        >
-                          <div className="flex flex-col min-w-0">
-                            <div className="flex items-center gap-2.5">
-                              <span className="font-semibold text-slate-900 truncate">{n}</span>
-                              {envBadge(effective, isAuto)}
-                            </div>
-                            {descriptions[key] && (
-                              <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5" title={descriptions[key]}>
-                                {descriptions[key]}
-                              </p>
-                            )}
-                          </div>
+              return (
+                <section
+                  key={p.id}
+                  className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 flex-1 min-w-[240px]">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold shrink-0">
+                        {p.id}
+                      </span>
 
-                          <div className="flex items-center gap-2 ml-auto">
-                            {canEdit && (
-                              <select
-                                value={p.id}
-                                onChange={(e) => movePhase(p.id, Number(e.target.value), n)}
-                                className="rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 py-1 text-[11px] font-bold text-indigo-700 shadow-xs focus:border-indigo-500 focus:outline-none"
-                                title="Mover ejercicio a otra fase"
-                              >
-                                {PHASES.map((ph) => (
-                                  <option key={ph.id} value={ph.id}>
-                                    Fase {ph.id}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-
-                            {canEdit ? (
-                              <select
-                                value={rawSetting}
-                                onChange={(e) => setEnvForExercise(n, e.target.value as ExerciseEnvironment)}
-                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 shadow-xs focus:border-indigo-500 focus:outline-none"
-                                title="Configurar tipo de entorno para telemetría"
-                              >
-                                <option value="AUTO">⚡ Auto-detectar</option>
-                                <option value="CARRETERA">🛣️ Carretera / Plano</option>
-                                <option value="MONTANA">🏔️ Montaña / Sierra</option>
-                                <option value="CIUDAD">🏙️ Ciudad / Maniobras</option>
-                              </select>
-                            ) : (
-                              <span className="text-[11px] text-slate-400 font-medium">
-                                {rawSetting === "AUTO" ? "Automático" : rawSetting}
-                              </span>
-                            )}
-
-                            {canEdit && (
-                              <button
-                                onClick={() => remove(p.id, n)}
-                                className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-rose-600 transition"
-                                title="Quitar ejercicio"
-                              >
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-
-                {canEdit && (
-                  <div className="space-y-2 pt-1">
-                    <div className="flex flex-wrap sm:flex-nowrap gap-2">
-                      <input
-                        value={drafts[p.id] ?? ""}
-                        onChange={(e) => setDrafts({ ...drafts, [p.id]: e.target.value })}
-                        onKeyDown={(e) => e.key === "Enter" && add(p.id)}
-                        placeholder="Ej. 02 - Montaña o 03C - Autopista"
-                        className="flex-1 min-w-[200px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
-                      />
-                      <select
-                        value={draftEnvs[p.id] ?? "AUTO"}
-                        onChange={(e) => setDraftEnvs({ ...draftEnvs, [p.id]: e.target.value as ExerciseEnvironment })}
-                        className="rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-700 focus:border-indigo-500 focus:outline-none"
-                      >
-                        <option value="AUTO">⚡ Auto-detectar</option>
-                        <option value="CARRETERA">🛣️ Carretera</option>
-                        <option value="MONTANA">🏔️ Montaña</option>
-                        <option value="CIUDAD">🏙️ Ciudad</option>
-                      </select>
-                      <button
-                        onClick={() => add(p.id)}
-                        className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition"
-                      >
-                        Agregar
-                      </button>
+                      {isEditing ? (
+                        <div className="flex items-center gap-2 flex-1 max-w-md">
+                          <input
+                            type="text"
+                            value={phaseNameInput}
+                            autoFocus
+                            onChange={(e) => setPhaseNameInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSavePhaseName(p.id);
+                              if (e.key === "Escape") setEditingPhaseNameId(null);
+                            }}
+                            className="flex-1 rounded-xl border border-indigo-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            placeholder="Nombre descriptivo de la fase..."
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSavePhaseName(p.id)}
+                            className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-indigo-700 transition"
+                          >
+                            Guardar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingPhaseNameId(null)}
+                            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 transition"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-sm font-bold text-slate-900">
+                            Fase {p.id}: {p.name}
+                          </h2>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => handleStartRenamePhase(p.id, p.name)}
+                              className="rounded-md p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition"
+                              title="Editar nombre de esta fase"
+                            >
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    {uploadedNames.filter((u) => !list.some((n) => exerciseKey(n) === exerciseKey(u))).length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                        <span className="text-[11px] font-medium text-slate-400">
-                          Ejercicios detectados en reportes (clic para asignar a Fase {p.id}):
-                        </span>
-                        {uploadedNames
-                          .filter((u) => !list.some((n) => exerciseKey(n) === exerciseKey(u)))
-                          .map((u) => {
-                            const assignedPhase = Object.entries(cfg).find(
-                              ([ph, phList]) => Number(ph) !== p.id && (phList ?? []).some((n) => exerciseKey(n) === exerciseKey(u))
-                            )?.[0];
-                            return (
-                              <button
-                                key={u}
-                                type="button"
-                                onClick={() => add(p.id, u)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/60 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer"
-                                title={assignedPhase ? `Mover de Fase ${assignedPhase} a Fase ${p.id}` : `Agregar a Fase ${p.id}`}
-                              >
-                                <span>+ {u}</span>
-                                {assignedPhase && (
-                                  <span className="text-[9px] font-normal text-indigo-500">(en F{assignedPhase})</span>
-                                )}
-                              </button>
-                            );
-                          })}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-3">
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        {list.length} ejercicio(s)
+                      </span>
+                      {canEdit && phasesList.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePhase(p.id)}
+                          className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition"
+                          title={`Eliminar Fase ${p.id}`}
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                )}
-              </section>
-            );
-          })}
+
+                  {list.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500 bg-slate-50/50">
+                      Sin ejercicios asignados a esta fase.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {list.map((n) => {
+                        const key = exerciseKey(n);
+                        const rawSetting = envs[key] ?? "AUTO";
+                        const isAuto = rawSetting === "AUTO";
+                        const effective = isAuto ? detectEnvironmentFromName(n) : rawSetting;
+
+                        return (
+                          <li
+                            key={n}
+                            className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 text-xs text-slate-800"
+                          >
+                            <div className="flex flex-col min-w-0">
+                              <div className="flex items-center gap-2.5">
+                                <span className="font-semibold text-slate-900 truncate">{n}</span>
+                                {envBadge(effective, isAuto)}
+                              </div>
+                              {descriptions[key] && (
+                                <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5" title={descriptions[key]}>
+                                  {descriptions[key]}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 ml-auto">
+                              {canEdit && (
+                                <select
+                                  value={p.id}
+                                  onChange={(e) => movePhase(p.id, Number(e.target.value), n)}
+                                  className="rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 py-1 text-[11px] font-bold text-indigo-700 shadow-xs focus:border-indigo-500 focus:outline-none"
+                                  title="Mover ejercicio a otra fase"
+                                >
+                                  {phasesList.map((ph) => (
+                                    <option key={ph.id} value={ph.id}>
+                                      Fase {ph.id}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+
+                              {canEdit ? (
+                                <select
+                                  value={rawSetting}
+                                  onChange={(e) => setEnvForExercise(n, e.target.value as ExerciseEnvironment)}
+                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 shadow-xs focus:border-indigo-500 focus:outline-none"
+                                  title="Configurar tipo de entorno para telemetría"
+                                >
+                                  <option value="AUTO">⚡ Auto-detectar</option>
+                                  <option value="CARRETERA">🛣️ Carretera / Plano</option>
+                                  <option value="MONTANA">🏔️ Montaña / Sierra</option>
+                                  <option value="CIUDAD">🏙️ Ciudad / Maniobras</option>
+                                </select>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 font-medium">
+                                  {rawSetting === "AUTO" ? "Automático" : rawSetting}
+                                </span>
+                              )}
+
+                              {canEdit && (
+                                <button
+                                  onClick={() => remove(p.id, n)}
+                                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-rose-600 transition"
+                                  title="Quitar ejercicio"
+                                >
+                                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+
+                  {canEdit && (
+                    <div className="space-y-2 pt-1">
+                      <div className="flex flex-wrap sm:flex-nowrap gap-2">
+                        <input
+                          value={drafts[p.id] ?? ""}
+                          onChange={(e) => setDrafts({ ...drafts, [p.id]: e.target.value })}
+                          onKeyDown={(e) => e.key === "Enter" && add(p.id)}
+                          placeholder="Ej. 02 - Montaña o 03C - Autopista"
+                          className="flex-1 min-w-[200px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+                        />
+                        <select
+                          value={draftEnvs[p.id] ?? "AUTO"}
+                          onChange={(e) => setDraftEnvs({ ...draftEnvs, [p.id]: e.target.value as ExerciseEnvironment })}
+                          className="rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-700 focus:border-indigo-500 focus:outline-none"
+                        >
+                          <option value="AUTO">⚡ Auto-detectar</option>
+                          <option value="CARRETERA">🛣️ Carretera</option>
+                          <option value="MONTANA">🏔️ Montaña</option>
+                          <option value="CIUDAD">🏙️ Ciudad</option>
+                        </select>
+                        <button
+                          onClick={() => add(p.id)}
+                          className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition"
+                        >
+                          Agregar
+                        </button>
+                      </div>
+
+                      {uploadedNames.filter((u) => !list.some((n) => exerciseKey(n) === exerciseKey(u))).length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <span className="text-[11px] font-medium text-slate-400">
+                            Ejercicios detectados en reportes (clic para asignar a Fase {p.id}):
+                          </span>
+                          {uploadedNames
+                            .filter((u) => !list.some((n) => exerciseKey(n) === exerciseKey(u)))
+                            .map((u) => {
+                              const assignedPhase = Object.entries(cfg).find(
+                                ([ph, phList]) => Number(ph) !== p.id && (phList ?? []).some((n) => exerciseKey(n) === exerciseKey(u))
+                              )?.[0];
+                              return (
+                                <button
+                                  key={u}
+                                  type="button"
+                                  onClick={() => add(p.id, u)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/60 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer"
+                                  title={assignedPhase ? `Mover de Fase ${assignedPhase} a Fase ${p.id}` : `Agregar a Fase ${p.id}`}
+                                >
+                                  <span>+ {u}</span>
+                                  {assignedPhase && (
+                                    <span className="text-[9px] font-normal text-indigo-500">(en F{assignedPhase})</span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -835,8 +1034,8 @@ export default function Exercises() {
               {busy
                 ? "Guardando…"
                 : selectedGroup
-                ? `Guardar Ejercicios de «${selectedGroup.name}»`
-                : "Guardar Plantilla Global"}
+                  ? `Guardar Ejercicios de «${selectedGroup.name}»`
+                  : "Guardar Plantilla Global"}
             </button>
             {dirty && (
               <span className="text-xs text-amber-700 font-medium flex items-center gap-1.5">
@@ -858,6 +1057,7 @@ export default function Exercises() {
         }}
         parsedRows={pendingCsvRows}
         onConfirm={handleConfirmPhaseImport}
+        phasesList={phasesList}
       />
     </main>
   );

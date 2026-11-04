@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { PHASES } from "../lib/config";
 import {
   getExerciseEnvironments,
   loadExercises,
   saveExercises,
   exerciseKey,
   getGroupType,
+  getPhasesList,
   type ExerciseConfig,
   type ExerciseEnvironment,
   type ExerciseEnvironmentsMap,
@@ -38,6 +38,7 @@ export default function ConfigureExercisesModal({
   const [detectedNames, setDetectedNames] = useState<string[]>([]);
 
   const isCurso = group ? getGroupType(group.id) === "curso" : false;
+  const phasesList = useMemo(() => getPhasesList(group?.id || null, cfg), [group?.id, cfg]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -222,9 +223,9 @@ export default function ConfigureExercisesModal({
                   </div>
                 </div>
               ) : (
-                // MODO ESCUELA (FASES 1 A 6)
+                // MODO ESCUELA (FASES DINÁMICAS)
                 <div className="space-y-3">
-                  {PHASES.map((p) => {
+                  {phasesList.map((p) => {
                     const list = cfg[String(p.id)] ?? [];
                     return (
                       <div

@@ -11,7 +11,12 @@ export function isAllowedEmail(email: string | null | undefined, verified: boole
   return verified && !!email && email.toLowerCase().endsWith(`@${ALLOWED_DOMAIN}`);
 }
 
-export const PHASES = [
+export interface PhaseItem {
+  id: number;
+  name: string;
+}
+
+export const DEFAULT_PHASES: readonly PhaseItem[] = [
   { id: 1, name: "Adaptación Sensorial" },
   { id: 2, name: "Tren Motriz y Sincronización" },
   { id: 3, name: "Dinámica en pendientes" },
@@ -19,6 +24,8 @@ export const PHASES = [
   { id: 5, name: "Maniobrabilidad y Enrampe" },
   { id: 6, name: "Conducción Defensiva y Crisis" },
 ] as const;
+
+export const PHASES = DEFAULT_PHASES;
 
 // Puntos de penalización por minuto que equivalen a 100 puntos perdidos. Normalizar por duración
 // permite comparar ejercicios de distinta longitud; el peso de cada error viene de catalog.ts.
@@ -52,6 +59,7 @@ export function verdictFor(score: number) {
   return VERDICTS.find((v) => score >= v.min) ?? VERDICTS[VERDICTS.length - 1];
 }
 
-export function phaseName(id: number) {
+export function phaseName(id: number, customName?: string) {
+  if (customName?.trim()) return customName.trim();
   return PHASES.find((p) => p.id === id)?.name ?? `Fase ${id}`;
 }

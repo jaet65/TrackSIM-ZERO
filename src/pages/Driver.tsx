@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { phaseName, CRITICAL_LIMIT } from "../lib/config";
+import { getPhaseName } from "../lib/exercises";
 import { SEVERITIES, SEVERITY_ORDER, classify, getCatalog, type Severity } from "../lib/catalog";
 import { driverData, updateEvaluationMarks, type DateFilter, type EvaluationView } from "../lib/db";
 import { resolveExerciseEnvironment } from "../lib/exercises";
@@ -679,7 +680,7 @@ export default function Driver() {
                           </span>
                         </div>
                         <h3 className="text-base font-bold text-slate-900 leading-snug">
-                          {p.phase === 0 ? "Evaluación Integral del Curso" : phaseName(p.phase)}
+                          {p.phase === 0 ? "Evaluación Integral del Curso" : getPhaseName(p.phase, phaseGroupId)}
                         </h3>
                       </div>
                     </div>
@@ -1309,7 +1310,7 @@ export default function Driver() {
                   <p className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
                     <span className="font-semibold text-slate-700">{selectedEval.driverName || data?.name || "Conductor"}</span>
                     <span>·</span>
-                    <span>Fase {selectedEval.phase}: {phaseName(selectedEval.phase)}</span>
+                    <span>Fase {selectedEval.phase}: {getPhaseName(selectedEval.phase, selectedEval.groupId || groupParam || null)}</span>
                   </p>
                 </div>
               </div>

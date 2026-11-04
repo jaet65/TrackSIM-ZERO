@@ -62,6 +62,32 @@ describe("exercise settings", () => {
       phases: { "1": ["Ruta Uno", " Ruta "] },
       environments: { ruta: "MONTANA" },
       descriptions: { ruta: "Pista con curvas" },
+      phaseNames: {},
+      globalType: "escuela",
+      cursoExercises: undefined,
+    });
+  });
+
+  it("sanitizes isolated cursoExercises correctly", () => {
+    expect(
+      sanitizeExercises({
+        phases: { "1": ["Escuela 1"] },
+        cursoExercises: {
+          phases: { "1": ["Curso Ex 1", "Curso Ex 1", ""] },
+          environments: { "curso ex 1": "MONTANA" },
+        },
+      })
+    ).toEqual({
+      phases: { "1": ["Escuela 1"] },
+      environments: {},
+      descriptions: {},
+      phaseNames: {},
+      globalType: "escuela",
+      cursoExercises: {
+        phases: { "1": ["Curso Ex 1"] },
+        environments: { "curso ex 1": "MONTANA" },
+        descriptions: {},
+      },
     });
   });
 

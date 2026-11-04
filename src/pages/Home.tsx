@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import UploadForm from "../components/UploadForm";
-import { isAdminEmail, PHASES } from "../lib/config";
+import { isAdminEmail } from "../lib/config";
+import { getPhasesList, getPhaseName } from "../lib/exercises";
 import {
   getPhasesWithEvaluations,
   listReportExercises,
@@ -42,7 +43,7 @@ export type SortDirection = "asc" | "desc";
 export default function Home() {
   const [params, setParams] = useSearchParams();
   const phaseParam = params.get("fase");
-  const selectedPhase = phaseParam && PHASES.some((p) => p.id === Number(phaseParam))
+  const selectedPhase = phaseParam !== null && !isNaN(Number(phaseParam))
     ? Number(phaseParam)
     : null;
 
@@ -107,6 +108,8 @@ export default function Home() {
   const currentGroupObj = useMemo(() => {
     return allGroups.find((g) => g.id === selectedGroupId) || null;
   }, [allGroups, selectedGroupId]);
+
+  const phasesList = useMemo(() => getPhasesList(selectedGroupId || null), [selectedGroupId]);
 
   const dateFilter: DateFilter = {
     startDate: startDate || undefined,
@@ -271,7 +274,7 @@ export default function Home() {
       setIsExportingZip(true);
       const phaseTitle = selectedPhase === null
         ? "Promedio General (Todas las fases)"
-        : `Fase ${selectedPhase}: ${PHASES.find((p) => p.id === selectedPhase)?.name || ""}`;
+        : `Fase ${selectedPhase}: ${getPhaseName(selectedPhase, selectedGroupId || null)}`;
       const groupTitle = currentGroupObj ? `Grupo: ${currentGroupObj.name}` : "Todos los grupos";
       const dateSubtitle = hasDateFilter
         ? (startDate && endDate ? `${startDate} al ${endDate}` : startDate ? `Desde ${startDate}` : `Hasta ${endDate}`)
@@ -316,7 +319,7 @@ export default function Home() {
     if (!sortedRows || sortedRows.length === 0) return;
     const phaseTitle = selectedPhase === null
       ? "Promedio General (Todas las fases)"
-      : `Fase ${selectedPhase}: ${PHASES.find((p) => p.id === selectedPhase)?.name || ""}`;
+      : `Fase ${selectedPhase}: ${getPhaseName(selectedPhase, selectedGroupId || null)}`;
     const groupTitle = currentGroupObj ? currentGroupObj.name : "Todos los Grupos";
     const dateSubtitle = hasDateFilter
       ? (startDate && endDate ? `${startDate} al ${endDate}` : startDate ? `Desde ${startDate}` : `Hasta ${endDate}`)
@@ -433,7 +436,7 @@ export default function Home() {
                 className="w-full sm:w-56 rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm focus:border-indigo-600 focus:bg-white focus:outline-none transition cursor-pointer"
               >
                 <option value="ALL">🌐 Promedio General (Todas)</option>
-                {PHASES.filter((p) => availablePhases.includes(p.id)).map((p) => (
+                {phasesList.filter((p) => availablePhases.includes(p.id)).map((p) => (
                   <option key={p.id} value={String(p.id)}>
                     Fase {p.id}: {p.name}
                   </option>

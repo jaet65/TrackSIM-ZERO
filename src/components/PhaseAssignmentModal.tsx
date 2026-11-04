@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { PHASES } from "../lib/config";
+import { DEFAULT_PHASES, type PhaseItem } from "../lib/config";
 import type { ParsedExerciseCsvRow } from "../lib/exerciseCsv";
 import { useEscapeKey } from "../lib/useEscapeKey";
 
@@ -8,6 +8,7 @@ export interface PhaseAssignmentModalProps {
   onClose: () => void;
   parsedRows: ParsedExerciseCsvRow[];
   onConfirm: (assignments: Array<{ name: string; phase: number; env?: string; descripcion?: string }>) => void;
+  phasesList?: PhaseItem[];
 }
 
 export default function PhaseAssignmentModal({
@@ -15,18 +16,23 @@ export default function PhaseAssignmentModal({
   onClose,
   parsedRows,
   onConfirm,
+  phasesList = DEFAULT_PHASES as PhaseItem[],
 }: PhaseAssignmentModalProps) {
+  const effectivePhases = phasesList && phasesList.length > 0 ? phasesList : (DEFAULT_PHASES as PhaseItem[]);
+  const firstPhaseId = effectivePhases[0]?.id || 1;
+
   // Inicializar mapa de asignación de fase para cada ejercicio parseado
   const [selectedPhases, setSelectedPhases] = useState<Record<number, number>>({});
   const [includeSelection, setIncludeSelection] = useState<Record<number, boolean>>({});
-  const [bulkPhase, setBulkPhase] = useState<number>(1);
+  const [bulkPhase, setBulkPhase] = useState<number>(firstPhaseId);
 
   // Inicializar estado cuando se abre o cambian las filas
   useState(() => {
     const initPhases: Record<number, number> = {};
     const initInclude: Record<number, boolean> = {};
     parsedRows.forEach((row, idx) => {
-      initPhases[idx] = row.fase && row.fase >= 1 && row.fase <= 6 ? row.fase : 1;
+      const match = row.fase && effectivePhases.some((p) => p.id === row.fase);
+      initPhases[idx] = match ? row.fase! : firstPhaseId;
       initInclude[idx] = true;
     });
     setSelectedPhases(initPhases);
@@ -38,7 +44,9 @@ export default function PhaseAssignmentModal({
   // Cada vez que cambie parsedRows, asegurarse de tener valores iniciales sincronizados
   const rowList = useMemo(() => {
     return parsedRows.map((row, idx) => {
-      const assignedPhase = selectedPhases[idx] ?? (row.fase && row.fase >= 1 && row.fase <= 6 ? row.fase : 1);
+      const match = row.fase && effectivePhases.some((p) => p.id === row.fase);
+      const fallback = match ? row.fase! : firstPhaseId;
+      const assignedPhase = selectedPhases[idx] ?? fallback;
       const isIncluded = includeSelection[idx] ?? true;
       return {
         idx,
@@ -47,7 +55,7 @@ export default function PhaseAssignmentModal({
         included: isIncluded,
       };
     });
-  }, [parsedRows, selectedPhases, includeSelection]);
+  }, [parsedRows, selectedPhases, includeSelection, effectivePhases, firstPhaseId]);
 
   if (!isOpen) return null;
 
@@ -157,7 +165,7 @@ export default function PhaseAssignmentModal({
               onChange={(e) => setBulkPhase(Number(e.target.value))}
               className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-xs focus:border-indigo-500 focus:outline-none"
             >
-              {PHASES.map((p) => (
+              {effectivePhases.map((p) => (
                 <option key={p.id} value={p.id}>
                   Fase {p.id}: {p.name}
                 </option>
@@ -217,7 +225,7 @@ export default function PhaseAssignmentModal({
                   onChange={(e) => handleChangePhase(item.idx, Number(e.target.value))}
                   className="rounded-lg border border-indigo-200 bg-indigo-50/50 px-2.5 py-1 text-xs font-bold text-indigo-900 shadow-xs focus:border-indigo-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
                 >
-                  {PHASES.map((p) => (
+                  {effectivePhases.map((p) => (
                     <option key={p.id} value={p.id}>
                       Fase {p.id}: {p.name}
                     </option>

@@ -17,6 +17,7 @@ import {
   loadExercises,
   getExercises,
   getExerciseEnvironments,
+  getPhaseNames,
   sanitizeExercises,
   setGroupExercises,
   setGroupTypeMemory,
@@ -102,8 +103,8 @@ export function hydrateGroupRules(g: GroupDoc): void {
     setGroupCatalog(g.id, sanitizeCatalog(g.catalog));
   }
   if (g.exercises && !hasPendingExerciseSave(g.id)) {
-    const { phases, environments, descriptions } = sanitizeExercises(g.exercises);
-    setGroupExercises(g.id, phases, environments, descriptions);
+    const { phases, environments, descriptions, phaseNames } = sanitizeExercises(g.exercises);
+    setGroupExercises(g.id, phases, environments, descriptions, phaseNames);
   }
 }
 
@@ -142,12 +143,13 @@ export async function createGroup(
   // Cargar reglas base o del grupo origen para inicializar las reglas propias del nuevo grupo
   await Promise.all([
     loadCatalog(false, sourceGroupId || null),
-    loadExercises(false, sourceGroupId || null),
+    loadExercises(false, sourceGroupId || null, sourceGroupId ? undefined : type),
   ]);
 
   const initialCatalog = JSON.parse(JSON.stringify(getCatalog(sourceGroupId || null))) as CatalogConfig;
-  const initialPhases = JSON.parse(JSON.stringify(getExercises(sourceGroupId || null)));
-  const initialEnvs = JSON.parse(JSON.stringify(getExerciseEnvironments(sourceGroupId || null)));
+  const initialPhases = JSON.parse(JSON.stringify(getExercises(sourceGroupId || null, sourceGroupId ? undefined : type)));
+  const initialEnvs = JSON.parse(JSON.stringify(getExerciseEnvironments(sourceGroupId || null, sourceGroupId ? undefined : type)));
+  const initialPhaseNames = JSON.parse(JSON.stringify(getPhaseNames(sourceGroupId || null, sourceGroupId ? undefined : type)));
 
   const id = `grp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const now = Date.now();
@@ -168,6 +170,7 @@ export async function createGroup(
     exercises: {
       phases: initialPhases,
       environments: initialEnvs,
+      phaseNames: initialPhaseNames,
     },
     exercisesUpdatedAt: now,
     exercisesUpdatedBy: user.email,

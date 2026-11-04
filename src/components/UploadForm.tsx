@@ -226,7 +226,7 @@ export default function UploadForm({
         loadCatalog(false, activeGroup.id),
         loadExercises(false, activeGroup.id),
       ]);
-    } catch {}
+    } catch { }
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
@@ -234,7 +234,7 @@ export default function UploadForm({
         const report = parseReport(decodeCsv(await f.arrayBuffer()), activeGroup.id);
         const phase = phaseForExercise(report.exercise, activeGroup.id);
         if (!phase) throw new Error(`La unidad «${report.exercise}» no está en el catálogo de ejercicios del grupo «${activeGroup.name}».`);
-        
+
         const status = await saveEvaluation(
           phase,
           f.name,
@@ -334,22 +334,20 @@ export default function UploadForm({
                     <button
                       type="button"
                       onClick={() => setIsCreatingNew(false)}
-                      className={`flex-1 rounded-lg py-1.5 transition ${
-                        !isCreatingNew
-                          ? "bg-white text-indigo-700 shadow-xs"
-                          : "text-slate-600 hover:text-slate-900"
-                      }`}
+                      className={`flex-1 rounded-lg py-1.5 transition ${!isCreatingNew
+                        ? "bg-white text-indigo-700 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                        }`}
                     >
                       Elegir Existente
                     </button>
                     <button
                       type="button"
                       onClick={() => setIsCreatingNew(true)}
-                      className={`flex-1 rounded-lg py-1.5 transition ${
-                        isCreatingNew
-                          ? "bg-white text-indigo-700 shadow-xs"
-                          : "text-slate-600 hover:text-slate-900"
-                      }`}
+                      className={`flex-1 rounded-lg py-1.5 transition ${isCreatingNew
+                        ? "bg-white text-indigo-700 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                        }`}
                     >
                       Crear Nuevo
                     </button>
@@ -408,28 +406,26 @@ export default function UploadForm({
                         <button
                           type="button"
                           onClick={() => setNewGroupType("escuela")}
-                          className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition ${
-                            newGroupType === "escuela"
-                              ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-600"
-                              : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
-                          }`}
+                          className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition ${newGroupType === "escuela"
+                            ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-600"
+                            : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                            }`}
                         >
                           <span className="text-xs font-bold flex items-center gap-1">
                             🏫 Escuela
                           </span>
                           <span className="text-[10px] text-slate-500 mt-0.5">
-                            Estructura de 6 Fases
+                            Estructura de Fases
                           </span>
                         </button>
 
                         <button
                           type="button"
                           onClick={() => setNewGroupType("curso")}
-                          className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition ${
-                            newGroupType === "curso"
-                              ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-600"
-                              : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
-                          }`}
+                          className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition ${newGroupType === "curso"
+                            ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-600"
+                            : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                            }`}
                         >
                           <span className="text-xs font-bold flex items-center gap-1">
                             🎯 Curso
@@ -745,22 +741,20 @@ export default function UploadForm({
                   <button
                     type="button"
                     onClick={() => setIsCreatingNew(false)}
-                    className={`flex-1 rounded-lg py-1.5 transition ${
-                      !isCreatingNew
-                        ? "bg-white text-indigo-700 shadow-xs"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
+                    className={`flex-1 rounded-lg py-1.5 transition ${!isCreatingNew
+                      ? "bg-white text-indigo-700 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                      }`}
                   >
                     Elegir Existente
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsCreatingNew(true)}
-                    className={`flex-1 rounded-lg py-1.5 transition ${
-                      isCreatingNew
-                        ? "bg-white text-indigo-700 shadow-xs"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
+                    className={`flex-1 rounded-lg py-1.5 transition ${isCreatingNew
+                      ? "bg-white text-indigo-700 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                      }`}
                   >
                     Crear Nuevo
                   </button>
@@ -820,28 +814,26 @@ export default function UploadForm({
                       <button
                         type="button"
                         onClick={() => setNewGroupType("escuela")}
-                        className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition ${
-                          newGroupType === "escuela"
-                            ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-600"
-                            : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
-                        }`}
+                        className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition ${newGroupType === "escuela"
+                          ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-600"
+                          : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                          }`}
                       >
                         <span className="text-xs font-bold flex items-center gap-1">
                           🏫 Escuela
                         </span>
                         <span className="text-[10px] text-slate-500 mt-0.5">
-                          Estructura de 6 Fases
+                          Estructura de Fases
                         </span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setNewGroupType("curso")}
-                        className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition ${
-                          newGroupType === "curso"
-                            ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-600"
-                            : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
-                        }`}
+                        className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition ${newGroupType === "curso"
+                          ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-600"
+                          : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                          }`}
                       >
                         <span className="text-xs font-bold flex items-center gap-1">
                           🎯 Curso

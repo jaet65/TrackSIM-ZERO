@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import JSZip from "jszip";
 import { driverData, type DateFilter, type EvaluationView, type ReportExerciseSummary } from "./db";
 import { phaseName, CRITICAL_LIMIT } from "./config";
+import { getPhaseName } from "./exercises";
 import { SEVERITIES, SEVERITY_ORDER, type Severity } from "./catalog";
 import { computeTelemetryAxes } from "./telemetryRadar";
 import { generatePedagogicalRecommendations } from "./recommendations";
@@ -765,7 +766,7 @@ export function generateExecutiveSummaryPdf(
 
     while (firstPageExerciseCount < exercises.length) {
       const exercise = exercises[firstPageExerciseCount];
-      const phaseLabel = exercise.phase > 0 ? `${phaseName(exercise.phase)} · ` : "";
+      const phaseLabel = exercise.phase > 0 ? `${getPhaseName(exercise.phase)} · ` : "";
       const suffix = ` · ${exercise.drivers} cond.`;
 
       doc.setFont("helvetica", "normal");
@@ -862,7 +863,7 @@ export function generateExecutiveSummaryPdf(
       const rowH = Math.max(9, totalTextH + 3.5);
 
       doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-      doc.text(exercise.phase > 0 ? phaseName(exercise.phase) : "Curso (sin fases)", 18, pageY + 4.5);
+      doc.text(exercise.phase > 0 ? getPhaseName(exercise.phase) : "Curso (sin fases)", 18, pageY + 4.5);
       
       // Nombre del ejercicio (escalón superior)
       doc.setFont("helvetica", "bold");
@@ -1220,7 +1221,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
 
     doc.setFontSize(8);
     doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-    const pName = p.phase === 0 ? "Ejercicios del Curso" : phaseName(p.phase);
+    const pName = p.phase === 0 ? "Ejercicios del Curso" : getPhaseName(p.phase, filter?.groupId);
     doc.text(pName.length > 28 ? `${pName.substring(0, 26)}…` : pName, cardX + 3.5, cardY + 9);
 
     // Badge de la fase (solo si son múltiples fases para no duplicar en Curso)
