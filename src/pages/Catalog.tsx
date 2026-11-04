@@ -166,7 +166,7 @@ export default function Catalog() {
     .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity) || a.name.localeCompare(b.name));
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
+    <main className="w-full space-y-6 px-4 py-8 sm:px-8 xl:px-12">
       <div>
         <Link
           to={selectedGroupId ? `/?grupo=${selectedGroupId}` : "/"}

@@ -344,7 +344,7 @@ export default function Home() {
   };
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
+    <main className="w-full space-y-6 px-4 py-8 sm:px-8 xl:px-12">
       {/* Hero Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-6">
         <div>

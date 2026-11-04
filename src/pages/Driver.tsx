@@ -323,7 +323,7 @@ export default function Driver() {
 
   if (error) {
     return (
-      <main className="mx-auto max-w-6xl p-6">
+      <main className="w-full p-6 sm:p-8 xl:p-12">
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-700 text-sm">
           {error}
         </div>
@@ -344,7 +344,7 @@ export default function Driver() {
 
   if (data === null) {
     return (
-      <main className="mx-auto max-w-6xl p-6">
+      <main className="w-full p-6 sm:p-8 xl:p-12">
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center space-y-3 shadow-sm">
           <p className="text-slate-600">Conductor no encontrado en el sistema.</p>
           <Link to="/" className="inline-block rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition">
@@ -369,7 +369,7 @@ export default function Driver() {
     : [activeSeverityTab];
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
+    <main className="w-full space-y-6 px-4 py-8 sm:px-8 xl:px-12">
       {/* Top back & title */}
       <div>
         <Link

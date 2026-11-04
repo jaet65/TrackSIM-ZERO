@@ -75,8 +75,8 @@ export default function ProtectedLayout() {
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900 selection:bg-indigo-600 selection:text-white">
-      <aside className={`sticky top-0 flex h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200 ${isSidebarExpanded ? "w-64" : "w-16"}`}>
-          <Link to="/" className={`flex h-[73px] items-center gap-3 border-b border-slate-100 px-3 ${isSidebarExpanded ? "justify-start px-5" : "justify-center"}`}>
+      <aside className={`sticky top-0 flex h-screen shrink-0 flex-col bg-white transition-[width] duration-200 ${isSidebarExpanded ? "w-64" : "w-16"}`}>
+          <Link to="/" className={`flex h-[73px] items-center gap-3 px-3 ${isSidebarExpanded ? "justify-start px-5" : "justify-center"}`}>
             <img src="/Logo.png" alt="TrackSIM Logo" className="h-10 w-10 shrink-0 rounded-full object-contain shadow-sm" />
             {isSidebarExpanded && <span className="whitespace-nowrap font-bold tracking-tight text-slate-900">
               TrackSIM <span className="ml-1 rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700">PRO</span>
@@ -191,7 +191,7 @@ export default function ProtectedLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-md">
+        <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md">
           <div className="flex min-h-[73px] items-center justify-between gap-3 px-4 sm:px-6">
             <div className="flex min-w-0 items-center gap-3">
               {!isSidebarExpanded && (
