@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { phaseName, CRITICAL_LIMIT } from "../lib/config";
+import { CRITICAL_LIMIT } from "../lib/config";
 import { getPhaseName } from "../lib/exercises";
 import { SEVERITIES, SEVERITY_ORDER, classify, getCatalog, type Severity } from "../lib/catalog";
 import { driverData, updateEvaluationMarks, type DateFilter, type EvaluationView } from "../lib/db";
@@ -1573,15 +1573,6 @@ export default function Driver() {
                 const groupExerciseSummary = groupExerciseEvals.length > 0 ? computeTelemetryAxes(groupExerciseEvals, selectedEval.exercise, selectedEval.groupId || groupParam || null) : null;
                 const groupExerciseAxes = groupExerciseSummary?.axes;
 
-                const groupExercisePolygonPoints = groupExerciseAxes
-                  ? groupExerciseAxes
-                    .map((ga, i) => {
-                      const c = getCoords(i, ga.value);
-                      return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
-                    })
-                    .join(" ")
-                  : "";
-
                 const axes = [
                   {
                     label: "Zona Verde",
@@ -1619,6 +1610,15 @@ export default function Driver() {
                     y: centerY + r * Math.sin(angle),
                   };
                 };
+
+                const groupExercisePolygonPoints = groupExerciseAxes
+                  ? groupExerciseAxes
+                    .map((ga, i) => {
+                      const c = getCoords(i, ga.value);
+                      return `${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+                    })
+                    .join(" ")
+                  : "";
 
                 const radarPolygonPoints = axes
                   .map((a, i) => {

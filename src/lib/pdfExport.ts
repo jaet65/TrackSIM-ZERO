@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import JSZip from "jszip";
 import { driverData, type DateFilter, type EvaluationView, type ReportExerciseSummary } from "./db";
-import { phaseName, CRITICAL_LIMIT } from "./config";
+import { CRITICAL_LIMIT } from "./config";
 import { getPhaseName } from "./exercises";
 import { SEVERITIES, SEVERITY_ORDER, type Severity } from "./catalog";
 import { computeTelemetryAxes } from "./telemetryRadar";
