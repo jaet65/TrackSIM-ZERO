@@ -4,7 +4,9 @@ import * as fs from "fs";
 import * as http from "http";
 import * as https from "https";
 import { spawn } from "child_process";
+import { pipeline } from "stream";
 import { Client } from "pg";
+import { createDownloadCoordinator, installAfterDownload, isValidInstallerSize } from "./updateDownload";
 
 const GITHUB_OWNER = "jaet65";
 const GITHUB_REPO = "TrackSIM-ZERO";
@@ -563,7 +565,7 @@ ipcMain.handle("lander:extractSessions", async (_, { inicio, fin, anon, limit })
 // --------------------------------------------------------
 // Auto-Updater en Segundo Plano contra GitHub Releases
 // --------------------------------------------------------
-let isBackgroundDownloading = false;
+const downloadCoordinator = createDownloadCoordinator();
 let downloadedInstallerPath: string | null = null;
 let downloadedVersion: string | null = null;
 let lastDownloadProgress: { percent: number; transferredMB: number; totalMB: number } | null = null;
@@ -574,27 +576,31 @@ function getPendingUpdateFile(): string {
 }
 
 function savePendingUpdate(installerPath: string, version: string) {
-  try {
-    fs.writeFileSync(getPendingUpdateFile(), JSON.stringify({ installerPath, version }), "utf-8");
-  } catch {}
+  fs.writeFileSync(getPendingUpdateFile(), JSON.stringify({ installerPath, version }), "utf-8");
 }
 
 // Si quedó una actualización descargada, se instala al abrir la app (no al cerrarla)
-function applyPendingUpdateOnStartup(): boolean {
+async function applyPendingUpdateOnStartup(): Promise<boolean> {
   if (!app.isPackaged) return false;
   const file = getPendingUpdateFile();
   try {
     if (!fs.existsSync(file)) return false;
     const { installerPath, version } = JSON.parse(fs.readFileSync(file, "utf-8"));
-    fs.unlinkSync(file);
     if (!installerPath || !fs.existsSync(installerPath) || !isNewerVersion(app.getVersion(), version)) {
+      fs.unlinkSync(file);
       return false;
     }
     downloadedVersion = version;
-    launchSilentInstaller(installerPath, true);
+    await launchSilentInstaller(installerPath, true);
+    try {
+      fs.unlinkSync(file);
+    } catch (err) {
+      console.error("No se pudo borrar la actualización pendiente:", err);
+    }
     setTimeout(() => app.exit(0), 300);
     return true;
-  } catch {
+  } catch (err) {
+    console.error("No se pudo iniciar la actualización pendiente:", err);
     return false;
   }
 }
@@ -659,6 +665,7 @@ function downloadFileWithProgress(
       return reject(new Error("Demasiadas redirecciones al descargar el instalador"));
     }
 
+    let responseStarted = false;
     const req = https.get(
       url,
       {
@@ -668,6 +675,7 @@ function downloadFileWithProgress(
         },
       },
       (res) => {
+        responseStarted = true;
         const status = res.statusCode || 0;
         if ([301, 302, 303, 307, 308].includes(status) && res.headers.location) {
           res.resume();
@@ -701,15 +709,9 @@ function downloadFileWithProgress(
           }
         });
 
-        res.pipe(fileStream);
-
-        fileStream.on("finish", () => {
-          fileStream.close(() => resolve());
-        });
-
-        fileStream.on("error", (err) => {
-          fs.unlink(destPath, () => {});
-          reject(err);
+        pipeline(res, fileStream, (err) => {
+          if (err) reject(err);
+          else resolve();
         });
       }
     );
@@ -719,8 +721,7 @@ function downloadFileWithProgress(
     });
 
     req.on("error", (err) => {
-      fs.unlink(destPath, () => {});
-      reject(err);
+      if (!responseStarted) reject(err);
     });
   });
 }
@@ -728,25 +729,28 @@ function downloadFileWithProgress(
 function getInstallerDestPath(fileName: string, version: string): string {
   const fallback = `TrackSIM-PRO-Setup-${version || "latest"}.exe`;
   const safeName = (fileName || fallback).replace(/[^a-zA-Z0-9._ -]/g, "_");
-  return path.join(app.getPath("temp"), safeName);
+  const safeVersion = (version || "latest").replace(/[^a-zA-Z0-9._-]/g, "_");
+  return path.join(app.getPath("temp"), `tracksim-update-${safeVersion}-${safeName}`);
 }
 
-async function startBackgroundDownload(
+function startBackgroundDownload(
   downloadUrl: string,
   fileName: string,
   version: string,
   expectedBytes?: number
 ): Promise<string> {
   const destPath = getInstallerDestPath(fileName, version);
+  const key = JSON.stringify([downloadUrl, destPath, version, expectedBytes]);
+  return downloadCoordinator.run(key, async () => {
 
-  // Si ya se descargó previamente en esta sesión o en temp con el tamaño esperado, reutilizarlo
-  if (fs.existsSync(destPath)) {
-    try {
+    // Solo reutilizar archivos cuyo tamaño coincida o que ya se validaron en esta sesión.
+    if (fs.existsSync(destPath)) {
       const stat = fs.statSync(destPath);
-      if (!expectedBytes || stat.size === expectedBytes || stat.size > 10 * 1024 * 1024) {
+      if (isValidInstallerSize(stat.size, expectedBytes) &&
+          (expectedBytes !== undefined || (downloadedInstallerPath === destPath && downloadedVersion === version))) {
+        savePendingUpdate(destPath, version);
         downloadedInstallerPath = destPath;
         downloadedVersion = version;
-        savePendingUpdate(destPath, version);
         lastDownloadProgress = {
           percent: 100,
           transferredMB: Number((stat.size / (1024 * 1024)).toFixed(1)),
@@ -760,52 +764,50 @@ async function startBackgroundDownload(
         }
         return destPath;
       }
-    } catch {}
-  }
+    }
 
-  if (isBackgroundDownloading) {
-    return destPath;
-  }
+    const partPath = `${destPath}.part`;
 
-  isBackgroundDownloading = true;
-  const partPath = `${destPath}.part`;
+    try {
+      await downloadFileWithProgress(downloadUrl, partPath, (progress) => {
+        lastDownloadProgress = progress;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("updater:downloadProgress", {
+            ...progress,
+            version,
+          });
+        }
+      });
 
-  try {
-    await downloadFileWithProgress(downloadUrl, partPath, (progress) => {
-      lastDownloadProgress = progress;
+      const actualSize = fs.statSync(partPath).size;
+      if (!isValidInstallerSize(actualSize, expectedBytes)) {
+        throw new Error("La descarga del instalador está incompleta. Inténtalo nuevamente.");
+      }
+
+      if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+      fs.renameSync(partPath, destPath);
+
+      savePendingUpdate(destPath, version);
+      downloadedInstallerPath = destPath;
+      downloadedVersion = version;
+
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("updater:downloadProgress", {
-          ...progress,
+        mainWindow.webContents.send("updater:downloaded", {
           version,
+          filePath: destPath,
         });
       }
-    });
-
-    if (fs.existsSync(destPath)) {
-      try {
-        fs.unlinkSync(destPath);
-      } catch {}
+      return destPath;
+    } catch (err) {
+      if (fs.existsSync(partPath)) fs.unlinkSync(partPath);
+      throw err;
     }
-    fs.renameSync(partPath, destPath);
-
-    downloadedInstallerPath = destPath;
-    downloadedVersion = version;
-    savePendingUpdate(destPath, version);
-
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("updater:downloaded", {
-        version,
-        filePath: destPath,
-      });
-    }
-    return destPath;
-  } finally {
-    isBackgroundDownloading = false;
-  }
+  });
 }
 
-function launchSilentInstaller(installerPath: string, restartAfterInstall: boolean) {
-  if (!installerPath || !fs.existsSync(installerPath) || installingNow) return;
+async function launchSilentInstaller(installerPath: string, restartAfterInstall: boolean): Promise<void> {
+  if (!installerPath || !fs.existsSync(installerPath)) throw new Error("El instalador descargado no está disponible.");
+  if (installingNow) throw new Error("Ya se está iniciando una actualización.");
   installingNow = true;
 
   const escapedInstaller = installerPath.replace(/'/g, "''");
@@ -986,9 +988,15 @@ if ($restart) {
         windowsHide: true,
       }
     );
+    await new Promise<void>((resolve, reject) => {
+      child.once("spawn", resolve);
+      child.once("error", reject);
+    });
     child.unref();
   } catch (err) {
+    installingNow = false;
     console.error("Failed to launch silent installer script:", err);
+    throw err;
   }
 }
 
@@ -1045,6 +1053,12 @@ ipcMain.handle("updater:check", async () => {
     if (updateAvailable && downloadUrl) {
       startBackgroundDownload(downloadUrl, fileName, latestVersion, expectedSize).catch((err) => {
         console.error("Background update download error:", err);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("updater:downloadError", {
+            version: latestVersion,
+            error: err instanceof Error ? err.message : "No se pudo descargar la actualización.",
+          });
+        }
       });
     }
 
@@ -1065,7 +1079,8 @@ ipcMain.handle("updater:check", async () => {
       downloadUrl,
       fileName,
       assetSizeMB: exeAsset?.size ? Number((exeAsset.size / (1024 * 1024)).toFixed(1)) : null,
-      downloadingInBackground: isBackgroundDownloading,
+      assetSizeBytes: expectedSize,
+      downloadingInBackground: downloadCoordinator.isDownloading(),
       readyToInstall: isReadyToInstall,
       progress: lastDownloadProgress,
     };
@@ -1078,39 +1093,25 @@ ipcMain.handle("updater:check", async () => {
   }
 });
 
-ipcMain.handle("updater:downloadAndInstall", async (_, { downloadUrl, fileName, version }) => {
+ipcMain.handle("updater:downloadAndInstall", async (_, { downloadUrl, fileName, version, expectedBytes }) => {
   try {
     const targetVersion = version || downloadedVersion || "latest";
 
-    // Si ya se descargó en segundo plano, aplicarlo de inmediato en modo silencioso y reiniciar
-    if (downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
-      launchSilentInstaller(downloadedInstallerPath, true);
-      setTimeout(() => {
-        if (localStaticServer) {
-          try {
-            localStaticServer.close();
-          } catch {}
+    const destPath = await installAfterDownload(
+      () => {
+        if (downloadUrl) return startBackgroundDownload(downloadUrl, fileName, targetVersion, expectedBytes);
+        if (downloadedInstallerPath && downloadedVersion === targetVersion && fs.existsSync(downloadedInstallerPath) &&
+            isValidInstallerSize(fs.statSync(downloadedInstallerPath).size, expectedBytes)) {
+          return Promise.resolve(downloadedInstallerPath);
         }
+        return Promise.reject(new Error("No se encontró el archivo instalador (.exe) en el Release de GitHub."));
+      },
+      (installerPath) => launchSilentInstaller(installerPath, true),
+      () => setTimeout(() => {
+        if (localStaticServer) localStaticServer.close();
         app.exit(0);
-      }, 300);
-      return { ok: true, filePath: downloadedInstallerPath };
-    }
-
-    if (!downloadUrl) {
-      throw new Error("No se encontró el archivo instalador (.exe) en el Release de GitHub.");
-    }
-
-    const destPath = await startBackgroundDownload(downloadUrl, fileName, targetVersion);
-    launchSilentInstaller(destPath, true);
-
-    setTimeout(() => {
-      if (localStaticServer) {
-        try {
-          localStaticServer.close();
-        } catch {}
-      }
-      app.exit(0);
-    }, 300);
+      }, 300)
+    );
 
     return { ok: true, filePath: destPath };
   } catch (err: any) {
@@ -1146,8 +1147,8 @@ if (!gotTheLock) {
     }
   });
 
-  app.whenReady().then(() => {
-    if (applyPendingUpdateOnStartup()) return;
+  app.whenReady().then(async () => {
+    if (await applyPendingUpdateOnStartup()) return;
     createWindow();
 
     app.on("activate", () => {

@@ -12,7 +12,7 @@ Sistema de telemetría y evaluación de conductores para simuladores Lander. Dis
 - Diplomas PDF individuales o en ZIP para todos los conductores evaluados de un grupo.
 - Respaldo y restauración de datos.
 - Autenticación con Firebase (Google).
-- Actualizaciones automáticas en segundo plano desde GitHub Releases: la actualización se descarga y se instala al volver a abrir la app, o de inmediato si el usuario lo elige.
+- Actualizaciones automáticas en segundo plano desde GitHub Releases: la actualización se descarga y se instala al volver a abrir la app, o el usuario puede programar la instalación al terminar la descarga. La aplicación permanece abierta mientras descarga y, si ocurre un error, permite reintentar.
 - Protocolo `tracksim://` para abrir la app de escritorio desde el navegador.
 
 La referencia de velocidad y distancia para detectar conducción lenta se calcula por ejercicio y grupo. Las evaluaciones con una marca activa de exceso de velocidad se excluyen de ambos promedios; las marcas anuladas no provocan exclusión. Se requieren al menos dos evaluaciones válidas para crear la referencia. Las calificaciones de grupos ya cerrados permanecen congeladas.

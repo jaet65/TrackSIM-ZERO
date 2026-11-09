@@ -16,6 +16,7 @@ export interface UpdateCheckResult {
   downloadUrl?: string | null;
   fileName?: string;
   assetSizeMB?: number | null;
+  assetSizeBytes?: number;
   downloadingInBackground?: boolean;
   readyToInstall?: boolean;
   progress?: DownloadProgress | null;
@@ -67,7 +68,7 @@ export default function UpdateNotifier() {
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [upToDateNotice, setUpToDateNotice] = useState(false);
-  useEscapeKey(modalOpen && !applyingUpdate, () => setModalOpen(false));
+  useEscapeKey(modalOpen && (!applyingUpdate || !readyToInstall), () => setModalOpen(false));
 
   const currentVersion = info?.currentVersion || pkg.version || "1.0.0";
   const isElectron = Boolean(getLanderBridge()?.checkForUpdates);
@@ -189,9 +190,17 @@ export default function UpdateNotifier() {
         })
       : null;
 
+    const unsubError = bridge.onUpdateDownloadError
+      ? bridge.onUpdateDownloadError((data: { error: string }) => {
+          setDownloading(false);
+          setActionError(data.error);
+        })
+      : null;
+
     return () => {
       if (typeof unsubProgress === "function") unsubProgress();
       if (typeof unsubDownloaded === "function") unsubDownloaded();
+      if (typeof unsubError === "function") unsubError();
     };
   }, []);
 
@@ -208,15 +217,21 @@ export default function UpdateNotifier() {
         setDownloading(true);
         setProgress((prev) => prev || { percent: 0, transferredMB: 0, totalMB: info.assetSizeMB || 0 });
       }
-      const res = await bridge.downloadAndInstallUpdate(
-        info.downloadUrl,
-        info.fileName,
-        info.latestVersion
-      );
-      if (!res?.ok) {
+      try {
+        const res = await bridge.downloadAndInstallUpdate(
+          info.downloadUrl,
+          info.fileName,
+          info.latestVersion,
+          info.assetSizeBytes
+        );
+        if (!res?.ok) {
+          throw new Error(res?.error || "No se pudo aplicar la actualización automáticamente.");
+        }
+      } catch (err) {
         setApplyingUpdate(false);
         setDownloading(false);
-        setActionError(res?.error || "No se pudo aplicar la actualización automáticamente.");
+        setActionError(err instanceof Error ? err.message : "No se pudo aplicar la actualización automáticamente.");
+        setModalOpen(true);
       }
     } else {
       const targetUrl =
@@ -334,7 +349,7 @@ export default function UpdateNotifier() {
                     Actualización v{info.latestVersion} lista
                   </h4>
                   <p className="mt-0.5 text-[11px] text-slate-500 leading-snug">
-                    Se descargó en segundo plano y se instalará automáticamente al cerrar la app.
+                    Se descargó en segundo plano y se instalará al volver a abrir la app.
                   </p>
                 </div>
               </div>
@@ -412,7 +427,7 @@ export default function UpdateNotifier() {
                   </div>
                 </div>
 
-                {!applyingUpdate && (
+                {(!applyingUpdate || !readyToInstall) && (
                   <button
                     onClick={() => setModalOpen(false)}
                     className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
@@ -435,7 +450,7 @@ export default function UpdateNotifier() {
 
               {readyToInstall && (
                 <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs text-emerald-800">
-                  ✓ El instalador ya se descargó en segundo plano. Se aplicará silenciosamente al cerrar la aplicación o puedes reiniciar ahora mismo.
+                  ✓ El instalador ya se descargó en segundo plano. Se aplicará al volver a abrir la aplicación o puedes reiniciar ahora mismo.
                 </div>
               )}
 
@@ -463,7 +478,9 @@ export default function UpdateNotifier() {
                     />
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    Puedes cerrar esta ventana y seguir trabajando mientras termina la descarga.
+                    {applyingUpdate
+                      ? "La aplicación se reiniciará automáticamente cuando termine la descarga."
+                      : "Puedes cerrar esta ventana y seguir trabajando mientras termina la descarga."}
                   </p>
                 </div>
               )}
@@ -484,13 +501,13 @@ export default function UpdateNotifier() {
                   Ver en GitHub
                 </button>
 
-                {!applyingUpdate && (
+                {(!applyingUpdate || !readyToInstall) && (
                   <button
                     type="button"
                     onClick={() => setModalOpen(false)}
                     className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                   >
-                    {readyToInstall ? "Actualizar al salir" : "Seguir trabajando"}
+                    {readyToInstall ? "Actualizar al abrir" : "Seguir trabajando"}
                   </button>
                 )}
 
@@ -507,7 +524,7 @@ export default function UpdateNotifier() {
                   {applyingUpdate ? (
                     <>
                       <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                      Reiniciando...
+                      {readyToInstall ? "Reiniciando..." : "Esperando descarga..."}
                     </>
                   ) : readyToInstall ? (
                     "Reiniciar y actualizar ahora"

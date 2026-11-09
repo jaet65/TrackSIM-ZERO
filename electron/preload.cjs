@@ -7,8 +7,8 @@ contextBridge.exposeInMainWorld("landerBridge", {
   extractSessions: (args) => ipcRenderer.invoke("lander:extractSessions", args),
   // Auto-updater (GitHub Releases en segundo plano)
   checkForUpdates: () => ipcRenderer.invoke("updater:check"),
-  downloadAndInstallUpdate: (downloadUrl, fileName, version) =>
-    ipcRenderer.invoke("updater:downloadAndInstall", { downloadUrl, fileName, version }),
+  downloadAndInstallUpdate: (downloadUrl, fileName, version, expectedBytes) =>
+    ipcRenderer.invoke("updater:downloadAndInstall", { downloadUrl, fileName, version, expectedBytes }),
   openExternalUrl: (url) => ipcRenderer.invoke("updater:openExternal", url),
   onUpdateProgress: (callback) => {
     const listener = (_event, data) => callback(data);
@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld("landerBridge", {
     ipcRenderer.on("updater:downloaded", listener);
     return () => ipcRenderer.removeListener("updater:downloaded", listener);
   },
+  onUpdateDownloadError: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on("updater:downloadError", listener);
+    return () => ipcRenderer.removeListener("updater:downloadError", listener);
+  },
 });
-
 
