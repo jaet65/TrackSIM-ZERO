@@ -48,6 +48,7 @@ export type GroupDoc = {
   id: string;
   name: string;
   description?: string;
+  courseName?: string;
   type?: GroupType; // "escuela" (con 6 fases) | "curso" (evaluación directa sin fases)
   status: GroupStatus;
   createdAt: number;
@@ -135,10 +136,12 @@ export async function createGroup(
   description: string,
   user: { name: string; email: string },
   sourceGroupId?: string | null,
-  type: GroupType = "escuela"
+  type: GroupType = "escuela",
+  courseName = ""
 ): Promise<GroupDoc> {
   const trimmedName = name.trim();
   if (!trimmedName) throw new Error("El nombre del grupo no puede estar vacío.");
+  if (courseName.trim().length > 200) throw new Error("El nombre del curso no puede superar 200 caracteres.");
 
   // Cargar reglas base o del grupo origen para inicializar las reglas propias del nuevo grupo
   await Promise.all([
@@ -157,6 +160,7 @@ export async function createGroup(
     id,
     name: trimmedName,
     description: description.trim(),
+    ...(courseName.trim() ? { courseName: courseName.trim() } : {}),
     type,
     status: "open",
     createdAt: now,
@@ -332,16 +336,19 @@ export async function updateGroupType(groupId: string, type: GroupType): Promise
 export async function updateGroupDetails(
   groupId: string,
   name: string,
-  description?: string
+  description?: string,
+  courseName?: string
 ): Promise<void> {
   if (!groupId) return;
   const trimmed = name.trim();
   if (!trimmed) throw new Error("El nombre del grupo no puede estar vacío.");
+  if (courseName !== undefined && courseName.trim().length > 200) throw new Error("El nombre del curso no puede superar 200 caracteres.");
   const grpRef = doc(groupsCol(), groupId);
   await fastWrite(
     updateDoc(grpRef, {
       name: trimmed,
       ...(description !== undefined ? { description: description.trim() } : {}),
+      ...(courseName !== undefined ? { courseName: courseName.trim() } : {}),
     })
   );
 }

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   adjustScoreForCritical,
+  buildCertificateRecipients,
   dictamen,
   driverSlug,
   withCurrentScore,
   type EvaluationDoc,
 } from "./db";
 import { computeGroupBenchmarks } from "./pacingBenchmark";
+import { removeGroupExercises, setGroupExercises } from "./exercises";
 
 const evaluation = (overrides: Partial<EvaluationDoc> = {}): EvaluationDoc => ({
   phase: 1,
@@ -101,5 +103,20 @@ describe("evaluation helpers", () => {
     const view = withCurrentScore(driver, undefined, "evaluation-1", benchmarks);
     expect(view.pacing).toMatchObject({ hasBenchmark: true, isPacingDeficit: false, penaltyDeduction: 0 });
     expect(view.score).toBe(withCurrentScore(driver).score);
+  });
+
+  it("builds recipients for all evaluated drivers of the selected group using their latest evaluation date", () => {
+    setGroupExercises("group", { "1": ["Autopista"] });
+    const docs = [
+      withCurrentScore(evaluation({ groupId: "group", date: "2026-10-01", frozen: true, frozenScore: 8 })),
+      withCurrentScore(evaluation({ groupId: "group", date: "2026-11-09", fileName: "second.csv", frozen: true, frozenScore: 5.4 })),
+      withCurrentScore(evaluation({ groupId: "group", driverId: "beto", driverName: "Beto", date: "" })),
+      withCurrentScore(evaluation({ groupId: "other", driverId: "other" })),
+    ];
+    const recipients = buildCertificateRecipients("group", docs);
+    removeGroupExercises("group");
+    expect(recipients).toHaveLength(2);
+    expect(recipients[0]).toMatchObject({ driverId: "ana-perez", lastEvaluationDate: "2026-11-09", score: 5.4 });
+    expect(recipients[1]).toMatchObject({ driverId: "beto", lastEvaluationDate: null });
   });
 });

@@ -8,6 +8,7 @@ import { resolveExerciseEnvironment } from "../lib/exercises";
 import { computeTelemetryAxes } from "../lib/telemetryRadar";
 import { generatePedagogicalRecommendations } from "../lib/recommendations";
 import { downloadDriverPdf } from "../lib/pdfExport";
+import { downloadCertificate } from "../lib/certificates";
 import { useAuth } from "../components/AuthProvider";
 import type { Mark } from "../lib/parse";
 import { useEscapeKey } from "../lib/useEscapeKey";
@@ -48,6 +49,7 @@ export default function Driver() {
   const [sortField, setSortField] = useState<SortField>("time");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [exportingCertificate, setExportingCertificate] = useState(false);
 
   // Estados para agregar o anular errores manualmente
   const { user } = useAuth();
@@ -372,6 +374,18 @@ export default function Driver() {
     ? SEVERITY_ORDER
     : [activeSeverityTab];
 
+  const handleCertificate = async () => {
+    if (!groupParam || exportingCertificate) return;
+    setExportingCertificate(true);
+    try {
+      await downloadCertificate(groupParam, id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "No se pudo generar el documento.");
+    } finally {
+      setExportingCertificate(false);
+    }
+  };
+
   return (
     <main className="w-full space-y-6 px-4 py-8 sm:px-8 xl:px-12">
       {/* Top back & title */}
@@ -396,6 +410,12 @@ export default function Driver() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+              <button type="button" disabled={!groupParam || exportingCertificate}
+                onClick={handleCertificate}
+                title={groupParam ? "Utiliza todas las evaluaciones del grupo" : "Selecciona un grupo para emitir el documento"}
+                className="no-print rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 disabled:opacity-40">
+                {exportingCertificate ? "Generando..." : "Diploma"}
+              </button>
             <button
               onClick={async () => {
                 if (isExportingPdf || !data) return;

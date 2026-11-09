@@ -30,6 +30,7 @@ export default function Groups() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
+  const [newCourseName, setNewCourseName] = useState("");
   const [newGroupType, setNewGroupType] = useState<GroupType>("curso");
   const [sourceGroupId, setSourceGroupId] = useState("");
   const [creating, setCreating] = useState(false);
@@ -42,6 +43,7 @@ export default function Groups() {
   const [editingGroup, setEditingGroup] = useState<GroupDoc | null>(null);
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editCourseName, setEditCourseName] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Eliminar grupo
@@ -105,11 +107,13 @@ export default function Groups() {
           email: user?.email || "",
         },
         sourceGroupId || null,
-        newGroupType
+        newGroupType,
+        newCourseName
       );
       setShowCreateModal(false);
       setNewGroupName("");
       setNewGroupDesc("");
+      setNewCourseName("");
       setNewGroupType("curso");
       setSourceGroupId("");
       setActiveId(created.id);
@@ -169,6 +173,7 @@ export default function Groups() {
     setEditingGroup(g);
     setEditName(g.name);
     setEditDesc(g.description || "");
+    setEditCourseName(g.courseName || "");
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -178,7 +183,7 @@ export default function Groups() {
     setSavingEdit(true);
     setError("");
     try {
-      await updateGroupDetails(editingGroup.id, editName, editDesc);
+      await updateGroupDetails(editingGroup.id, editName, editDesc, editCourseName);
       setSuccess(`Grupo actualizado a «${editName.trim()}» correctamente.`);
       setTimeout(() => setSuccess(""), 4000);
       setEditingGroup(null);
@@ -540,6 +545,12 @@ export default function Groups() {
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Nombre del curso (opcional)</label>
+                <input type="text" maxLength={200} value={newCourseName} onChange={(e) => setNewCourseName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-medium text-slate-800" />
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Descripción / Observaciones (Opcional)
                 </label>
@@ -655,6 +666,12 @@ export default function Groups() {
                   onChange={(e) => setEditName(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Nombre del curso (opcional)</label>
+                <input type="text" maxLength={200} value={editCourseName} onChange={(e) => setEditCourseName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-medium text-slate-800" />
               </div>
 
               <div>

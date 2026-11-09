@@ -833,6 +833,46 @@ export async function driverData(driverId: string, filter?: DateFilter): Promise
   return buildDriverDataFromEvals(driverId, rawEvals, filter, groupEvals);
 }
 
+export type CertificateRecipient = {
+  driverId: string;
+  name: string;
+  score: number;
+  lastEvaluationDate: string | null;
+};
+
+export async function getLatestEvaluationYear(): Promise<string> {
+  const snap = await safeGetDocs(query(evaluations()));
+  const dates = snap.docs.map((d) => (d.data() as EvaluationDoc).date?.slice(0, 10))
+    .filter((date): date is string => !!date && /^\d{4}-\d{2}-\d{2}$/.test(date))
+    .sort();
+  const latestDate = dates.at(-1);
+  if (!latestDate) throw new Error("No se pudo determinar el año: no hay fechas de evaluación disponibles.");
+  return latestDate.slice(0, 4);
+}
+
+export async function listCertificateRecipients(groupId: string): Promise<CertificateRecipient[]> {
+  if (!groupId) throw new Error("Selecciona un grupo para emitir documentos.");
+  const evaluations = await fetchEvaluations(undefined, undefined, { groupId });
+  return buildCertificateRecipients(groupId, evaluations);
+}
+
+export function buildCertificateRecipients(groupId: string, evaluations: EvaluationView[]): CertificateRecipient[] {
+  const byDriver = new Map<string, EvaluationView[]>();
+  for (const evaluation of evaluations) {
+    if (evaluation.groupId !== groupId) continue;
+    const items = byDriver.get(evaluation.driverId) ?? [];
+    items.push(evaluation);
+    byDriver.set(evaluation.driverId, items);
+  }
+  return [...byDriver.entries()].map(([driverId, items]) => {
+    const data = buildDriverDataFromEvals(driverId, items, { groupId });
+    if (!data) throw new Error(`No se pudo calcular la calificación de ${driverId}.`);
+    const dates = items.map((item) => item.date.slice(0, 10))
+      .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort();
+    return { driverId, name: data.name, score: data.overall, lastEvaluationDate: dates.at(-1) ?? null };
+  }).sort((a, b) => a.name.localeCompare(b.name, "es"));
+}
+
 /**
  * Actualiza las marcas de una evaluación (ej. al anular falsos positivos o agregar errores manuales)
  * y recalcula su calificación y conteo de errores en Firestore.

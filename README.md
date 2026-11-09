@@ -9,12 +9,17 @@ Sistema de telemetría y evaluación de conductores para simuladores Lander. Dis
 - Gestión de grupos, ejercicios y catálogo.
 - Sincronización con la base de datos Lander.
 - Exportación de resúmenes ejecutivos (PDF) y expedientes (ZIP).
+- Diplomas PDF individuales o en ZIP para todos los conductores evaluados de un grupo.
 - Respaldo y restauración de datos.
 - Autenticación con Firebase (Google).
 - Actualizaciones automáticas en segundo plano desde GitHub Releases: la actualización se descarga y se instala al volver a abrir la app, o de inmediato si el usuario lo elige.
 - Protocolo `tracksim://` para abrir la app de escritorio desde el navegador.
 
 La referencia de velocidad y distancia para detectar conducción lenta se calcula por ejercicio y grupo. Las evaluaciones con una marca activa de exceso de velocidad se excluyen de ambos promedios; las marcas anuladas no provocan exclusión. Se requieren al menos dos evaluaciones válidas para crear la referencia. Las calificaciones de grupos ya cerrados permanecen congeladas.
+
+Los diplomas utilizan el formato de reconocimiento de `Material Apoyo/RECONOCIMIENTO 6@.jpg` y se emiten para cualquier conductor evaluado, independientemente de su calificación. En Resultados, selecciona un grupo y usa «Descargar Expedientes (ZIP)» para incluir los diplomas de todos sus conductores; en el expediente de un conductor puedes descargar el suyo. Con «Todos los grupos», el ZIP contiene únicamente reportes y expedientes. Los diplomas usan la calificación global y la fecha de la última evaluación del grupo, sin filtros de fecha ni fase. El nombre del curso es opcional y se puede definir al crear o editar el grupo; si no está definido, se omite.
+
+La descarga se llama `TrackSIM Reportes_{grupo}_{año}.zip`, usando el año de la última evaluación del grupo (o de todas las evaluaciones en la vista global). Los diplomas están en la carpeta `Diplomas` y cada PDF se llama `{conductor}_Diploma.pdf`. Si varios conductores tienen el mismo nombre de archivo, sus PDF se guardan en carpetas separadas dentro de esa carpeta.
 
 ## Stack
 

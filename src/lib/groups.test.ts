@@ -212,8 +212,10 @@ describe("group helpers and persistence", () => {
       "  Description  ",
       { name: "", email: "admin@example.com" },
       undefined,
-      "curso"
+      "curso",
+      "  Conducción segura  "
     );
+    expect(group.courseName).toBe("Conducción segura");
 
     expect(group).toMatchObject({
       name: "New Group",
@@ -234,10 +236,10 @@ describe("group helpers and persistence", () => {
   });
 
   it("trims group updates and rejects blank names", async () => {
-    await updateGroupDetails("group-1", "  Renamed  ", "  Updated  ");
+    await updateGroupDetails("group-1", "  Renamed  ", "  Updated  ", "  Nuevo curso  ");
     expect(updateDoc).toHaveBeenCalledWith(
       expect.objectContaining({ collectionName: "group-1" }),
-      { name: "Renamed", description: "Updated" }
+      { name: "Renamed", description: "Updated", courseName: "Nuevo curso" }
     );
     await updateGroupType("group-1", "curso");
     expect(updateDoc).toHaveBeenCalledWith(

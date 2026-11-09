@@ -65,6 +65,7 @@ export default function UploadForm({
   const [selectedExistingGroupId, setSelectedExistingGroupId] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
+  const [newCourseName, setNewCourseName] = useState("");
   const [newGroupType, setNewGroupType] = useState<"escuela" | "curso">("curso");
   const [sourceGroupId, setSourceGroupId] = useState("");
   const [allGroupsList, setAllGroupsList] = useState<GroupDoc[]>([]);
@@ -163,7 +164,8 @@ export default function UploadForm({
             email: user?.email || "",
           },
           sourceGroupId || null,
-          newGroupType
+          newGroupType,
+          newCourseName
         );
         setActiveGroup(created);
       } else {
@@ -177,6 +179,7 @@ export default function UploadForm({
       setShowOpenGroupModal(false);
       setNewGroupName("");
       setNewGroupDesc("");
+      setNewCourseName("");
       setNewGroupType("curso");
       setSourceGroupId("");
       onDone();
@@ -385,6 +388,11 @@ export default function UploadForm({
                         onChange={(e) => setNewGroupName(e.target.value)}
                         className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Nombre del curso (opcional)</label>
+                      <input type="text" maxLength={200} value={newCourseName} onChange={(e) => setNewCourseName(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800" />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">

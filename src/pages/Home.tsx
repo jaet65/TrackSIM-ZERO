@@ -584,7 +584,7 @@ export default function Home() {
               onClick={handleExportZip}
               disabled={!rows || rows.length === 0 || isExportingZip}
               className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-indigo-600/20 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
-              title="Descargar ZIP con el reporte global y expedientes individuales de cada conductor"
+              title={selectedGroupId ? "Descargar reportes, expedientes y diplomas de todos los conductores del grupo" : "Descargar reportes y expedientes; selecciona un grupo para incluir sus diplomas"}
             >
               {isExportingZip ? (
                 <>

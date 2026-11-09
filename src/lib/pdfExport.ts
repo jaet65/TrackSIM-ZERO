@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import JSZip from "jszip";
-import { driverData, type DateFilter, type EvaluationView, type ReportExerciseSummary } from "./db";
+import { filenamePart, generateGroupCertificates } from "./certificates";
+import { driverData, getLatestEvaluationYear, type DateFilter, type EvaluationView, type ReportExerciseSummary } from "./db";
 import { CRITICAL_LIMIT } from "./config";
 import { getPhaseName } from "./exercises";
 import { SEVERITIES, SEVERITY_ORDER, type Severity } from "./catalog";
@@ -1981,6 +1982,20 @@ export async function downloadBulkReportsZip(
     }
   }
 
+  let zipGroupName = "Todos los grupos";
+  let year: string;
+  if (filter?.groupId) {
+    if (onProgress) onProgress(rows.length, rows.length, "Generando diplomas del grupo");
+    const diplomas = await generateGroupCertificates(filter.groupId);
+    zipGroupName = diplomas.groupName;
+    year = diplomas.year;
+    for (const diploma of diplomas.files) {
+      zip.file(`Diplomas/${diploma.path}`, diploma.content);
+    }
+  } else {
+    year = await getLatestEvaluationYear();
+  }
+
   // 4. Empaquetar y descargar ZIP
   if (onProgress) onProgress(rows.length, rows.length, "Comprimiendo archivo ZIP...");
   const content = await zip.generateAsync({ type: "blob" });
@@ -1988,8 +2003,7 @@ export async function downloadBulkReportsZip(
   const url = URL.createObjectURL(content);
   const a = document.createElement("a");
   a.href = url;
-  const dateStr = new Date().toISOString().slice(0, 10);
-  a.download = `TrackSIM_Reportes_${dateStr}.zip`;
+  a.download = `TrackSIM Reportes_${filenamePart(zipGroupName)}_${year}.zip`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
