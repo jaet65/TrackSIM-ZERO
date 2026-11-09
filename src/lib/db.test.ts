@@ -6,6 +6,7 @@ import {
   withCurrentScore,
   type EvaluationDoc,
 } from "./db";
+import { computeGroupBenchmarks } from "./pacingBenchmark";
 
 const evaluation = (overrides: Partial<EvaluationDoc> = {}): EvaluationDoc => ({
   phase: 1,
@@ -84,5 +85,21 @@ describe("evaluation helpers", () => {
       criticalCount: 2,
       marks: frozenMarks,
     });
+  });
+
+  it("recalculates the score without a pacing penalty when speeding peers are excluded", () => {
+    const driver = evaluation({ telemetry: { averageSpeed: 12.5, distanceMeters: 1000 } });
+    const benchmarks = computeGroupBenchmarks([
+      driver,
+      evaluation({ telemetry: { averageSpeed: 14, distanceMeters: 1100 } }),
+      evaluation({
+        marks: [{ time: "0:01:00", type: "ERROR", description: "Exceso de velocidad" }],
+        telemetry: { averageSpeed: 37.7, distanceMeters: 5000 },
+      }),
+    ]);
+
+    const view = withCurrentScore(driver, undefined, "evaluation-1", benchmarks);
+    expect(view.pacing).toMatchObject({ hasBenchmark: true, isPacingDeficit: false, penaltyDeduction: 0 });
+    expect(view.score).toBe(withCurrentScore(driver).score);
   });
 });

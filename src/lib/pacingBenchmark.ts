@@ -1,10 +1,15 @@
 import { exerciseKey } from "./exercises";
-import type { TelemetryMetrics } from "./parse";
+import { getCatalog, normalize } from "./catalog";
+import type { Mark, TelemetryMetrics } from "./parse";
 
 export type BenchmarkEvaluationInput = {
   unit?: string;
   exercise?: string;
   telemetry?: TelemetryMetrics;
+  groupId?: string;
+  marks?: Mark[];
+  frozen?: boolean;
+  frozenMarks?: Mark[];
 };
 
 export type ExerciseBenchmark = {
@@ -30,7 +35,8 @@ export type PacingAnalysis = {
 
 /**
  * Calcula el benchmark promedio (velocidad y distancia) de cada ejercicio para un grupo específico.
- * Solo considera evaluaciones que tengan métricas de telemetría válidas (> 0).
+ * Excluye evaluaciones con marcas activas de exceso de velocidad y solo considera
+ * métricas de telemetría válidas (> 0).
  */
 export function computeGroupBenchmarks(
   evalDocs: BenchmarkEvaluationInput[]
@@ -43,6 +49,17 @@ export function computeGroupBenchmarks(
     if (!name) continue;
     const key = exerciseKey(name);
     if (!key) continue;
+
+    const marks = doc.frozen ? doc.frozenMarks ?? doc.marks : doc.marks;
+    const speedingEntry = getCatalog(doc.groupId).entries.find(
+      (entry) => normalize(entry.name) === "exceso de velocidad"
+    );
+    const speedingAliases = new Set((speedingEntry?.aliases ?? []).map(normalize));
+    if (marks?.some((mark) => {
+      if (mark.type !== "ERROR" || mark.ignored) return false;
+      const description = normalize(mark.description);
+      return /^exceso de velocidad\b/.test(description) || speedingAliases.has(description);
+    })) continue;
 
     const tel = doc.telemetry;
     const speed = tel?.averageSpeed ?? 0;
@@ -173,4 +190,3 @@ export function analyzePacing(
     reason: reasons.join(" y "),
   };
 }
-

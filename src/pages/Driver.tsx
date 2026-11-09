@@ -264,6 +264,9 @@ export default function Driver() {
       const refreshedData = await driverData(id, dateFilter);
       if (refreshedData) {
         setData(refreshedData);
+        const refreshedEval = updatedEval.docId && [...refreshedData.evals, ...refreshedData.groupEvals]
+          .find((evaluation) => evaluation.docId === updatedEval.docId);
+        if (refreshedEval) setSelectedEval(refreshedEval);
       }
     } catch (e: unknown) {
       setMarksActionError(e instanceof Error ? e.message : "No se pudieron guardar los cambios.");

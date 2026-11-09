@@ -14,6 +14,8 @@ Sistema de telemetría y evaluación de conductores para simuladores Lander. Dis
 - Actualizaciones automáticas en segundo plano desde GitHub Releases: la actualización se descarga y se instala al volver a abrir la app, o de inmediato si el usuario lo elige.
 - Protocolo `tracksim://` para abrir la app de escritorio desde el navegador.
 
+La referencia de velocidad y distancia para detectar conducción lenta se calcula por ejercicio y grupo. Las evaluaciones con una marca activa de exceso de velocidad se excluyen de ambos promedios; las marcas anuladas no provocan exclusión. Se requieren al menos dos evaluaciones válidas para crear la referencia. Las calificaciones de grupos ya cerrados permanecen congeladas.
+
 ## Stack
 
 React 19, TypeScript, Vite, Tailwind CSS 4, React Router, Firebase, Electron y electron-builder.
