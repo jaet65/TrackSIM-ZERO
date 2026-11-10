@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { PendingAuditItem } from "../lib/useAutoSync";
 import type { Mark } from "../lib/parse";
-import { classify } from "../lib/catalog";
+import { classify, SEVERITIES, SEVERITY_ORDER, type Severity } from "../lib/catalog";
 import { dictamen, updateEvaluationMarks } from "../lib/db";
 import { useAuth } from "./AuthProvider";
 import { useEscapeKey } from "../lib/useEscapeKey";
@@ -34,11 +34,48 @@ export default function AuditQueueModal({
   const { user } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [severityFilter, setSeverityFilter] = useState<Severity | "ALL">("ALL");
 
-  if (!isOpen || queue.length === 0) return null;
-
-  const currentItem = queue[selectedIndex] || queue[0];
+  const currentItem = isOpen && queue.length > 0 ? (queue[selectedIndex] || queue[0]) : null;
   const total = queue.length;
+
+  const errorMarksWithMeta = useMemo(() => {
+    if (!currentItem) return [];
+    return currentItem.report.marks
+      .map((m, originalIdx) => {
+        if (m.type !== "ERROR") return null;
+        const cl = classify(m.description, activeGroupId);
+        return {
+          ...m,
+          originalIdx,
+          severity: cl.severity,
+          weight: cl.weight,
+        };
+      })
+      .filter((m): m is NonNullable<typeof m> => m !== null);
+  }, [currentItem, activeGroupId]);
+
+  const severityCounts = useMemo(() => {
+    const counts: Record<Severity, number> = {
+      CRITICO: 0,
+      GRAVE: 0,
+      MODERADO: 0,
+      LEVE: 0,
+    };
+    for (const m of errorMarksWithMeta) {
+      if (counts[m.severity] !== undefined) {
+        counts[m.severity]++;
+      }
+    }
+    return counts;
+  }, [errorMarksWithMeta]);
+
+  const displayedMarks = useMemo(() => {
+    if (severityFilter === "ALL") return errorMarksWithMeta;
+    return errorMarksWithMeta.filter((m) => m.severity === severityFilter);
+  }, [errorMarksWithMeta, severityFilter]);
+
+  if (!isOpen || !currentItem || total === 0) return null;
 
   const handleToggleIgnore = async (markIndex: number) => {
     if (!currentItem || isSaving) return;
@@ -118,10 +155,6 @@ export default function AuditQueueModal({
     }
     onRemoveItem(idToRemove);
   };
-
-  const errorMarks = currentItem.report.marks
-    .map((m, originalIdx) => ({ ...m, originalIdx }))
-    .filter((m) => m.type === "ERROR");
 
   const content = (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 p-4 sm:p-6 backdrop-blur-sm animate-in fade-in duration-150">
@@ -297,20 +330,58 @@ export default function AuditQueueModal({
 
           {/* Panel Derecho: Lista de Infracciones y Botón de Falso Positivo */}
           <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-white">
-            <div className="shrink-0 border-b border-slate-100 px-6 py-3 bg-slate-50/50 flex items-center justify-between">
-              <div>
-                <h4 className="text-sm font-bold text-slate-800">
-                  Desglose de Infracciones y Eventos ({errorMarks.length})
-                </h4>
-                <p className="text-xs text-slate-500">
-                  Haz clic en <span className="font-semibold text-amber-600">"Falso positivo"</span> para anular fallos del simulador (la calificación se recalcula al instante).
-                </p>
+            <div className="shrink-0 border-b border-slate-100 px-6 py-3 bg-slate-50/50 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">
+                    Desglose de Infracciones y Eventos ({errorMarksWithMeta.length})
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Haz clic en <span className="font-semibold text-amber-600">"Falso positivo"</span> para anular fallos del simulador (la calificación se recalcula al instante).
+                  </p>
+                </div>
+                {isSaving && (
+                  <span className="text-xs font-semibold text-indigo-600 animate-pulse">
+                    Recalculando calificación...
+                  </span>
+                )}
               </div>
-              {isSaving && (
-                <span className="text-xs font-semibold text-indigo-600 animate-pulse">
-                  Recalculando calificación...
-                </span>
-              )}
+
+              {/* Filtros por Severidad */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setSeverityFilter("ALL")}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                    severityFilter === "ALL"
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  Todos ({errorMarksWithMeta.length})
+                </button>
+                {SEVERITY_ORDER.map((sev) => {
+                  const count = severityCounts[sev];
+                  const isActive = severityFilter === sev;
+                  const cfg = SEVERITIES[sev];
+                  return (
+                    <button
+                      key={sev}
+                      type="button"
+                      onClick={() => setSeverityFilter(sev)}
+                      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                        isActive
+                          ? `${cfg.badge} shadow-xs font-bold ring-2 ring-indigo-500/20`
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+                      <span>{cfg.label}</span>
+                      <span className="text-[10px] opacity-75 font-mono">({count})</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {errorMessage && (
@@ -319,19 +390,26 @@ export default function AuditQueueModal({
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-2.5">
-              {errorMarks.length === 0 ? (
+            <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-2.5">
+              {displayedMarks.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center text-center p-8 text-slate-400">
-                  <div className="text-4xl mb-2">🎉</div>
-                  <p className="font-semibold text-slate-700">¡Conducción Impecable!</p>
+                  <div className="text-4xl mb-2">
+                    {severityFilter === "ALL" ? "🎉" : "🔍"}
+                  </div>
+                  <p className="font-semibold text-slate-700">
+                    {severityFilter === "ALL"
+                      ? "¡Conducción Impecable!"
+                      : `Sin incidencias de nivel ${SEVERITIES[severityFilter].label}`}
+                  </p>
                   <p className="text-xs text-slate-500 max-w-sm mt-1">
-                    No se registraron errores ni colisiones durante esta sesión del simulador.
+                    {severityFilter === "ALL"
+                      ? "No se registraron errores ni colisiones durante esta sesión del simulador."
+                      : "No se encontraron eventos clasificados con esta gravedad en este ejercicio."}
                   </p>
                 </div>
               ) : (
-                errorMarks.map((m) => {
-                  const cl = classify(m.description, activeGroupId);
-                  const isCrit = cl.severity === "CRITICO";
+                displayedMarks.map((m) => {
+                  const isCrit = m.severity === "CRITICO";
                   const isIgnored = Boolean(m.ignored);
 
                   return (
@@ -363,7 +441,7 @@ export default function AuditQueueModal({
                                 isCrit ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-600"
                               }`}
                             >
-                              {cl.severity}
+                              {m.severity}
                             </span>
                           </div>
                           {isIgnored && m.ignoredBy && (
