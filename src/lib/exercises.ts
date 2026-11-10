@@ -209,7 +209,7 @@ export function getPhasesList(groupId?: string | null, customPhasesConfig?: Exer
  * Devuelve el nombre de una fase considerando la configuración del grupo o global.
  */
 export function getPhaseName(id: number, groupId?: string | null): string {
-  if (id === 0) return "Curso (Sin Fases)";
+  if (id === 0) return "Curso";
   const names = getPhaseNames(groupId);
   if (names[id]?.trim()) return names[id].trim();
   const def = DEFAULT_PHASES.find((p) => p.id === id);

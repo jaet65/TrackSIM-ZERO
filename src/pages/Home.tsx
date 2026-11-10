@@ -20,8 +20,10 @@ import {
   type GroupDoc,
 } from "../lib/groups";
 import { useAuth } from "../components/AuthProvider";
+import ExecutiveSummaryPreviewModal from "../components/ExecutiveSummaryPreviewModal";
 import { downloadBulkReportsZip, downloadExecutiveSummaryPdf } from "../lib/pdfExport";
 import { useEscapeKey } from "../lib/useEscapeKey";
+import type { ReportExerciseSummary } from "../lib/db";
 
 export type DisplayRow = {
   driverId: string;
@@ -77,6 +79,14 @@ export default function Home() {
   const [isExportingZip, setIsExportingZip] = useState(false);
   useEscapeKey(showConfirmModal && !isDeleting, () => setShowConfirmModal(false));
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number; name: string } | null>(null);
+  const [isLoadingExecutivePreview, setIsLoadingExecutivePreview] = useState(false);
+  const [executivePreview, setExecutivePreview] = useState<{
+    groupName: string;
+    rows: DisplayRow[];
+    filterSubtitle: string;
+    metrics: { total: number; promedio: number; aptos: number; noAptos: number };
+    exercises: ReportExerciseSummary[];
+  } | null>(null);
 
   const isAdmin = isAdminEmail(user?.email);
 
@@ -316,7 +326,7 @@ export default function Home() {
     : 0;
 
   const handleExportExecutiveSummary = async () => {
-    if (!sortedRows || sortedRows.length === 0) return;
+    if (!sortedRows || sortedRows.length === 0 || isLoadingExecutivePreview) return;
     const phaseTitle = selectedPhase === null
       ? "Promedio General (Todas las fases)"
       : `Fase ${selectedPhase}: ${getPhaseName(selectedPhase, selectedGroupId || null)}`;
@@ -327,22 +337,42 @@ export default function Home() {
     const filterSubtitle = `${groupTitle} · ${phaseTitle} · ${dateSubtitle}`;
 
     try {
+      setIsLoadingExecutivePreview(true);
       const reportExercises = await listReportExercises(dateFilter, selectedPhase ?? undefined);
-      downloadExecutiveSummaryPdf(
-        groupTitle,
-        sortedRows,
+      setExecutivePreview({
+        groupName: groupTitle,
+        rows: sortedRows,
         filterSubtitle,
-        {
+        metrics: {
           total: totalConductores,
           promedio: promedioGeneral,
           aptos,
           noAptos,
         },
-        reportExercises
-      );
+        exercises: reportExercises,
+      });
     } catch (err: any) {
       console.error("Error al cargar los ejercicios del resumen ejecutivo:", err);
       alert("No se pudieron cargar los ejercicios del reporte: " + (err?.message || "Error desconocido"));
+    } finally {
+      setIsLoadingExecutivePreview(false);
+    }
+  };
+
+  const handleDownloadExecutiveSummary = () => {
+    if (!executivePreview) return;
+    try {
+      downloadExecutiveSummaryPdf(
+        executivePreview.groupName,
+        executivePreview.rows,
+        executivePreview.filterSubtitle,
+        executivePreview.metrics,
+        executivePreview.exercises
+      );
+      setExecutivePreview(null);
+    } catch (err: any) {
+      console.error("Error al generar el PDF del resumen ejecutivo:", err);
+      alert("No se pudo generar el PDF del reporte: " + (err?.message || "Error desconocido"));
     }
   };
 
@@ -570,20 +600,24 @@ export default function Home() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleExportExecutiveSummary}
-              disabled={!sortedRows || sortedRows.length === 0}
+              disabled={!sortedRows || sortedRows.length === 0 || isLoadingExecutivePreview}
               className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition"
-              title="Descargar Resumen Ejecutivo de 1 sola página para Dirección"
+              title="Revisar el Resumen Ejecutivo antes de generar el PDF"
             >
-              <svg className="h-4 w-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span>Resumen Ejecutivo (PDF)</span>
+              {isLoadingExecutivePreview ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-transparent" />
+              ) : (
+                <svg className="h-4 w-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              )}
+              <span>{isLoadingExecutivePreview ? "Preparando vista previa…" : "Resumen Ejecutivo (PDF)"}</span>
             </button>
 
             <button
               onClick={handleExportZip}
               disabled={!rows || rows.length === 0 || isExportingZip}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-indigo-600/20 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              className="flex items-center gap-2 rounded-xl bg-linear-to-r from-indigo-600 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-indigo-600/20 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
               title={selectedGroupId ? "Descargar reportes, expedientes y diplomas de todos los conductores del grupo" : "Descargar reportes y expedientes; selecciona un grupo para incluir sus diplomas"}
             >
               {isExportingZip ? (
@@ -768,6 +802,14 @@ export default function Home() {
       </section>
 
       {/* Modal de confirmación para vaciar evaluaciones del grupo seleccionado */}
+      {executivePreview && (
+        <ExecutiveSummaryPreviewModal
+          {...executivePreview}
+          onClose={() => setExecutivePreview(null)}
+          onDownload={handleDownloadExecutiveSummary}
+        />
+      )}
+
       {showConfirmModal && currentGroupObj && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">

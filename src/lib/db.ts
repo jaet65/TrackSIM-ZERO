@@ -586,6 +586,7 @@ export type ReportExerciseSummary = {
   name: string;
   description?: string;
   drivers: number;
+  avgScore: number;
 };
 
 export async function listReportExercises(
@@ -593,7 +594,10 @@ export async function listReportExercises(
   onlyPhase?: number
 ): Promise<ReportExerciseSummary[]> {
   const docs = await fetchEvaluations(undefined, undefined, dateFilter);
-  const exerciseMap = new Map<string, ReportExerciseSummary & { driverIds: Set<string> }>();
+  const exerciseMap = new Map<
+    string,
+    ReportExerciseSummary & { driverIds: Set<string>; scoreTotal: number; evaluationCount: number }
+  >();
 
   for (const evaluation of docs) {
     const evaluationGroupId = evaluation.groupId || dateFilter?.groupId;
@@ -613,14 +617,23 @@ export async function listReportExercises(
         description: getExerciseDescription(name, evaluationGroupId),
         drivers: 0,
         driverIds: new Set<string>(),
+        avgScore: 0,
+        scoreTotal: 0,
+        evaluationCount: 0,
       };
       exerciseMap.set(key, exercise);
     }
     exercise.driverIds.add(evaluation.driverId);
+    exercise.scoreTotal += evaluation.score;
+    exercise.evaluationCount++;
   }
 
   return [...exerciseMap.values()]
-    .map(({ driverIds, ...exercise }) => ({ ...exercise, drivers: driverIds.size }))
+    .map(({ driverIds, scoreTotal, evaluationCount, ...exercise }) => ({
+      ...exercise,
+      drivers: driverIds.size,
+      avgScore: evaluationCount > 0 ? Math.round((scoreTotal / evaluationCount) * 10) / 10 : 0,
+    }))
     .sort((a, b) => a.phase - b.phase || a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
 }
 

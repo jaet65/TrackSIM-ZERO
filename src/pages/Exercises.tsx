@@ -104,11 +104,11 @@ export default function Exercises() {
       setDescriptions(structuredClone(newDescs));
       setPhaseNamesState(structuredClone(newNames));
       setDirty(false);
-      setMsg(`Mostrando Plantilla Global de «${newType === "curso" ? "Curso (Sin Fases)" : "Escuela (Con Fases)"}».`);
+      setMsg(`Mostrando Plantilla Global de «${newType === "curso" ? "Curso" : "Escuela (Con Fases)"}».`);
       return;
     }
     if (isClosedGroup) return;
-    if (!window.confirm(`¿Deseas cambiar la modalidad de «${selectedGroup?.name}» a «${newType === "curso" ? "Curso (Sin Fases)" : "Escuela (Con Fases)"}»? Deberás hacer clic en «Guardar Ejercicios» para aplicar el cambio.`)) {
+    if (!window.confirm(`¿Deseas cambiar la modalidad de «${selectedGroup?.name}» a «${newType === "curso" ? "Curso" : "Escuela (Con Fases)"}»? Deberás hacer clic en «Guardar Ejercicios» para aplicar el cambio.`)) {
       return;
     }
     setGroups((prev) =>
@@ -116,7 +116,7 @@ export default function Exercises() {
     );
     setGroupTypeMemory(selectedGroupId, newType);
     setDirty(true);
-    setMsg(`Modalidad cambiada temporalmente a «${newType === "curso" ? "Curso (Sin Fases)" : `Escuela (${phasesList.length} Fases)`}». Haz clic en «Guardar Ejercicios» para confirmar.`);
+    setMsg(`Modalidad cambiada temporalmente a «${newType === "curso" ? "Curso" : `Escuela (${phasesList.length} Fases)`}». Haz clic en «Guardar Ejercicios» para confirmar.`);
   };
 
   useEffect(() => {
@@ -503,7 +503,7 @@ export default function Exercises() {
       </div>
 
       {/* Selector de Grupo / Ámbito de Ejercicios */}
-      <section className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-white to-blue-50/50 p-4 shadow-xs">
+      <section className="rounded-2xl border border-indigo-100 bg-linear-to-r from-indigo-50/70 via-white to-blue-50/50 p-4 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs shrink-0">
@@ -720,7 +720,7 @@ export default function Exercises() {
                         onChange={(e) => setDrafts({ ...drafts, [1]: e.target.value })}
                         onKeyDown={(e) => e.key === "Enter" && add(1)}
                         placeholder="Nombre exacto del ejercicio (ej. 01 - Control Inicial)"
-                        className="flex-1 min-w-[200px] rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+                        className="flex-1 min-w-50 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
                       />
                       <select
                         value={draftEnvs[1] ?? "AUTO"}
@@ -803,7 +803,7 @@ export default function Exercises() {
                   className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-3"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5 flex-1 min-w-[240px]">
+                    <div className="flex items-center gap-2.5 flex-1 min-w-60">
                       <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold shrink-0">
                         {p.id}
                       </span>
@@ -966,7 +966,7 @@ export default function Exercises() {
                           onChange={(e) => setDrafts({ ...drafts, [p.id]: e.target.value })}
                           onKeyDown={(e) => e.key === "Enter" && add(p.id)}
                           placeholder="Ej. 02 - Montaña o 03C - Autopista"
-                          className="flex-1 min-w-[200px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+                          className="flex-1 min-w-50 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
                         />
                         <select
                           value={draftEnvs[p.id] ?? "AUTO"}
@@ -1029,7 +1029,7 @@ export default function Exercises() {
             <button
               onClick={save}
               disabled={!dirty || busy}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-indigo-600/20 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              className="flex items-center gap-2 rounded-xl bg-linear-to-r from-indigo-600 to-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-indigo-600/20 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               {busy
                 ? "Guardando…"
