@@ -7,11 +7,14 @@ import {
   type ExtractedSession,
 } from "./streamdbClient";
 import { parseReport, type ParsedReport, type Mark } from "./parse";
-import { saveEvaluation, type EvaluationView } from "./db";
+import { saveEvaluation, type EvaluationView, type EvaluationDoc } from "./db";
+import { getDb, safeGetDocs } from "./firebase";
+import { collection, query, where } from "firebase/firestore";
 import { loadCatalog } from "./catalogStore";
-import { loadExercises, phaseForExercise } from "./exercises";
+import { loadExercises, phaseForExercise, resolveExerciseEnvironment } from "./exercises";
 import { getActiveGroupId, getGroup, type GroupDoc } from "./groups";
 import { classify } from "./catalog";
+import { analyzePacing, computeGroupBenchmarks, type ExerciseBenchmark, type PacingAnalysis } from "./pacingBenchmark";
 
 export interface PendingAuditItem {
   id: number;
@@ -28,6 +31,7 @@ export interface PendingAuditItem {
   timestamp: number;
   savedDocId?: string;
   audited?: boolean;
+  pacing?: PacingAnalysis;
 }
 
 const STORAGE_KEY_LAST_ID = "tracksim_autosync_last_id";
@@ -133,6 +137,12 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
     savePendingQueue(updated);
   };
 
+  const updateQueueItem = (id: number, updater: (prev: PendingAuditItem) => PendingAuditItem) => {
+    const updated = queueRef.current.map((item) => (item.id === id ? updater(item) : item));
+    setQueue(updated);
+    savePendingQueue(updated);
+  };
+
   const clearQueue = () => {
     setQueue([]);
     savePendingQueue([]);
@@ -201,6 +211,17 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
             loadExercises(false, currentGroup.id),
           ]);
 
+          // Cargar evaluaciones existentes del grupo para calcular benchmarks de ritmo y duración
+          let groupBenchmarks: Map<string, ExerciseBenchmark> | undefined;
+          try {
+            const groupQ = query(collection(getDb(), "evaluations"), where("groupId", "==", currentGroup.id));
+            const groupSnap = await safeGetDocs(groupQ);
+            if (!groupSnap.empty) {
+              const groupRawDocs = groupSnap.docs.map((d) => d.data() as EvaluationDoc);
+              groupBenchmarks = computeGroupBenchmarks(groupRawDocs);
+            }
+          } catch {}
+
           let highestId = lastId;
           const newItems: PendingAuditItem[] = [];
 
@@ -224,25 +245,36 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
                 activeGrpId
               );
 
-              // Identificar accidentes críticos detectados
+              // Identificar accidentes críticos detectados según el entorno del ejercicio configurado
+              const env = resolveExerciseEnvironment(report.exercise || report.unit, activeGrpId);
               const criticalAccidents: string[] = [];
               for (const m of report.marks) {
                 if (m.type === "ERROR" && !m.ignored) {
-                  const cl = classify(m.description, activeGrpId);
+                  const cl = classify(m.description, env, activeGrpId);
                   if (cl.severity === "CRITICO") {
                     criticalAccidents.push(m.description);
                   }
                 }
               }
 
+              // Evaluar si existe déficit de ritmo o duración inconclusa por debajo del 50% de la media
+              const exerciseName = report.exercise || report.unit;
+              const pacing = groupBenchmarks
+                ? analyzePacing(exerciseName, report.telemetry, groupBenchmarks, report.durationSec)
+                : undefined;
+              let finalScore = report.score;
+              if (pacing?.isPacingDeficit && pacing.penaltyDeduction > 0) {
+                finalScore = Math.max(0, Math.round((finalScore - pacing.penaltyDeduction) * 10) / 10);
+              }
+
               const pendingItem: PendingAuditItem = {
                 id: s.id,
                 driver: report.driver,
                 date: report.date,
-                exercise: report.exercise || report.unit,
+                exercise: exerciseName,
                 phase,
                 fileName: s.filename,
-                score: report.score,
+                score: finalScore,
                 errorCount: report.errorCount,
                 criticalCount: criticalAccidents.length,
                 accidents: criticalAccidents,
@@ -250,6 +282,7 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
                 timestamp: Date.now(),
                 savedDocId: `${activeGrpId}_f${phase}_${s.filename.replace(/[^\w.-]+/g, "_")}`,
                 audited: false,
+                pacing,
               };
 
               newItems.push(pendingItem);
@@ -301,6 +334,7 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
     recentNotification,
     setRecentNotification,
     removeQueueItem,
+    updateQueueItem,
     clearQueue,
     markAudited,
     isElectron: isElectronApp(),

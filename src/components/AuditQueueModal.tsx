@@ -2,8 +2,10 @@ import React, { useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { PendingAuditItem } from "../lib/useAutoSync";
 import type { Mark } from "../lib/parse";
-import { classify, SEVERITIES, SEVERITY_ORDER, type Severity } from "../lib/catalog";
+import { classify, getCatalog, SEVERITIES, SEVERITY_ORDER, type Severity } from "../lib/catalog";
+import { resolveExerciseEnvironment } from "../lib/exercises";
 import { dictamen, updateEvaluationMarks } from "../lib/db";
+import { analyzePacing, computeGroupBenchmarks, type ExerciseBenchmark } from "../lib/pacingBenchmark";
 import { useAuth } from "./AuthProvider";
 import { useEscapeKey } from "../lib/useEscapeKey";
 
@@ -14,6 +16,7 @@ export interface AuditQueueModalProps {
   selectedIndex: number;
   onSelectIndex: (index: number) => void;
   onRemoveItem: (id: number) => void;
+  onUpdateItem?: (id: number, updater: (prev: PendingAuditItem) => PendingAuditItem) => void;
   onClearQueue: () => void;
   activeGroupId?: string;
   onEvaluationUpdated?: () => void;
@@ -26,6 +29,7 @@ export default function AuditQueueModal({
   selectedIndex,
   onSelectIndex,
   onRemoveItem,
+  onUpdateItem,
   onClearQueue,
   activeGroupId,
   onEvaluationUpdated,
@@ -35,16 +39,25 @@ export default function AuditQueueModal({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [severityFilter, setSeverityFilter] = useState<Severity | "ALL">("ALL");
+  const [showAddErrorForm, setShowAddErrorForm] = useState(false);
+  const [selectedCatalogError, setSelectedCatalogError] = useState<string>("");
+  const [customErrorText, setCustomErrorText] = useState<string>("");
+  const [manualErrorTime, setManualErrorTime] = useState<string>("00:00:00");
 
   const currentItem = isOpen && queue.length > 0 ? (queue[selectedIndex] || queue[0]) : null;
   const total = queue.length;
+
+  const currentEnv = useMemo(() => {
+    if (!currentItem) return "CARRETERA";
+    return resolveExerciseEnvironment(currentItem.exercise, activeGroupId);
+  }, [currentItem, activeGroupId]);
 
   const errorMarksWithMeta = useMemo(() => {
     if (!currentItem) return [];
     return currentItem.report.marks
       .map((m, originalIdx) => {
         if (m.type !== "ERROR") return null;
-        const cl = classify(m.description, activeGroupId);
+        const cl = classify(m.description, currentEnv, activeGroupId);
         return {
           ...m,
           originalIdx,
@@ -53,7 +66,7 @@ export default function AuditQueueModal({
         };
       })
       .filter((m): m is NonNullable<typeof m> => m !== null);
-  }, [currentItem, activeGroupId]);
+  }, [currentItem, currentEnv, activeGroupId]);
 
   const severityCounts = useMemo(() => {
     const counts: Record<Severity, number> = {
@@ -70,10 +83,70 @@ export default function AuditQueueModal({
     return counts;
   }, [errorMarksWithMeta]);
 
+  const liveCriticalCount = useMemo(() => {
+    return errorMarksWithMeta.filter((m) => m.severity === "CRITICO" && !m.ignored).length;
+  }, [errorMarksWithMeta]);
+
+  const liveAccidents = useMemo(() => {
+    return errorMarksWithMeta
+      .filter((m) => m.severity === "CRITICO" && !m.ignored)
+      .map((m) => m.description);
+  }, [errorMarksWithMeta]);
+
   const displayedMarks = useMemo(() => {
     if (severityFilter === "ALL") return errorMarksWithMeta;
     return errorMarksWithMeta.filter((m) => m.severity === severityFilter);
   }, [errorMarksWithMeta, severityFilter]);
+
+  const catalogEntriesBySeverity = useMemo(() => {
+    const cfg = getCatalog(activeGroupId);
+    const grouped: Record<Severity, { name: string; severity: Severity }[]> = {
+      CRITICO: [],
+      GRAVE: [],
+      MODERADO: [],
+      LEVE: [],
+    };
+    for (const entry of cfg.entries) {
+      const resolved = classify(entry.name, currentEnv, activeGroupId);
+      grouped[resolved.severity].push({ name: entry.name, severity: resolved.severity });
+    }
+    return grouped;
+  }, [currentEnv, activeGroupId]);
+
+  // Computar benchmarks de ritmo/duración con las sesiones presentes en la cola
+  const queueBenchmarks = useMemo(() => {
+    if (!queue || queue.length === 0) return new Map<string, ExerciseBenchmark>();
+    const inputs = queue.map((item) => ({
+      exercise: item.exercise,
+      unit: item.exercise,
+      durationSec: item.report.durationSec,
+      telemetry: item.report.telemetry,
+      groupId: activeGroupId,
+      marks: item.report.marks,
+    }));
+    return computeGroupBenchmarks(inputs);
+  }, [queue, activeGroupId]);
+
+  const livePacing = useMemo(() => {
+    if (!currentItem) return undefined;
+    if (currentItem.pacing?.isPacingDeficit) return currentItem.pacing;
+    return analyzePacing(
+      currentItem.exercise,
+      currentItem.report.telemetry,
+      queueBenchmarks,
+      currentItem.report.durationSec
+    );
+  }, [currentItem, queueBenchmarks]);
+
+  const liveScore = useMemo(() => {
+    if (!currentItem) return 0;
+    let s = currentItem.score;
+    // Si la penalización de ritmo calculada no estaba descontada aún del score:
+    if (livePacing?.isPacingDeficit && livePacing.penaltyDeduction > 0 && !currentItem.pacing?.isPacingDeficit) {
+      s = Math.max(0, Math.round((s - livePacing.penaltyDeduction) * 10) / 10);
+    }
+    return s;
+  }, [currentItem, livePacing]);
 
   if (!isOpen || !currentItem || total === 0) return null;
 
@@ -120,24 +193,213 @@ export default function AuditQueueModal({
 
       const updated = await updateEvaluationMarks(evalViewStub, marks, activeGroupId);
 
-      // Actualizar localmente el item
-      currentItem.report.marks = marks;
-      currentItem.score = updated.score;
-      currentItem.errorCount = updated.errorCount;
-      // Recalcular accidentes críticos
+      // Recalcular accidentes críticos según el entorno del ejercicio
       const newAccidents: string[] = [];
       for (const m of marks) {
         if (m.type === "ERROR" && !m.ignored) {
-          const cl = classify(m.description, activeGroupId);
+          const cl = classify(m.description, currentEnv, activeGroupId);
           if (cl.severity === "CRITICO") newAccidents.push(m.description);
         }
       }
-      currentItem.accidents = newAccidents;
-      currentItem.criticalCount = newAccidents.length;
+
+      if (onUpdateItem) {
+        onUpdateItem(currentItem.id, (prev) => ({
+          ...prev,
+          report: { ...prev.report, marks },
+          score: updated.score,
+          errorCount: updated.errorCount,
+          accidents: newAccidents,
+          criticalCount: newAccidents.length,
+          pacing: updated.pacing,
+        }));
+      } else {
+        currentItem.report.marks = marks;
+        currentItem.score = updated.score;
+        currentItem.errorCount = updated.errorCount;
+        currentItem.accidents = newAccidents;
+        currentItem.criticalCount = newAccidents.length;
+        currentItem.pacing = updated.pacing;
+      }
 
       if (onEvaluationUpdated) onEvaluationUpdated();
     } catch (err: any) {
       setErrorMessage(err.message || "Error al actualizar la marca");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteManualMark = async (markIndex: number) => {
+    if (!currentItem || isSaving) return;
+    setIsSaving(true);
+    setErrorMessage("");
+
+    try {
+      const marks = currentItem.report.marks.filter((_, idx) => idx !== markIndex);
+      const docId = currentItem.savedDocId || "";
+      const evalViewStub: any = {
+        docId,
+        phase: currentItem.phase,
+        fileName: currentItem.fileName,
+        driverId: "",
+        driverName: currentItem.driver,
+        lesson: currentItem.report.lesson,
+        unit: currentItem.report.unit,
+        exercise: currentItem.exercise,
+        vehicle: currentItem.report.vehicle,
+        instructor: "",
+        instructorEmail: "",
+        date: currentItem.date,
+        durationSec: currentItem.report.durationSec,
+        errorCount: currentItem.errorCount,
+        score: currentItem.score,
+        marks,
+        telemetry: currentItem.report.telemetry,
+        createdAt: currentItem.timestamp,
+        groupId: activeGroupId,
+      };
+
+      const updated = await updateEvaluationMarks(evalViewStub, marks, activeGroupId);
+
+      const newAccidents: string[] = [];
+      for (const m of marks) {
+        if (m.type === "ERROR" && !m.ignored) {
+          const cl = classify(m.description, currentEnv, activeGroupId);
+          if (cl.severity === "CRITICO") newAccidents.push(m.description);
+        }
+      }
+
+      if (onUpdateItem) {
+        onUpdateItem(currentItem.id, (prev) => ({
+          ...prev,
+          report: { ...prev.report, marks },
+          score: updated.score,
+          errorCount: updated.errorCount,
+          accidents: newAccidents,
+          criticalCount: newAccidents.length,
+          pacing: updated.pacing,
+        }));
+      } else {
+        currentItem.report.marks = marks;
+        currentItem.score = updated.score;
+        currentItem.errorCount = updated.errorCount;
+        currentItem.accidents = newAccidents;
+        currentItem.criticalCount = newAccidents.length;
+        currentItem.pacing = updated.pacing;
+      }
+
+      if (onEvaluationUpdated) onEvaluationUpdated();
+    } catch (err: any) {
+      setErrorMessage(err.message || "Error al eliminar la infracción manual");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const formatMarkTime = (raw: string): string => {
+    const clean = raw.trim();
+    if (!clean) return "0:00:00";
+    const parts = clean.split(":").map((p) => p.trim());
+    if (parts.length === 2) {
+      const m = String(Math.max(0, parseInt(parts[0], 10) || 0)).padStart(2, "0");
+      const s = String(Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0))).padStart(2, "0");
+      return `0:${m}:${s}`;
+    }
+    if (parts.length === 3) {
+      const h = String(Math.max(0, parseInt(parts[0], 10) || 0));
+      const m = String(Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0))).padStart(2, "0");
+      const s = String(Math.min(59, Math.max(0, parseInt(parts[2], 10) || 0))).padStart(2, "0");
+      return `${h}:${m}:${s}`;
+    }
+    return "0:00:00";
+  };
+
+  const handleAddManualError = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentItem || isSaving) return;
+    const desc =
+      selectedCatalogError === "__CUSTOM__"
+        ? customErrorText.trim()
+        : selectedCatalogError.trim();
+
+    if (!desc) {
+      setErrorMessage("Selecciona o escribe la descripción del error faltante a agregar.");
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMessage("");
+
+    try {
+      const actor = user?.displayName || user?.email || "Instructor";
+      const newMark: Mark = {
+        time: formatMarkTime(manualErrorTime),
+        type: "ERROR",
+        description: desc,
+        manual: true,
+        addedBy: actor,
+        addedAt: Date.now(),
+      };
+
+      const marks = [...currentItem.report.marks, newMark];
+      const docId = currentItem.savedDocId || "";
+      const evalViewStub: any = {
+        docId,
+        phase: currentItem.phase,
+        fileName: currentItem.fileName,
+        driverId: "",
+        driverName: currentItem.driver,
+        lesson: currentItem.report.lesson,
+        unit: currentItem.report.unit,
+        exercise: currentItem.exercise,
+        vehicle: currentItem.report.vehicle,
+        instructor: "",
+        instructorEmail: "",
+        date: currentItem.date,
+        durationSec: currentItem.report.durationSec,
+        errorCount: currentItem.errorCount,
+        score: currentItem.score,
+        marks,
+        telemetry: currentItem.report.telemetry,
+        createdAt: currentItem.timestamp,
+        groupId: activeGroupId,
+      };
+
+      const updated = await updateEvaluationMarks(evalViewStub, marks, activeGroupId);
+
+      const newAccidents: string[] = [];
+      for (const m of marks) {
+        if (m.type === "ERROR" && !m.ignored) {
+          const cl = classify(m.description, currentEnv, activeGroupId);
+          if (cl.severity === "CRITICO") newAccidents.push(m.description);
+        }
+      }
+
+      if (onUpdateItem) {
+        onUpdateItem(currentItem.id, (prev) => ({
+          ...prev,
+          report: { ...prev.report, marks },
+          score: updated.score,
+          errorCount: updated.errorCount,
+          accidents: newAccidents,
+          criticalCount: newAccidents.length,
+          pacing: updated.pacing,
+        }));
+      } else {
+        currentItem.report.marks = marks;
+        currentItem.score = updated.score;
+        currentItem.errorCount = updated.errorCount;
+        currentItem.accidents = newAccidents;
+        currentItem.criticalCount = newAccidents.length;
+        currentItem.pacing = updated.pacing;
+      }
+
+      setCustomErrorText("");
+      setSelectedCatalogError("");
+      setShowAddErrorForm(false);
+      if (onEvaluationUpdated) onEvaluationUpdated();
+    } catch (err: any) {
+      setErrorMessage(err.message || "Error al agregar la infracción");
     } finally {
       setIsSaving(false);
     }
@@ -207,7 +469,15 @@ export default function AuditQueueModal({
             </span>
             {queue.map((item, idx) => {
               const isSelected = idx === selectedIndex;
-              const hasCritical = item.criticalCount > 0;
+              const v = dictamen(item.score, item.criticalCount);
+              const isApto = v.label === "APTO";
+              const isObservaciones = v.label === "APTO CON OBSERVACIONES";
+              const dotColor = isApto
+                ? "bg-emerald-500"
+                : isObservaciones
+                ? "bg-amber-500"
+                : "bg-rose-500";
+
               return (
                 <button
                   key={item.id}
@@ -218,10 +488,10 @@ export default function AuditQueueModal({
                       : "bg-white text-slate-700 border border-slate-200 hover:border-indigo-300"
                   }`}
                 >
-                  <span className={`h-2 w-2 rounded-full ${hasCritical ? "bg-rose-500" : "bg-emerald-500"}`} />
+                  <span className={`h-2 w-2 rounded-full ${dotColor}`} />
                   <span className="font-semibold truncate max-w-[120px]">{item.driver}</span>
                   <span className={`text-[10px] px-1 rounded ${isSelected ? "bg-indigo-700" : "bg-slate-100"}`}>
-                    {Math.round(item.score)} pts
+                    {item.score.toFixed(1)} pts
                   </span>
                 </button>
               );
@@ -242,7 +512,7 @@ export default function AuditQueueModal({
 
               {/* Tarjeta de Calificación */}
               {(() => {
-                const v = dictamen(currentItem.score, currentItem.criticalCount);
+                const v = dictamen(liveScore, liveCriticalCount);
                 const isNoApto = v.label === "NO APTO";
                 const isApto = v.label === "APTO";
                 return (
@@ -256,10 +526,10 @@ export default function AuditQueueModal({
                     }`}
                   >
                     <div className="text-xs font-semibold uppercase tracking-wider opacity-80">Calificación Actual</div>
-                    <div className="text-4xl font-black mt-1">{currentItem.score.toFixed(1)}</div>
+                    <div className="text-4xl font-black mt-1">{liveScore.toFixed(1)}</div>
                     <div className="text-xs font-bold mt-1">
                       {isNoApto ? (
-                        <span>❌ {v.label} ({currentItem.criticalCount} Crítico/s)</span>
+                        <span>❌ {v.label} ({liveCriticalCount} Crítico/s)</span>
                       ) : (
                         <span>{isApto ? "✅ " : "⚠️ "}{v.label}</span>
                       )}
@@ -276,8 +546,8 @@ export default function AuditQueueModal({
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>Accidentes críticos:</span>
-                  <span className={`font-bold ${currentItem.criticalCount > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                    {currentItem.criticalCount}
+                  <span className={`font-bold ${liveCriticalCount > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                    {liveCriticalCount}
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-600">
@@ -292,14 +562,36 @@ export default function AuditQueueModal({
                 </div>
               </div>
 
+              {/* Banner de Penalización por Conducción Evasiva / Duración Inconclusa */}
+              {livePacing?.isPacingDeficit && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50/90 p-3 text-rose-900 shadow-xs">
+                  <div className="flex items-start gap-2">
+                    <span className="text-base shrink-0">⏱️</span>
+                    <div className="text-[11px] leading-tight">
+                      <div className="flex items-center justify-between gap-1">
+                        <strong className="font-bold text-rose-950">
+                          Penalización por Tiempo / Ritmo
+                        </strong>
+                        <span className="rounded bg-rose-200 px-1.5 py-0.5 font-mono font-bold text-rose-900 shrink-0">
+                          -{livePacing.penaltyDeduction} pts
+                        </span>
+                      </div>
+                      <p className="mt-1 text-rose-800">
+                        {livePacing.reason}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Lista de Accidentes Detectados */}
-              {currentItem.accidents.length > 0 && (
+              {liveAccidents.length > 0 && (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
                   <span className="text-[11px] font-bold text-rose-800 flex items-center gap-1">
                     🚨 Accidentes Registrados:
                   </span>
                   <ul className="mt-1.5 space-y-1 text-xs text-rose-700">
-                    {currentItem.accidents.map((acc, i) => (
+                    {liveAccidents.map((acc, i) => (
                       <li key={i} className="flex items-start gap-1.5">
                         <span className="shrink-0">•</span>
                         <span>{acc}</span>
@@ -340,12 +632,112 @@ export default function AuditQueueModal({
                     Haz clic en <span className="font-semibold text-amber-600">"Falso positivo"</span> para anular fallos del simulador (la calificación se recalcula al instante).
                   </p>
                 </div>
-                {isSaving && (
+                {isSaving ? (
                   <span className="text-xs font-semibold text-indigo-600 animate-pulse">
                     Recalculando calificación...
                   </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddErrorForm((prev) => !prev)}
+                    className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition"
+                  >
+                    <span>{showAddErrorForm ? "✕ Cancelar" : "+ Agregar falta manual"}</span>
+                  </button>
                 )}
               </div>
+
+              {/* Formulario para agregar una falta manual faltante */}
+              {showAddErrorForm && (() => {
+                const previewDesc =
+                  selectedCatalogError === "__CUSTOM__" ? customErrorText.trim() : selectedCatalogError.trim();
+                const previewCls = previewDesc ? classify(previewDesc, currentEnv, activeGroupId) : null;
+
+                return (
+                  <form
+                    onSubmit={handleAddManualError}
+                    className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3 space-y-2.5 animate-in fade-in duration-150"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-indigo-950">
+                        Registrar infracción o accidente no detectado
+                      </span>
+                      {previewCls && (
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${SEVERITIES[previewCls.severity].badge}`}>
+                          Nivel: {SEVERITIES[previewCls.severity].label} (-{previewCls.weight} pts)
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
+                      <div className="sm:col-span-7 space-y-1">
+                        <label className="block text-[11px] font-semibold text-slate-700">
+                          Falta del catálogo
+                        </label>
+                        <select
+                          value={selectedCatalogError}
+                          onChange={(e) => setSelectedCatalogError(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                        >
+                          <option value="">— Seleccionar infracción —</option>
+                          {SEVERITY_ORDER.map((sev) => {
+                            const items = catalogEntriesBySeverity[sev];
+                            if (!items.length) return null;
+                            return (
+                              <optgroup key={sev} label={`Nivel ${SEVERITIES[sev].label}`}>
+                                {items.map((it) => (
+                                  <option key={it.name} value={it.name}>
+                                    {it.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            );
+                          })}
+                          <option value="__CUSTOM__">✏️ Otra falta personalizada...</option>
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-2 space-y-1">
+                        <label className="block text-[11px] font-semibold text-slate-700">
+                          Minuto
+                        </label>
+                        <input
+                          type="text"
+                          value={manualErrorTime}
+                          onChange={(e) => setManualErrorTime(e.target.value)}
+                          placeholder="0:00:00"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-3 flex items-end">
+                        <button
+                          type="submit"
+                          disabled={isSaving}
+                          className="w-full rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50 transition"
+                        >
+                          {isSaving ? "Guardando..." : "Agregar y Recalcular"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {selectedCatalogError === "__CUSTOM__" && (
+                      <div className="space-y-1 pt-1">
+                        <label className="block text-[11px] font-semibold text-slate-700">
+                          Descripción de la falta
+                        </label>
+                        <input
+                          type="text"
+                          value={customErrorText}
+                          onChange={(e) => setCustomErrorText(e.target.value)}
+                          placeholder="Ej: Golpe lateral contra objeto fijo..."
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                    )}
+                  </form>
+                );
+              })()}
 
               {/* Filtros por Severidad */}
               <div className="flex flex-wrap items-center gap-1.5 pt-1">
@@ -443,7 +835,17 @@ export default function AuditQueueModal({
                             >
                               {m.severity}
                             </span>
+                            {m.manual && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                Manual
+                              </span>
+                            )}
                           </div>
+                          {m.manual && m.addedBy && (
+                            <p className="text-[11px] text-indigo-600 no-underline font-medium mt-0.5">
+                              ✍️ Agregado manualmente por {m.addedBy}
+                            </p>
+                          )}
                           {isIgnored && m.ignoredBy && (
                             <p className="text-[11px] text-amber-700 no-underline font-medium mt-0.5">
                               ⚠️ Anulado como falso positivo por {m.ignoredBy}
@@ -452,18 +854,30 @@ export default function AuditQueueModal({
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleToggleIgnore(m.originalIdx)}
-                        disabled={isSaving}
-                        className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition shadow-sm ${
-                          isIgnored
-                            ? "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                            : "bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300"
-                        }`}
-                      >
-                        {isIgnored ? "Restaurar" : "⚡ Falso Positivo"}
-                      </button>
+                      {m.manual ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteManualMark(m.originalIdx)}
+                          disabled={isSaving}
+                          className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition shadow-sm bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-300 disabled:opacity-50"
+                          title="Eliminar esta falta agregada manualmente"
+                        >
+                          ✕ Eliminar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleIgnore(m.originalIdx)}
+                          disabled={isSaving}
+                          className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition shadow-sm ${
+                            isIgnored
+                              ? "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                              : "bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300"
+                          }`}
+                        >
+                          {isIgnored ? "Restaurar" : "⚡ Falso Positivo"}
+                        </button>
+                      )}
                     </div>
                   );
                 })

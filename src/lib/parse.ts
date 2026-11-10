@@ -330,8 +330,8 @@ export function parseReport(text: string, groupId?: string | null): ParsedReport
   const headerIdx = find(/^FECHA;CONDUCTOR/i);
   if (lessonIdx < 0 || headerIdx < 0) throw new Error("Formato de CSV no reconocido");
 
-  const [lesson = "", unit = ""] = cells(lessonIdx + 1);
-  const exercise = unit;
+  const [lesson = "", unit = "", exCell = ""] = cells(lessonIdx + 1);
+  const exercise = exCell && exCell !== "N/A" ? exCell : (unit && unit !== "N/A" ? unit : lesson);
   const [date = "", , driver = "", duration = ""] = cells(headerIdx + 1);
   if (!driver) throw new Error("El CSV no indica el conductor");
 

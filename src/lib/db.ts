@@ -6,6 +6,7 @@ import { classify, isOffRoadError, type Severity } from "./catalog";
 import { loadCatalog } from "./catalogStore";
 import { CRITICAL_LIMIT, verdictFor } from "./config";
 import {
+  areExercisesEquivalent,
   exerciseKey,
   getExerciseDescription,
   getExercises,
@@ -279,11 +280,11 @@ export function withCurrentScore(
   const ev = evaluateMarks(d.marks, d.durationSec, telemetry, exerciseName, effectiveGroupId);
   const resolvedPhase = phaseForExercise(exerciseName, effectiveGroupId) ?? d.phase;
 
-  // Analizar si el conductor circuló a un ritmo evasivo / excesivamente lento respecto al grupo
+  // Analizar si el conductor circuló a un ritmo evasivo / excesivamente lento o duró mucho menos respecto al grupo
   let finalScore = ev.score;
   let pacing: PacingAnalysis | undefined;
-  if (benchmarks && telemetry) {
-    pacing = analyzePacing(exerciseName, telemetry, benchmarks);
+  if (benchmarks) {
+    pacing = analyzePacing(exerciseName, telemetry, benchmarks, d.durationSec);
     if (pacing.isPacingDeficit && pacing.penaltyDeduction > 0) {
       finalScore = Math.max(0, Math.round((finalScore - pacing.penaltyDeduction) * 10) / 10);
     }
@@ -328,7 +329,7 @@ function summarizeDriverPhases(
       expected = expectedList.length;
       for (const expectedName of expectedList) {
         const candidates = latestAll.filter(
-          (e) => !usedDocs.has(e) && exerciseKey(e.exercise) === exerciseKey(expectedName)
+          (e) => !usedDocs.has(e) && (exerciseKey(e.exercise) === exerciseKey(expectedName) || areExercisesEquivalent(e.exercise, expectedName))
         );
         const match = candidates.pop();
         if (match) {
@@ -406,10 +407,10 @@ function summarizeDriverPhases(
 
     if (expectedList.length > 0) {
       expected = expectedList.length;
-      // Emparejar estrictamente por nombre de ejercicio esperado en la configuración de esta fase
+      // Emparejar estrictamente por nombre de ejercicio esperado en la configuración de esta fase (o equivalente sin vehículo)
       for (const expectedName of expectedList) {
         const candidates = latestAll.filter(
-          (e) => !usedDocs.has(e) && exerciseKey(e.exercise) === exerciseKey(expectedName)
+          (e) => !usedDocs.has(e) && (exerciseKey(e.exercise) === exerciseKey(expectedName) || areExercisesEquivalent(e.exercise, expectedName))
         );
         const match = candidates.filter((e) => e.phase === phase).pop() ?? candidates.pop();
         if (match) {
@@ -975,10 +976,24 @@ export async function updateEvaluationMarks(
     return clean;
   });
 
+  const effectiveGroupId = evalView.groupId || fallbackGroupId;
+  let groupBenchmarks: Map<string, ExerciseBenchmark> | undefined;
+  if (effectiveGroupId) {
+    try {
+      const groupQ = query(evaluations(), where("groupId", "==", effectiveGroupId));
+      const groupSnap = await safeGetDocs(groupQ);
+      if (!groupSnap.empty) {
+        const groupRawDocs = groupSnap.docs.map((d) => d.data() as EvaluationDoc);
+        groupBenchmarks = computeGroupBenchmarks(groupRawDocs);
+      }
+    } catch {}
+  }
+
   const updatedView = withCurrentScore(
     { ...evalView, marks: cleanMarks },
     fallbackGroupId,
-    docId
+    docId,
+    groupBenchmarks
   );
 
   await fastWrite(

@@ -39,6 +39,59 @@ export function exerciseKey(name: string) {
 }
 
 /**
+ * Normaliza una clave de ejercicio retirando sufijos comunes de vehículo o variantes añadidas por el simulador
+ * como "cascadia sencillo", "scania", "m2", "international", "t680", etc.
+ */
+export function baseExerciseKey(name: string): string {
+  let key = exerciseKey(name);
+  if (!key) return "";
+
+  // Remover sufijos de vehículos frecuentes que Lander añade al nombre del ejercicio
+  const vehiclePatterns = [
+    /\bcascadia\s+sencillo\b/g,
+    /\bcascadia\s+full\b/g,
+    /\bcascadia\b/g,
+    /\bscania\b/g,
+    /\binternational\b/g,
+    /\bkenworth\b/g,
+    /\bt680\b/g,
+    /\bt800\b/g,
+    /\bt880\b/g,
+    /\bvolvo\b/g,
+    /\bm2\b/g,
+    /\bsencillo\b/g,
+    /\bfull\b/g,
+  ];
+
+  for (const pat of vehiclePatterns) {
+    key = key.replace(pat, " ");
+  }
+
+  return key.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Determina si dos nombres de ejercicio corresponden al mismo ejercicio lógico,
+ * considerando variantes con sufijo de vehículo o coincidencias entre nombre base y nombre del simulador.
+ */
+export function areExercisesEquivalent(nameA?: string, nameB?: string): boolean {
+  if (!nameA || !nameB) return false;
+  const keyA = exerciseKey(nameA);
+  const keyB = exerciseKey(nameB);
+  if (keyA === keyB) return true;
+
+  const baseA = baseExerciseKey(nameA);
+  const baseB = baseExerciseKey(nameB);
+  if (baseA && baseB && baseA === baseB) return true;
+
+  // Si uno de los dos es el nombre base y el otro contiene el vehículo (ej. "02 pillones" y "02 pillones cascadia sencillo")
+  if (baseA && keyB && (keyB.startsWith(baseA) || keyB.includes(baseA))) return true;
+  if (baseB && keyA && (keyA.startsWith(baseB) || keyA.includes(baseB))) return true;
+
+  return false;
+}
+
+/**
  * Detecta automáticamente el tipo de entorno según palabras clave en el nombre del ejercicio.
  */
 export function detectEnvironmentFromName(name: string): "CARRETERA" | "MONTANA" | "CIUDAD" {
@@ -264,7 +317,25 @@ export function resolveExerciseEnvironment(
   if (!name) return "CARRETERA";
   const key = exerciseKey(name);
   const envsMap = getExerciseEnvironments(groupId);
-  const explicit = envsMap[key];
+  let explicit = envsMap[key];
+
+  // Si no hay match exacto con el nombre completo (ej. "02 - Pillones"), buscar por coincidencia parcial de palabras clave (ej. "pillones")
+  if (!explicit || explicit === "AUTO") {
+    const baseKey = baseExerciseKey(name);
+    if (baseKey && envsMap[baseKey] && envsMap[baseKey] !== "AUTO") {
+      explicit = envsMap[baseKey];
+    }
+  }
+
+  if (!explicit || explicit === "AUTO") {
+    for (const [k, v] of Object.entries(envsMap)) {
+      if (v && v !== "AUTO" && (key.includes(k) || k.includes(key) || areExercisesEquivalent(k, name))) {
+        explicit = v;
+        break;
+      }
+    }
+  }
+
   if (explicit && explicit !== "AUTO") {
     return explicit;
   }
@@ -275,8 +346,13 @@ export function resolveExerciseEnvironment(
 export function phaseForExercise(name: string, groupId?: string | null): number | null {
   const key = exerciseKey(name);
   const phasesMap = getExercises(groupId);
+  // 1. Coincidencia exacta por exerciseKey
   for (const [phase, list] of Object.entries(phasesMap)) {
     if (list.some((n) => exerciseKey(n) === key)) return Number(phase);
+  }
+  // 2. Coincidencia por equivalencia o nombre base sin vehículo (ej: "02 - Pillones Cascadia Sencillo" -> "02 - Pillones")
+  for (const [phase, list] of Object.entries(phasesMap)) {
+    if (list.some((n) => areExercisesEquivalent(n, name))) return Number(phase);
   }
   return null;
 }

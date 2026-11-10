@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  areExercisesEquivalent,
+  baseExerciseKey,
   detectEnvironmentFromName,
   exerciseKey,
   phaseForExercise,
@@ -120,5 +122,18 @@ describe("exercise settings", () => {
     expect(phaseForExercise("Not configured", groupId)).toBeNull();
     expect(getGroupType(groupId)).toBe("curso");
     expect(getGroupType("missing-group")).toBe("escuela");
+  });
+
+  it("recognizes exercises with vehicle suffixes as equivalent", () => {
+    setGroupExercises(groupId, {
+      "1": ["02 - Montaña", "02 - Pillones", "03C - Autopista"],
+    });
+
+    expect(phaseForExercise("02 - Montaña M2", groupId)).toBe(1);
+    expect(phaseForExercise("02 - Montaña Cascadia Sencillo", groupId)).toBe(1);
+    expect(phaseForExercise("02 - Pillones Scania", groupId)).toBe(1);
+    expect(phaseForExercise("03C - Autopista - M2", groupId)).toBe(1);
+    expect(phaseForExercise("03C - Autopista - Cascadia Sencillo", groupId)).toBe(1);
+    expect(areExercisesEquivalent("02 - Pillones", "02 - Pillones Cascadia Sencillo")).toBe(true);
   });
 });

@@ -13,6 +13,7 @@ export default function AutoSyncBadge() {
     queue,
     activeGroup,
     removeQueueItem,
+    updateQueueItem,
     clearQueue,
     isElectron,
   } = useAutoSync({
@@ -100,6 +101,7 @@ export default function AutoSyncBadge() {
         selectedIndex={selectedIndex}
         onSelectIndex={setSelectedIndex}
         onRemoveItem={removeQueueItem}
+        onUpdateItem={updateQueueItem}
         onClearQueue={clearQueue}
         activeGroupId={activeGroup?.id}
       />

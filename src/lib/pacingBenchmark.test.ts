@@ -22,8 +22,10 @@ describe("computeGroupBenchmarks", () => {
       sampleCount: 2,
       avgSpeed: 50,
       avgDistance: 1500,
+      avgDurationSec: 0,
       minSpeedThreshold: 30,
       minDistanceThreshold: 900,
+      minDurationThreshold: 0,
     });
     expect(benchmarks.has("sin datos")).toBe(false);
   });
@@ -106,18 +108,28 @@ describe("computeGroupBenchmarks", () => {
 
 describe("analyzePacing", () => {
   const benchmarks = computeGroupBenchmarks([
-    { unit: "Ruta", telemetry: { averageSpeed: 50, distanceMeters: 1000 } },
-    { unit: "Ruta", telemetry: { averageSpeed: 50, distanceMeters: 1000 } },
+    { unit: "Ruta", durationSec: 420, telemetry: { averageSpeed: 50, distanceMeters: 1000 } },
+    { unit: "Ruta", durationSec: 420, telemetry: { averageSpeed: 50, distanceMeters: 1000 } },
   ]);
 
-  it("does not apply a deficit at the exact 60 percent threshold", () => {
-    expect(analyzePacing("Ruta", { averageSpeed: 30, distanceMeters: 600 }, benchmarks)).toMatchObject({
+  it("does not apply a deficit at the exact 60 percent threshold for speed/dist/duration", () => {
+    expect(analyzePacing("Ruta", { averageSpeed: 30, distanceMeters: 600 }, benchmarks, 252)).toMatchObject({
       hasBenchmark: true,
       isPacingDeficit: false,
       speedRatio: 0.6,
       distanceRatio: 0.6,
+      durationRatio: 0.6,
       penaltyDeduction: 0,
     });
+  });
+
+  it("penalizes an aborted or abnormally short session below 60 percent duration", () => {
+    // 180s es menor al 60% de 420s (252s)
+    const result = analyzePacing("Ruta", { averageSpeed: 40, distanceMeters: 800 }, benchmarks, 180);
+    expect(result.isPacingDeficit).toBe(true);
+    expect(result.penaltyDeduction).toBeGreaterThan(0);
+    expect(result.reason).toContain("Duración");
+    expect(result.reason).toContain("inferior al 60% del grupo");
   });
 
   it("reports both deficient metrics and caps the progressive penalty", () => {
@@ -138,6 +150,7 @@ describe("analyzePacing", () => {
       isPacingDeficit: false,
       speedRatio: 1,
       distanceRatio: 1,
+      durationRatio: 1,
       deficitRatio: 0,
       penaltyDeduction: 0,
     });
