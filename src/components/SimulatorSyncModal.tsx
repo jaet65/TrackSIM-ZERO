@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { formatLocalDateInput } from "../lib/date";
 import {
   checkStreamDBStatus,
   countSimulatorSessions,
@@ -24,7 +25,7 @@ export default function SimulatorSyncModal({
   onSyncComplete: () => void;
 }) {
   const { user } = useAuth();
-  const today = new Date().toISOString().split("T")[0];
+  const today = formatLocalDateInput(new Date());
 
   const [status, setStatus] = useState<StreamDBStatus | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(false);
@@ -408,7 +409,7 @@ export default function SimulatorSyncModal({
                   />
                   <button
                     type="button"
-                    onClick={() => setStartDate(today)}
+                    onClick={() => setStartDate(formatLocalDateInput(new Date()))}
                     className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition"
                   >
                     Hoy
@@ -427,7 +428,7 @@ export default function SimulatorSyncModal({
                   />
                   <button
                     type="button"
-                    onClick={() => setEndDate(today)}
+                    onClick={() => setEndDate(formatLocalDateInput(new Date()))}
                     className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition"
                   >
                     Hoy
