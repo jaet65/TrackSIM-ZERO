@@ -36,7 +36,15 @@ describe("evaluation helpers", () => {
     expect(dictamen(9, 1).label).toBe("APTO");
     expect(dictamen(9, 2).label).toBe("NO APTO");
     expect(adjustScoreForCritical(9, 1)).toBe(9);
-    expect(adjustScoreForCritical(9, 2)).toBe(5.9);
+    // Conducir al 10/10 en el resto de la conducción llega exactamente al techo:
+    expect(adjustScoreForCritical(10, 2)).toBe(5.9);
+    expect(adjustScoreForCritical(10, 3)).toBe(5.4);
+    expect(adjustScoreForCritical(10, 6)).toBe(3.9);
+    // Con 9/10 en el resto modula proporcionalmente (5.9 * 0.9 = 5.3):
+    expect(adjustScoreForCritical(9, 2)).toBe(5.3);
+    // A partir de la 7ª falta crítica se va automáticamente a 0:
+    expect(adjustScoreForCritical(10, 7)).toBe(0);
+    expect(adjustScoreForCritical(8, 8)).toBe(0);
   });
 
   it("recalculates current scores and detects legacy slippery-road marks", () => {

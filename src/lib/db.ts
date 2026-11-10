@@ -195,9 +195,21 @@ export function dictamen(score: number, criticalErrors: number) {
 }
 
 // Asegura coherencia entre la calificación y el dictamen: un NO APTO nunca debe tener calificación verde/aprobatoria (escala 0-10)
+// Con CRITICAL_LIMIT (2 errores críticos) el techo máximo es 5.9 (reprobatorio).
+// Por cada error crítico adicional más allá de 2, el techo baja escalonadamente (-0.5 pts por cada choque/crítico extra: 3->5.4, 4->4.9, 5->4.4, 6->3.9).
+// A partir de la 7ª falta crítica (>= 7), la calificación cae automáticamente a 0.0.
+// Además, la calificación final modula proporcionalmente sobre ese techo según el resto de la conducción (errores leves/moderados, telemetría y ritmo).
 export function adjustScoreForCritical(score: number, criticalErrors: number): number {
+  if (criticalErrors >= 7) {
+    return 0;
+  }
   if (criticalErrors >= CRITICAL_LIMIT) {
-    return Math.min(score, 5.9);
+    const extraCriticals = criticalErrors - CRITICAL_LIMIT;
+    const maxAllowed = Math.max(0, 5.9 - extraCriticals * 0.5);
+    // Escalamiento proporcional sobre el techo máximo según el desempeño general del conductor
+    const factor = Math.max(0, Math.min(10, score)) / 10;
+    const adjusted = maxAllowed * factor;
+    return Math.round(adjusted * 10) / 10;
   }
   return score;
 }
