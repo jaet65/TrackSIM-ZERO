@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { CRITICAL_LIMIT } from "../lib/config";
-import { getPhaseName } from "../lib/exercises";
+import { getPhaseName, isExerciseUnevaluated } from "../lib/exercises";
 import { SEVERITIES, SEVERITY_ORDER, classify, getCatalog, type Severity } from "../lib/catalog";
 import { driverData, updateEvaluationMarks, type DateFilter, type EvaluationView } from "../lib/db";
 import { resolveExerciseEnvironment } from "../lib/exercises";
@@ -133,12 +133,15 @@ export default function Driver() {
 
   // Promedios globales ponderados de Destreza (70%) y Eco-Driving (30%)
   const { globalDestreza, globalEco } = useMemo(() => {
-    if (!data?.evals?.length) return { globalDestreza: "—", globalEco: "—" };
-    const totalDestreza = data.evals.reduce((acc, e) => acc + (e.errorScore ?? e.score), 0);
-    const avgDestrezaBase = totalDestreza / data.evals.length;
+    const evaluableEvals = (data?.evals || []).filter(
+      (e) => !isExerciseUnevaluated(e.exercise || e.unit, e.groupId || groupParam || null)
+    );
+    if (!evaluableEvals.length) return { globalDestreza: "—", globalEco: "—" };
+    const totalDestreza = evaluableEvals.reduce((acc, e) => acc + (e.errorScore ?? e.score), 0);
+    const avgDestrezaBase = totalDestreza / evaluableEvals.length;
     let destrezaPonderada = Math.round(avgDestrezaBase * 0.7 * 10) / 10;
 
-    const evalsWithTelemetry = data.evals.filter((e) => e.telemetryScore !== undefined);
+    const evalsWithTelemetry = evaluableEvals.filter((e) => e.telemetryScore !== undefined);
     const avgEcoBase = evalsWithTelemetry.length > 0
       ? evalsWithTelemetry.reduce((acc, e) => acc + (e.telemetryScore ?? 0), 0) / evalsWithTelemetry.length
       : null;
@@ -146,7 +149,7 @@ export default function Driver() {
 
     // Si tiene faltas críticas eliminatorias, la calificación final está ajustada a 5.9 (o el tope correspondiente).
     // En ese caso, ajustamos proporcionalmente Destreza y Eco para que la suma cuadre exactamente con `overall`.
-    if (data.overall !== undefined && ecoPonderado !== null) {
+    if (data?.overall !== undefined && ecoPonderado !== null) {
       const rawSum = Math.round((destrezaPonderada + ecoPonderado) * 10) / 10;
       if (rawSum !== data.overall && rawSum > 0) {
         const ratio = data.overall / rawSum;
@@ -612,21 +615,24 @@ export default function Driver() {
         ) : (
           <div className="grid gap-6 grid-cols-1">
             {phases.map((p) => {
-              // Evaluaciones correspondientes a esta fase para promediar ejes de telemetría
+              // Evaluaciones correspondientes a esta fase para promediar ejes de telemetría (filtrando ejercicios no evaluados para destreza y eco)
               const phaseEvals = evals.filter((e) => e.phase === p.phase);
               const phaseGroupId = phaseEvals[0]?.groupId || groupParam || null;
+              const evaluablePhaseEvals = phaseEvals.filter(
+                (e) => !isExerciseUnevaluated(e.exercise || e.unit, phaseGroupId)
+              );
               // Pasamos las evaluaciones completas con su ejercicio específico para que se calibre cada entorno individualmente
               const radarSummary = computeTelemetryAxes(phaseEvals, "", phaseGroupId);
               const axes = radarSummary.axes;
               const envLabel = radarSummary.environmentLabel;
 
-              // Destreza y Eco ponderados de la fase específica
-              const pTotalDestreza = phaseEvals.reduce((acc, e) => acc + (e.errorScore ?? e.score), 0);
-              let pDestrezaVal = phaseEvals.length > 0
-                ? Math.round((pTotalDestreza / phaseEvals.length) * 0.7 * 10) / 10
+              // Destreza y Eco ponderados de la fase específica (ejercicios evaluables)
+              const pTotalDestreza = evaluablePhaseEvals.reduce((acc, e) => acc + (e.errorScore ?? e.score), 0);
+              let pDestrezaVal = evaluablePhaseEvals.length > 0
+                ? Math.round((pTotalDestreza / evaluablePhaseEvals.length) * 0.7 * 10) / 10
                 : 0;
 
-              const pEvalsWithEco = phaseEvals.filter((e) => e.telemetryScore !== undefined);
+              const pEvalsWithEco = evaluablePhaseEvals.filter((e) => e.telemetryScore !== undefined);
               let pEcoVal = pEvalsWithEco.length > 0
                 ? Math.round((pEvalsWithEco.reduce((acc, e) => acc + (e.telemetryScore ?? 0), 0) / pEvalsWithEco.length) * 0.3 * 10) / 10
                 : 0;
@@ -1086,60 +1092,84 @@ export default function Driver() {
                     </td>
                   </tr>
                 ) : (
-                  allExerciseRows.map((row) =>
-                    row.type === "done" ? (
-                      <tr
-                        key={`${row.eval.phase}-${row.eval.fileName}`}
-                        className="group hover:bg-indigo-50/30 transition cursor-pointer"
-                        onClick={() => setSelectedEval(row.eval)}
-                      >
-                        <td className="px-4 py-3">
-                          <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
-                            F{row.eval.phase}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-slate-900">
-                          <span className="text-indigo-600 group-hover:text-indigo-700 underline decoration-indigo-200 group-hover:decoration-indigo-500 underline-offset-2 transition">
-                            {row.eval.exercise}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-slate-500">{row.eval.date}</td>
-                        <td className="px-4 py-3 text-slate-700">{row.eval.instructor}</td>
-                        <td className="px-4 py-3 text-slate-500 font-mono">{fmt(row.eval.durationSec)}</td>
-                        <td className="px-4 py-3 font-mono text-slate-700">
-                          {row.eval.errorCount > 0 ? (
-                            <span className="font-semibold text-rose-600">{row.eval.errorCount}</span>
-                          ) : (
-                            <span className="text-emerald-600">0</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">
-                          {row.eval.score}
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr key={row.key} className="bg-slate-50/60 text-slate-400">
-                        <td className="px-4 py-3">
-                          <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-500">
-                            F{row.phase}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-medium text-slate-500">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span>{row.exercise}</span>
-                            <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
-                              No realizado
+                  allExerciseRows.map((row) => {
+                    if (row.type === "done") {
+                      const isUneval = isExerciseUnevaluated(row.eval.exercise || row.eval.unit, row.eval.groupId || groupParam || null);
+                      return (
+                        <tr
+                          key={`${row.eval.phase}-${row.eval.fileName}`}
+                          className="group hover:bg-indigo-50/30 transition cursor-pointer"
+                          onClick={() => setSelectedEval(row.eval)}
+                        >
+                          <td className="px-4 py-3">
+                            <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
+                              F{row.eval.phase}
                             </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-slate-400">—</td>
-                        <td className="px-4 py-3 text-slate-400">—</td>
-                        <td className="px-4 py-3 font-mono text-slate-400">—</td>
-                        <td className="px-4 py-3 font-mono text-slate-400">—</td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-slate-400">0</td>
-                      </tr>
-                    )
-                  )
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-900">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-indigo-600 group-hover:text-indigo-700 underline decoration-indigo-200 group-hover:decoration-indigo-500 underline-offset-2 transition">
+                                {row.eval.exercise}
+                              </span>
+                              {isUneval && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-800" title="Ejercicio de concientización: no afecta el promedio ni la calificación">
+                                  🛡️ No evaluado
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-slate-500">{row.eval.date}</td>
+                          <td className="px-4 py-3 text-slate-700">{row.eval.instructor}</td>
+                          <td className="px-4 py-3 text-slate-500 font-mono">{fmt(row.eval.durationSec)}</td>
+                          <td className="px-4 py-3 font-mono text-slate-700">
+                            {row.eval.errorCount > 0 ? (
+                              <span className="font-semibold text-rose-600">{row.eval.errorCount}</span>
+                            ) : (
+                              <span className="text-emerald-600">0</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono font-bold">
+                            {isUneval ? (
+                              <span className="text-slate-400 text-xs font-semibold" title="No evaluado para métricas ni promedios">N/E</span>
+                            ) : (
+                              <span className="text-indigo-600">{row.eval.score}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    } else {
+                      const isUneval = isExerciseUnevaluated(row.exercise, groupParam || null);
+                      return (
+                        <tr key={row.key} className="bg-slate-50/60 text-slate-400">
+                          <td className="px-4 py-3">
+                            <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-500">
+                              F{row.phase}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-medium text-slate-500">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span>{row.exercise}</span>
+                              <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+                                No realizado
+                              </span>
+                              {isUneval && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                                  🛡️ No evaluado
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-slate-400">—</td>
+                          <td className="px-4 py-3 text-slate-400">—</td>
+                          <td className="px-4 py-3 font-mono text-slate-400">—</td>
+                          <td className="px-4 py-3 font-mono text-slate-400">—</td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-slate-400">
+                            {isUneval ? "N/E" : "0"}
+                          </td>
+                        </tr>
+                      );
+                    }
+                  })
                 )}
               </tbody>
             </table>
@@ -1327,9 +1357,16 @@ export default function Driver() {
                   F{selectedEval.phase}
                 </span>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 leading-tight">
-                    {selectedEval.exercise}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900 leading-tight">
+                      {selectedEval.exercise}
+                    </h3>
+                    {isExerciseUnevaluated(selectedEval.exercise || selectedEval.unit, selectedEval.groupId || groupParam || null) && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-800">
+                        🛡️ Ejercicio No Evaluado (Concientización)
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
                     <span className="font-semibold text-slate-700">{selectedEval.driverName || data?.name || "Conductor"}</span>
                     <span>·</span>
@@ -1391,64 +1428,90 @@ export default function Driver() {
               </div>
 
               {/* Tarjetas de Calificación Compuesta */}
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">
-                    Nota Final
-                  </span>
-                  <div className="mt-1 flex items-baseline gap-1">
-                    <span className="text-2xl font-black font-mono text-indigo-600">{selectedEval.score}</span>
-                    <span className="text-xs text-indigo-400">/ 10</span>
-                  </div>
-                  <span className="block text-[10px] text-indigo-600/80 mt-0.5">
-                    {selectedEval.pacing?.isPacingDeficit ? (
-                      <span className="text-rose-600 font-semibold" title={selectedEval.pacing.reason}>
-                        ⚠️ -{selectedEval.pacing.penaltyDeduction} pts (ritmo lento)
-                      </span>
-                    ) : selectedEval.telemetryScore !== undefined ? (
-                      "70% destreza + 30% eco"
-                    ) : (
-                      "100% destreza"
+              {(() => {
+                const isUneval = isExerciseUnevaluated(selectedEval.exercise || selectedEval.unit, selectedEval.groupId || groupParam || null);
+                return (
+                  <>
+                    {isUneval && (
+                      <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3.5 text-xs text-sky-900 flex items-start gap-2.5">
+                        <span className="text-base leading-none">🛡️</span>
+                        <div>
+                          <strong className="font-bold">Ejercicio de concientización (no evaluado):</strong>
+                          <p className="mt-0.5 text-[11px] text-sky-700 leading-relaxed">
+                            Este ejercicio (ej. simulación con efectos simulados de alcohol o falla planeada) tiene propósitos de sensibilización. Sus errores y telemetría se muestran con fines informativos y formativos, pero <strong>no se computan en las calificaciones, métricas de aprobación ni promedios del conductor ni del grupo</strong>.
+                          </p>
+                        </div>
+                      </div>
                     )}
-                  </span>
-                </div>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">
+                          Nota Final
+                        </span>
+                        <div className="mt-1 flex items-baseline gap-1">
+                          {isUneval ? (
+                            <span className="text-xl font-black font-mono text-slate-500">N/E</span>
+                          ) : (
+                            <>
+                              <span className="text-2xl font-black font-mono text-indigo-600">{selectedEval.score}</span>
+                              <span className="text-xs text-indigo-400">/ 10</span>
+                            </>
+                          )}
+                        </div>
+                        <span className="block text-[10px] text-indigo-600/80 mt-0.5">
+                          {isUneval ? (
+                            "No evaluado"
+                          ) : selectedEval.pacing?.isPacingDeficit ? (
+                            <span className="text-rose-600 font-semibold" title={selectedEval.pacing.reason}>
+                              ⚠️ -{selectedEval.pacing.penaltyDeduction} pts (ritmo lento)
+                            </span>
+                          ) : selectedEval.telemetryScore !== undefined ? (
+                            "70% destreza + 30% eco"
+                          ) : (
+                            "100% destreza"
+                          )}
+                        </span>
+                      </div>
 
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    Destreza Operativa (70%)
-                  </span>
-                  <div className="mt-1 text-2xl font-bold font-mono text-slate-900">
-                    {selectedEval.errorScore}
-                  </div>
-                  <span className="block text-[10px] text-slate-400 mt-0.5">
-                    {selectedEval.errorCount} error(es)
-                  </span>
-                </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                          Destreza Operativa (70%)
+                        </span>
+                        <div className="mt-1 text-2xl font-bold font-mono text-slate-900">
+                          {isUneval ? "N/E" : selectedEval.errorScore}
+                        </div>
+                        <span className="block text-[10px] text-slate-400 mt-0.5">
+                          {selectedEval.errorCount} error(es)
+                        </span>
+                      </div>
 
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    Eco-Drive (30%)
-                  </span>
-                  <div className="mt-1 text-2xl font-bold font-mono text-slate-900">
-                    {selectedEval.telemetryScore !== undefined ? selectedEval.telemetryScore : "—"}
-                  </div>
-                  <span className="block text-[10px] text-slate-400 mt-0.5 truncate" title="Ponderado: RPM, Freno, Inercia y Consumo">
-                    {selectedEval.telemetry?.pctGreenZone !== undefined ? `RPM verde ${selectedEval.telemetry.pctGreenZone}%` : "No disponible"}
-                  </span>
-                </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                          Eco-Drive (30%)
+                        </span>
+                        <div className="mt-1 text-2xl font-bold font-mono text-slate-900">
+                          {isUneval ? "N/E" : (selectedEval.telemetryScore !== undefined ? selectedEval.telemetryScore : "—")}
+                        </div>
+                        <span className="block text-[10px] text-slate-400 mt-0.5 truncate" title="Ponderado: RPM, Freno, Inercia y Consumo">
+                          {selectedEval.telemetry?.pctGreenZone !== undefined ? `RPM verde ${selectedEval.telemetry.pctGreenZone}%` : "No disponible"}
+                        </span>
+                      </div>
 
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    Duración
-                  </span>
-                  <div className="mt-1 text-2xl font-bold font-mono text-slate-900">
-                    {fmt(selectedEval.durationSec)}
-                  </div>
-                  <span className="block text-[10px] text-slate-400 mt-0.5">
-                    {selectedEval.criticalCount > 0 ? `${selectedEval.criticalCount} crítico(s)` : "Sin críticos"}
-                  </span>
-                </div>
-              </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                          Duración
+                        </span>
+                        <div className="mt-1 text-2xl font-bold font-mono text-slate-900">
+                          {fmt(selectedEval.durationSec)}
+                        </div>
+                        <span className="block text-[10px] text-slate-400 mt-0.5">
+                          {selectedEval.criticalCount > 0 ? `${selectedEval.criticalCount} crítico(s)` : "Sin críticos"}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* Banner de Penalización por Conducción Evasiva / Ritmo Lento */}
               {selectedEval.pacing?.isPacingDeficit && (

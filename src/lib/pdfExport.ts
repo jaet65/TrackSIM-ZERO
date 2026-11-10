@@ -3,7 +3,7 @@ import JSZip from "jszip";
 import { filenamePart, generateGroupCertificates } from "./certificates";
 import { driverData, getLatestEvaluationYear, type DateFilter, type EvaluationView, type ReportExerciseSummary } from "./db";
 import { CRITICAL_LIMIT } from "./config";
-import { getPhaseName } from "./exercises";
+import { getPhaseName, isExerciseUnevaluated } from "./exercises";
 import { SEVERITIES, SEVERITY_ORDER, type Severity } from "./catalog";
 import { computeTelemetryAxes } from "./telemetryRadar";
 import { generatePedagogicalRecommendations } from "./recommendations";
@@ -781,22 +781,26 @@ export function generateExecutiveSummaryPdf(
         break;
       }
 
-      const scoreColor = exercise.avgScore >= 8
-        ? [5, 150, 105]
-        : exercise.avgScore >= 6
-          ? [217, 119, 6]
-          : [225, 29, 72];
-      doc.setFillColor(248, 250, 252);
+      const isUneval = Boolean(exercise.isUnevaluated);
+      const scoreColor = isUneval
+        ? [14, 116, 144]
+        : exercise.avgScore >= 8
+          ? [5, 150, 105]
+          : exercise.avgScore >= 6
+            ? [217, 119, 6]
+            : [225, 29, 72];
+      doc.setFillColor(isUneval ? 240 : 248, isUneval ? 249 : 250, isUneval ? 255 : 252);
       doc.roundedRect(14, y, 182, itemH, 1.5, 1.5, "F");
-      doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+      doc.setDrawColor(isUneval ? 186 : COLOR_BORDER[0], isUneval ? 230 : COLOR_BORDER[1], isUneval ? 253 : COLOR_BORDER[2]);
       doc.roundedRect(14, y, 182, itemH, 1.5, 1.5, "S");
-      doc.setFillColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+      doc.setFillColor(isUneval ? 14 : COLOR_INDIGO[0], isUneval ? 116 : COLOR_INDIGO[1], isUneval ? 144 : COLOR_INDIGO[2]);
       doc.roundedRect(14, y, 1.4, itemH, 0.6, 0.6, "F");
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(5.3);
-      doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-      doc.text(phaseLabel.toUpperCase(), 19, y + 3.8);
+      doc.setTextColor(isUneval ? 14 : COLOR_INDIGO[0], isUneval ? 116 : COLOR_INDIGO[1], isUneval ? 144 : COLOR_INDIGO[2]);
+      const headerTag = isUneval ? `${phaseLabel.toUpperCase()} · CONCIENTIZACIÓN (NO EVALUADO)` : phaseLabel.toUpperCase();
+      doc.text(headerTag, 19, y + 3.8);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
       doc.text(`${exercise.drivers} conductores`, 192, y + 3.8, { align: "right" });
@@ -806,15 +810,27 @@ export function generateExecutiveSummaryPdf(
       doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
       doc.text(titleLines, 19, y + 7.8);
 
-      doc.setFillColor(238, 242, 255);
-      doc.roundedRect(163, y + 5.3, 28, 7.2, 1.5, 1.5, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(5);
-      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-      doc.text("PROMEDIO", 177, y + 8, { align: "center" });
-      doc.setFontSize(6.4);
-      doc.setTextColor(scoreColor[0], scoreColor[1], scoreColor[2]);
-      doc.text(`${exercise.avgScore}/10`, 177, y + 11, { align: "center" });
+      if (isUneval) {
+        doc.setFillColor(224, 242, 254);
+        doc.roundedRect(160, y + 5.3, 31, 7.2, 1.5, 1.5, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(5);
+        doc.setTextColor(14, 116, 144);
+        doc.text("CONCIENTIZACIÓN", 175.5, y + 8, { align: "center" });
+        doc.setFontSize(6.2);
+        doc.setTextColor(14, 116, 144);
+        doc.text("NO EVALUADO", 175.5, y + 11, { align: "center" });
+      } else {
+        doc.setFillColor(238, 242, 255);
+        doc.roundedRect(163, y + 5.3, 28, 7.2, 1.5, 1.5, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(5);
+        doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+        doc.text("PROMEDIO", 177, y + 8, { align: "center" });
+        doc.setFontSize(6.4);
+        doc.setTextColor(scoreColor[0], scoreColor[1], scoreColor[2]);
+        doc.text(`${exercise.avgScore}/10`, 177, y + 11, { align: "center" });
+      }
 
       if (descLines.length > 0) {
         doc.setFont("helvetica", "normal");
@@ -891,23 +907,28 @@ export function generateExecutiveSummaryPdf(
         }
         break;
       }
-      const scoreColor = exercise.avgScore >= 8
-        ? [5, 150, 105]
-        : exercise.avgScore >= 6
-          ? [217, 119, 6]
-          : [225, 29, 72];
-      const rowFill = remainingExercises.length % 2 === 0 ? [255, 255, 255] : COLOR_BG_LIGHT;
+      const isUneval = Boolean(exercise.isUnevaluated);
+      const scoreColor = isUneval
+        ? [14, 116, 144]
+        : exercise.avgScore >= 8
+          ? [5, 150, 105]
+          : exercise.avgScore >= 6
+            ? [217, 119, 6]
+            : [225, 29, 72];
+      const rowFill = isUneval
+        ? [240, 249, 255]
+        : remainingExercises.length % 2 === 0 ? [255, 255, 255] : COLOR_BG_LIGHT;
       doc.setFillColor(rowFill[0], rowFill[1], rowFill[2]);
       doc.roundedRect(14, pageY, 182, rowH, 1.2, 1.2, "F");
-      doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+      doc.setDrawColor(isUneval ? 186 : COLOR_BORDER[0], isUneval ? 230 : COLOR_BORDER[1], isUneval ? 253 : COLOR_BORDER[2]);
       doc.roundedRect(14, pageY, 182, rowH, 1.2, 1.2, "S");
-      doc.setFillColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+      doc.setFillColor(isUneval ? 14 : COLOR_INDIGO[0], isUneval ? 116 : COLOR_INDIGO[1], isUneval ? 144 : COLOR_INDIGO[2]);
       doc.roundedRect(14, pageY, 1.2, rowH, 0.5, 0.5, "F");
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(6.2);
-      doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-      doc.text(phaseLines, 18, pageY + 5);
+      doc.setTextColor(isUneval ? 14 : COLOR_INDIGO[0], isUneval ? 116 : COLOR_INDIGO[1], isUneval ? 144 : COLOR_INDIGO[2]);
+      doc.text(isUneval ? `${phaseLines}\n[NO EVAL]` : phaseLines, 18, pageY + 5);
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7);
@@ -922,12 +943,21 @@ export function generateExecutiveSummaryPdf(
         doc.text(descLines, 52, descY);
       }
 
-      doc.setFillColor(238, 242, 255);
-      doc.roundedRect(157, pageY + 2, 19, 8, 1.5, 1.5, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(6.3);
-      doc.setTextColor(scoreColor[0], scoreColor[1], scoreColor[2]);
-      doc.text(`${exercise.avgScore}/10`, 166.5, pageY + 7.2, { align: "center" });
+      if (isUneval) {
+        doc.setFillColor(224, 242, 254);
+        doc.roundedRect(155, pageY + 2, 21, 8, 1.5, 1.5, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(5.2);
+        doc.setTextColor(14, 116, 144);
+        doc.text("NO EVAL.", 165.5, pageY + 7.2, { align: "center" });
+      } else {
+        doc.setFillColor(238, 242, 255);
+        doc.roundedRect(157, pageY + 2, 19, 8, 1.5, 1.5, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(6.3);
+        doc.setTextColor(scoreColor[0], scoreColor[1], scoreColor[2]);
+        doc.text(`${exercise.avgScore}/10`, 166.5, pageY + 7.2, { align: "center" });
+      }
       doc.setFillColor(241, 245, 249);
       doc.roundedRect(180, pageY + 2, 14, 8, 1.5, 1.5, "F");
       doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
@@ -1089,8 +1119,10 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
   doc.text("/ 10 pts", 54, y + 18.5);
 
-  // Pastillas de desglose Destreza y Eco-Driving en la tarjeta global (lado derecho)
-  const evalsList = data.evals || [];
+  // Pastillas de desglose Destreza y Eco-Driving en la tarjeta global (lado derecho, ignorando no evaluados)
+  const evalsList = (data.evals || []).filter(
+    (e) => !isExerciseUnevaluated(e.exercise || e.unit, e.groupId || filter?.groupId || null)
+  );
   const totalDestrezaVal = evalsList.reduce((acc, e) => acc + (e.errorScore ?? e.score), 0);
   let destrezaPonderadaNum = evalsList.length > 0
     ? Math.round((totalDestrezaVal / evalsList.length) * 0.7 * 10) / 10
@@ -1300,8 +1332,10 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
     // En grupos de tipo escuela (o cuando no es curso), mostrar este desglose por fase
     const isEscuelaGroup = data.groupType === "escuela" || (!isCursoGroup && p.phase > 0);
     if (isEscuelaGroup) {
-      // Cálculo de Destreza y Eco ponderados de esta fase específica
-      const phaseEvalsList = data.evals.filter((e) => e.phase === p.phase);
+      // Cálculo de Destreza y Eco ponderados de esta fase específica (ignorando no evaluados)
+      const phaseEvalsList = data.evals.filter(
+        (e) => e.phase === p.phase && !isExerciseUnevaluated(e.exercise || e.unit, e.groupId || filter?.groupId || null)
+      );
       const pTotalDestreza = phaseEvalsList.reduce((acc, e) => acc + (e.errorScore ?? e.score), 0);
       let pDestrezaVal = phaseEvalsList.length > 0
         ? Math.round((pTotalDestreza / phaseEvalsList.length) * 0.7 * 10) / 10
@@ -1789,14 +1823,16 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
 
     if (row.type === "done") {
       const e = row.eval;
+      const isUneval = isExerciseUnevaluated(e.exercise || e.unit, e.groupId || filter?.groupId || null);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7);
-      doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+      doc.setTextColor(isUneval ? 14 : COLOR_INDIGO[0], isUneval ? 116 : COLOR_INDIGO[1], isUneval ? 144 : COLOR_INDIGO[2]);
       doc.text(`F${e.phase}`, 17, y + 5);
 
       doc.setFont("helvetica", "bold");
       doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-      const exTitle = e.exercise.length > 30 ? `${e.exercise.substring(0, 28)}…` : e.exercise;
+      const rawName = isUneval ? `${e.exercise} [NO EVAL]` : e.exercise;
+      const exTitle = rawName.length > 30 ? `${rawName.substring(0, 28)}…` : rawName;
       doc.text(exTitle, 32, y + 5);
 
       doc.setFont("helvetica", "normal");
@@ -1820,15 +1856,21 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
       }
 
       doc.setFont("helvetica", "bold");
-      doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
-      doc.text(`${e.score}`, 193, y + 5, { align: "right" });
+      if (isUneval) {
+        doc.setTextColor(100, 116, 139);
+        doc.text("N/E", 193, y + 5, { align: "right" });
+      } else {
+        doc.setTextColor(COLOR_INDIGO[0], COLOR_INDIGO[1], COLOR_INDIGO[2]);
+        doc.text(`${e.score}`, 193, y + 5, { align: "right" });
+      }
     } else {
+      const isUneval = isExerciseUnevaluated(row.exercise, filter?.groupId || null);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7);
       doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
       doc.text(`F${row.phase}`, 17, y + 5);
 
-      const rawTitle = `${row.exercise} (NO REALIZADO)`;
+      const rawTitle = isUneval ? `${row.exercise} (NO REALIZADO / NO EVAL)` : `${row.exercise} (NO REALIZADO)`;
       const exTitle = rawTitle.length > 34 ? `${rawTitle.substring(0, 32)}…` : rawTitle;
       doc.text(exTitle, 32, y + 5);
 
@@ -1839,7 +1881,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
       doc.text("—", 168, y + 5);
 
       doc.setFont("helvetica", "bold");
-      doc.text("0", 193, y + 5, { align: "right" });
+      doc.text(isUneval ? "N/E" : "0", 193, y + 5, { align: "right" });
     }
 
     doc.setDrawColor(241, 245, 249);

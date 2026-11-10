@@ -18,6 +18,7 @@ import {
   getExercises,
   getExerciseEnvironments,
   getPhaseNames,
+  getUnevaluatedExercises,
   sanitizeExercises,
   setGroupExercises,
   setGroupTypeMemory,
@@ -104,8 +105,8 @@ export function hydrateGroupRules(g: GroupDoc): void {
     setGroupCatalog(g.id, sanitizeCatalog(g.catalog));
   }
   if (g.exercises && !hasPendingExerciseSave(g.id)) {
-    const { phases, environments, descriptions, phaseNames } = sanitizeExercises(g.exercises);
-    setGroupExercises(g.id, phases, environments, descriptions, phaseNames);
+    const { phases, environments, descriptions, phaseNames, unevaluated } = sanitizeExercises(g.exercises);
+    setGroupExercises(g.id, phases, environments, descriptions, phaseNames, unevaluated);
   }
 }
 
@@ -153,6 +154,7 @@ export async function createGroup(
   const initialPhases = JSON.parse(JSON.stringify(getExercises(sourceGroupId || null, sourceGroupId ? undefined : type)));
   const initialEnvs = JSON.parse(JSON.stringify(getExerciseEnvironments(sourceGroupId || null, sourceGroupId ? undefined : type)));
   const initialPhaseNames = JSON.parse(JSON.stringify(getPhaseNames(sourceGroupId || null, sourceGroupId ? undefined : type)));
+  const initialUnev = JSON.parse(JSON.stringify(getUnevaluatedExercises(sourceGroupId || null, sourceGroupId ? undefined : type)));
 
   const id = `grp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const now = Date.now();
@@ -175,6 +177,7 @@ export async function createGroup(
       phases: initialPhases,
       environments: initialEnvs,
       phaseNames: initialPhaseNames,
+      unevaluated: initialUnev,
     },
     exercisesUpdatedAt: now,
     exercisesUpdatedBy: user.email,

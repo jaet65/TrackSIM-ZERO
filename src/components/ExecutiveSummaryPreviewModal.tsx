@@ -229,14 +229,27 @@ export default function ExecutiveSummaryPreviewModal({
               ) : (
                 <ul className="space-y-2">
                   {exercises.map((exercise, index) => (
-                    <li key={`${exercise.phase}-${exercise.name}-${index}`} className="border-l-2 border-indigo-500 pl-3">
-                      <p className="text-xs font-semibold text-slate-800">
-                        {exercise.phase > 0 ? `${getPhaseName(exercise.phase)} · ` : ""}
-                        {exercise.name}
-                        <span className="font-normal text-slate-500">
-                          {" "}· Promedio: {exercise.avgScore}/10 · {exercise.drivers} cond.
-                        </span>
-                      </p>
+                    <li key={`${exercise.phase}-${exercise.name}-${index}`} className={`border-l-2 pl-3 ${exercise.isUnevaluated ? "border-sky-400 bg-sky-50/30 py-1 rounded-r-lg" : "border-indigo-500"}`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-semibold text-slate-800">
+                          {exercise.phase > 0 ? `${getPhaseName(exercise.phase)} · ` : ""}
+                          {exercise.name}
+                          {exercise.isUnevaluated ? (
+                            <span className="font-normal text-slate-500">
+                              {" "}· {exercise.drivers} cond.
+                            </span>
+                          ) : (
+                            <span className="font-normal text-slate-500">
+                              {" "}· Promedio: {exercise.avgScore}/10 · {exercise.drivers} cond.
+                            </span>
+                          )}
+                        </p>
+                        {exercise.isUnevaluated && (
+                          <span className="rounded-full bg-sky-100 border border-sky-300 px-2 py-0.2 text-[10px] font-bold text-sky-800">
+                            🛡️ No evaluado (Concientización)
+                          </span>
+                        )}
+                      </div>
                       {exercise.description && (
                         <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">{exercise.description}</p>
                       )}

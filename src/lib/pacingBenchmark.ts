@@ -1,4 +1,4 @@
-import { exerciseKey } from "./exercises";
+import { exerciseKey, isExerciseUnevaluated } from "./exercises";
 import { getCatalog, normalize } from "./catalog";
 import type { Mark, TelemetryMetrics } from "./parse";
 
@@ -47,6 +47,7 @@ export function computeGroupBenchmarks(
   for (const doc of evalDocs) {
     const name = (doc.unit || doc.exercise || "").trim();
     if (!name) continue;
+    if (isExerciseUnevaluated(name, doc.groupId)) continue;
     const key = exerciseKey(name);
     if (!key) continue;
 

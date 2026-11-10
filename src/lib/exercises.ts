@@ -9,17 +9,20 @@ export type ExerciseConfig = Record<string, string[]>;
 export type ExerciseEnvironmentsMap = Record<string, ExerciseEnvironment>; // exerciseKey -> environment
 export type ExerciseDescriptionsMap = Record<string, string>; // exerciseKey -> descripción
 export type PhaseNamesMap = Record<number, string>; // phaseId -> custom name
+export type UnevaluatedExercisesMap = Record<string, boolean>; // exerciseKey -> true si es no evaluado / concientización
 
 export type ExerciseSettingsData = {
   phases: ExerciseConfig;
   environments?: ExerciseEnvironmentsMap;
   descriptions?: ExerciseDescriptionsMap;
   phaseNames?: PhaseNamesMap;
+  unevaluated?: UnevaluatedExercisesMap;
   globalType?: "escuela" | "curso";
   cursoExercises?: {
     phases: ExerciseConfig;
     environments?: ExerciseEnvironmentsMap;
     descriptions?: ExerciseDescriptionsMap;
+    unevaluated?: UnevaluatedExercisesMap;
   };
 };
 
@@ -68,11 +71,13 @@ let current: ExerciseConfig = {};
 let currentEnvs: ExerciseEnvironmentsMap = {};
 let currentDescriptions: ExerciseDescriptionsMap = {};
 let currentPhaseNames: PhaseNamesMap = {};
+let currentUnevaluated: UnevaluatedExercisesMap = {};
 let currentGlobalType: "escuela" | "curso" = "escuela";
 
 let currentCursoPhases: ExerciseConfig = {};
 let currentCursoEnvs: ExerciseEnvironmentsMap = {};
 let currentCursoDescriptions: ExerciseDescriptionsMap = {};
+let currentCursoUnevaluated: UnevaluatedExercisesMap = {};
 
 let loading: Promise<ExerciseConfig> | null = null;
 let savingPromise: Promise<void> = Promise.resolve();
@@ -88,6 +93,7 @@ const groupExercises = new Map<
     environments: ExerciseEnvironmentsMap;
     descriptions: ExerciseDescriptionsMap;
     phaseNames: PhaseNamesMap;
+    unevaluated: UnevaluatedExercisesMap;
   }
 >();
 const groupTypes = new Map<string, "escuela" | "curso">();
@@ -115,9 +121,10 @@ export function setGroupExercises(
   phases: ExerciseConfig,
   environments: ExerciseEnvironmentsMap = {},
   descriptions: ExerciseDescriptionsMap = {},
-  phaseNames: PhaseNamesMap = {}
+  phaseNames: PhaseNamesMap = {},
+  unevaluated: UnevaluatedExercisesMap = {}
 ) {
-  groupExercises.set(groupId, { phases, environments, descriptions, phaseNames });
+  groupExercises.set(groupId, { phases, environments, descriptions, phaseNames, unevaluated });
 }
 
 export function removeGroupExercises(groupId: string) {
@@ -182,6 +189,28 @@ export const getPhaseNames = (groupId?: string | null, groupType?: "escuela" | "
   }
   return currentPhaseNames;
 };
+
+export const getUnevaluatedExercises = (groupId?: string | null, groupType?: "escuela" | "curso"): UnevaluatedExercisesMap => {
+  if (groupId && groupExercises.has(groupId)) {
+    const grp = groupExercises.get(groupId)!;
+    return { ...currentUnevaluated, ...grp.unevaluated };
+  }
+  const effectiveType = groupType ?? (groupId ? getGroupType(groupId) : currentGlobalType);
+  if (!groupId && effectiveType === "curso") {
+    return currentCursoUnevaluated;
+  }
+  return currentUnevaluated;
+};
+
+/**
+ * Devuelve si un ejercicio está marcado como no evaluado (concientización).
+ */
+export function isExerciseUnevaluated(name?: string, groupId?: string | null): boolean {
+  if (!name) return false;
+  const key = exerciseKey(name);
+  const map = getUnevaluatedExercises(groupId);
+  return Boolean(map[key]);
+}
 
 /**
  * Obtiene la lista ordenada de fases configuradas con su nombre personalizado o predeterminado.
@@ -257,28 +286,33 @@ export function sanitizeExercises(raw: unknown): {
   environments: ExerciseEnvironmentsMap;
   descriptions: ExerciseDescriptionsMap;
   phaseNames: PhaseNamesMap;
+  unevaluated: UnevaluatedExercisesMap;
   globalType: "escuela" | "curso";
   cursoExercises?: {
     phases: ExerciseConfig;
     environments?: ExerciseEnvironmentsMap;
     descriptions?: ExerciseDescriptionsMap;
+    unevaluated?: UnevaluatedExercisesMap;
   };
 } {
   const outPhases: ExerciseConfig = {};
   const outEnvs: ExerciseEnvironmentsMap = {};
   const outDescriptions: ExerciseDescriptionsMap = {};
   const outPhaseNames: PhaseNamesMap = {};
+  const outUnevaluated: UnevaluatedExercisesMap = {};
 
   const r = raw as {
     phases?: Record<string, unknown>;
     environments?: Record<string, string>;
     descriptions?: Record<string, string>;
     phaseNames?: Record<string | number, string>;
+    unevaluated?: Record<string, boolean>;
     globalType?: "escuela" | "curso";
     cursoExercises?: {
       phases?: Record<string, unknown>;
       environments?: Record<string, string>;
       descriptions?: Record<string, string>;
+      unevaluated?: Record<string, boolean>;
     };
   } | undefined;
 
@@ -333,6 +367,15 @@ export function sanitizeExercises(raw: unknown): {
     }
   }
 
+  const unevRaw = r?.unevaluated ?? {};
+  if (typeof unevRaw === "object" && unevRaw !== null) {
+    for (const [k, v] of Object.entries(unevRaw)) {
+      if (v === true || v === ("true" as unknown)) {
+        outUnevaluated[k] = true;
+      }
+    }
+  }
+
   const globalType = r?.globalType === "curso" ? "curso" : "escuela";
 
   let outCursoExercises:
@@ -340,6 +383,7 @@ export function sanitizeExercises(raw: unknown): {
         phases: ExerciseConfig;
         environments?: ExerciseEnvironmentsMap;
         descriptions?: ExerciseDescriptionsMap;
+        unevaluated?: UnevaluatedExercisesMap;
       }
     | undefined = undefined;
 
@@ -376,10 +420,21 @@ export function sanitizeExercises(raw: unknown): {
       }
     }
 
+    const cUnev: UnevaluatedExercisesMap = {};
+    const cUnevRaw = r.cursoExercises.unevaluated ?? {};
+    if (typeof cUnevRaw === "object" && cUnevRaw !== null) {
+      for (const [k, v] of Object.entries(cUnevRaw)) {
+        if (v === true || v === ("true" as unknown)) {
+          cUnev[k] = true;
+        }
+      }
+    }
+
     outCursoExercises = {
       phases: cPhases,
       environments: cEnvs,
       descriptions: cDescs,
+      unevaluated: cUnev,
     };
   }
 
@@ -388,6 +443,7 @@ export function sanitizeExercises(raw: unknown): {
     environments: outEnvs,
     descriptions: outDescriptions,
     phaseNames: outPhaseNames,
+    unevaluated: outUnevaluated,
     globalType,
     cursoExercises: outCursoExercises,
   };
@@ -403,16 +459,18 @@ export async function loadExercises(
   if (!loading || force) {
     loading = safeGetDoc(ref())
       .then((snap) => {
-        const { phases, environments, descriptions, phaseNames, globalType, cursoExercises } = sanitizeExercises(snap.exists() ? snap.data() : undefined);
+        const { phases, environments, descriptions, phaseNames, unevaluated, globalType, cursoExercises } = sanitizeExercises(snap.exists() ? snap.data() : undefined);
         current = phases;
         currentEnvs = environments;
         currentDescriptions = descriptions;
         currentPhaseNames = phaseNames;
+        currentUnevaluated = unevaluated;
         currentGlobalType = globalType;
 
         currentCursoPhases = cursoExercises?.phases ?? {};
         currentCursoEnvs = cursoExercises?.environments ?? {};
         currentCursoDescriptions = cursoExercises?.descriptions ?? {};
+        currentCursoUnevaluated = cursoExercises?.unevaluated ?? {};
 
         return current;
       })
@@ -431,8 +489,8 @@ export async function loadExercises(
     if (grpSnap.exists()) {
       const grpData = grpSnap.data();
       if (grpData?.exercises) {
-        const { phases, environments, descriptions, phaseNames } = sanitizeExercises(grpData.exercises);
-        setGroupExercises(groupId, phases, environments, descriptions, phaseNames);
+        const { phases, environments, descriptions, phaseNames, unevaluated } = sanitizeExercises(grpData.exercises);
+        setGroupExercises(groupId, phases, environments, descriptions, phaseNames, unevaluated);
         return phases;
       }
     }
@@ -454,23 +512,26 @@ export async function saveExercises(
   groupId?: string | null,
   descriptions?: ExerciseDescriptionsMap,
   phaseNames?: PhaseNamesMap,
-  groupType?: "escuela" | "curso"
+  groupType?: "escuela" | "curso",
+  unevaluated?: UnevaluatedExercisesMap
 ) {
   const targetType = groupType ?? (groupId ? getGroupType(groupId) : currentGlobalType);
   const fallbackEnvs = getExerciseEnvironments(groupId, targetType);
   const fallbackDescs = getExerciseDescriptions(groupId, targetType);
   const fallbackNames = getPhaseNames(groupId, targetType);
+  const fallbackUnev = getUnevaluatedExercises(groupId, targetType);
   const clean = sanitizeExercises({
     phases: cfg,
     environments: environments ?? fallbackEnvs,
     descriptions: descriptions ?? fallbackDescs,
     phaseNames: phaseNames ?? fallbackNames,
+    unevaluated: unevaluated ?? fallbackUnev,
     globalType: targetType,
   });
 
   if (groupId) {
     // Actualizar en memoria de inmediato para evitar lecturas obsoletas al cambiar de pestaña
-    setGroupExercises(groupId, clean.phases, clean.environments, clean.descriptions, clean.phaseNames);
+    setGroupExercises(groupId, clean.phases, clean.environments, clean.descriptions, clean.phaseNames, clean.unevaluated);
     pendingGroupSaves.add(groupId);
     const task = savingPromise.then(() => {
       const write = updateDoc(groupRef(groupId), {
@@ -479,6 +540,7 @@ export async function saveExercises(
           environments: clean.environments,
           descriptions: clean.descriptions,
           phaseNames: clean.phaseNames,
+          unevaluated: clean.unevaluated,
         },
         exercisesUpdatedAt: Date.now(),
         exercisesUpdatedBy: editorEmail,
@@ -498,11 +560,13 @@ export async function saveExercises(
     currentCursoPhases = clean.phases;
     currentCursoEnvs = clean.environments;
     currentCursoDescriptions = clean.descriptions;
+    currentCursoUnevaluated = clean.unevaluated;
   } else {
     current = clean.phases;
     currentEnvs = clean.environments;
     currentDescriptions = clean.descriptions;
     currentPhaseNames = clean.phaseNames;
+    currentUnevaluated = clean.unevaluated;
   }
   currentGlobalType = targetType;
   loading = Promise.resolve(targetType === "curso" ? currentCursoPhases : current);
@@ -512,11 +576,13 @@ export async function saveExercises(
     environments: currentEnvs,
     descriptions: currentDescriptions,
     phaseNames: currentPhaseNames,
+    unevaluated: currentUnevaluated,
     globalType: currentGlobalType,
     cursoExercises: {
       phases: currentCursoPhases,
       environments: currentCursoEnvs,
       descriptions: currentCursoDescriptions,
+      unevaluated: currentCursoUnevaluated,
     },
     updatedAt: Date.now(),
     updatedBy: editorEmail,

@@ -10,6 +10,7 @@ import {
   getExerciseDescription,
   getExercises,
   getGroupType,
+  isExerciseUnevaluated,
   loadExercises,
   phaseForExercise,
   resolveExerciseEnvironment,
@@ -334,9 +335,16 @@ function summarizeDriverPhases(
       expected = Math.max(1, counted.length);
     }
 
-    const totalScore = counted.reduce((a, e) => a + e.score, 0);
-    const rawAvg = expected > 0 ? Math.round((totalScore / expected) * 10) / 10 : 0;
-    const criticalErrors = counted.reduce((a, e) => a + e.criticalCount, 0);
+    const evaluatedCounted = counted.filter(
+      (e) => !isExerciseUnevaluated(e.exercise || e.unit, grpId)
+    );
+    const evaluatedExpected = expectedList.length > 0
+      ? expectedList.filter((name) => !isExerciseUnevaluated(name, grpId)).length
+      : evaluatedCounted.length;
+
+    const totalScore = evaluatedCounted.reduce((a, e) => a + e.score, 0);
+    const rawAvg = evaluatedExpected > 0 ? Math.round((totalScore / evaluatedExpected) * 10) / 10 : 0;
+    const criticalErrors = evaluatedCounted.reduce((a, e) => a + e.criticalCount, 0);
     const avgScore = adjustScoreForCritical(rawAvg, criticalErrors);
     const isNotDone = counted.length === 0;
     const isIncomplete = counted.length > 0 && counted.length < expected;
@@ -355,7 +363,7 @@ function summarizeDriverPhases(
         expected,
         countedEvals: counted,
         missingExercises: unmatchedNames,
-        errors: counted.reduce((a, e) => a + e.errorCount, 0),
+        errors: evaluatedCounted.reduce((a, e) => a + e.errorCount, 0),
         criticalErrors,
         totalScore,
         avgScore,
@@ -409,9 +417,16 @@ function summarizeDriverPhases(
       expected = Math.max(1, counted.length);
     }
 
-    const totalScore = counted.reduce((a, e) => a + e.score, 0);
-    const rawAvg = expected > 0 ? Math.round((totalScore / expected) * 10) / 10 : 0;
-    const criticalErrors = counted.reduce((a, e) => a + e.criticalCount, 0);
+    const evaluatedCounted = counted.filter(
+      (e) => !isExerciseUnevaluated(e.exercise || e.unit, grpId)
+    );
+    const evaluatedExpected = expectedList.length > 0
+      ? expectedList.filter((name) => !isExerciseUnevaluated(name, grpId)).length
+      : evaluatedCounted.length;
+
+    const totalScore = evaluatedCounted.reduce((a, e) => a + e.score, 0);
+    const rawAvg = evaluatedExpected > 0 ? Math.round((totalScore / evaluatedExpected) * 10) / 10 : 0;
+    const criticalErrors = evaluatedCounted.reduce((a, e) => a + e.criticalCount, 0);
     const avgScore = adjustScoreForCritical(rawAvg, criticalErrors);
     const isNotDone = counted.length === 0;
     const isIncomplete = counted.length > 0 && counted.length < expected;
@@ -429,7 +444,7 @@ function summarizeDriverPhases(
       expected,
       countedEvals: counted,
       missingExercises: unmatchedNames,
-      errors: counted.reduce((a, e) => a + e.errorCount, 0),
+      errors: evaluatedCounted.reduce((a, e) => a + e.errorCount, 0),
       criticalErrors,
       totalScore,
       avgScore,
@@ -587,6 +602,7 @@ export type ReportExerciseSummary = {
   description?: string;
   drivers: number;
   avgScore: number;
+  isUnevaluated?: boolean;
 };
 
 export async function listReportExercises(
@@ -609,6 +625,7 @@ export async function listReportExercises(
     if (!name) continue;
 
     const key = `${phase}:${exerciseKey(name)}`;
+    const uneval = isExerciseUnevaluated(name, evaluationGroupId);
     let exercise = exerciseMap.get(key);
     if (!exercise) {
       exercise = {
@@ -620,12 +637,15 @@ export async function listReportExercises(
         avgScore: 0,
         scoreTotal: 0,
         evaluationCount: 0,
+        isUnevaluated: uneval,
       };
       exerciseMap.set(key, exercise);
     }
     exercise.driverIds.add(evaluation.driverId);
-    exercise.scoreTotal += evaluation.score;
-    exercise.evaluationCount++;
+    if (!uneval) {
+      exercise.scoreTotal += evaluation.score;
+      exercise.evaluationCount++;
+    }
   }
 
   return [...exerciseMap.values()]
@@ -669,11 +689,20 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
     }
 
     const expectedExercises = pSummaries.reduce((acc, p) => acc + p.expected, 0);
+    const evaluatedExpectedExercises = pSummaries.reduce((acc, p) => {
+      const exMap = getExercises(dateFilter?.groupId || docs[0]?.groupId);
+      const pList = p.phase === 0 ? Object.values(exMap).flat() : exMap[String(p.phase)] ?? [];
+      if (pList.length > 0) {
+        return acc + pList.filter((name) => !isExerciseUnevaluated(name, dateFilter?.groupId || docs[0]?.groupId)).length;
+      }
+      const evalCount = (p.countedEvals ?? []).filter((e) => !isExerciseUnevaluated(e.exercise || e.unit, dateFilter?.groupId || docs[0]?.groupId)).length;
+      return acc + evalCount;
+    }, 0);
     const totalExercises = pSummaries.reduce((acc, p) => acc + p.exercises, 0);
     const totalExerciseScore = pSummaries.reduce((acc, p) => acc + p.totalScore, 0);
 
-    // El promedio general se calcula sobre el total de ejercicios configurados del grupo (los no realizados valen 0)
-    const denominator = Math.max(1, expectedExercises);
+    // El promedio general se calcula sobre el total de ejercicios configurados evaluables del grupo (los no realizados valen 0)
+    const denominator = Math.max(1, evaluatedExpectedExercises);
     const rawAvg = Math.round((totalExerciseScore / denominator) * 10) / 10;
     const criticalErrors = pSummaries.reduce((acc, p) => acc + p.criticalErrors, 0);
     const avgScore = adjustScoreForCritical(rawAvg, criticalErrors);
@@ -745,7 +774,9 @@ export function buildDriverDataFromEvals(
   // Agrupar incidencias considerando el entorno del ejercicio donde ocurrieron y las reglas del grupo
   const incidentMap = new Map<string, { description: string; environment: string; groupId?: string; count: number }>();
 
+  const grpId = filter?.groupId || rawEvals[0]?.groupId;
   for (const e of evals) {
+    if (isExerciseUnevaluated(e.exercise || e.unit, grpId || e.groupId)) continue;
     const env = resolveExerciseEnvironment(e.exercise || e.unit, filter?.groupId || e.groupId);
     for (const m of e.marks) {
       if (m.type !== "ERROR" || m.ignored) continue;
@@ -789,10 +820,21 @@ export function buildDriverDataFromEvals(
       }
     }
   }
+  const evaluatedPhasesExpected = phases.reduce((a, p) => {
+    // Tomar en cuenta la configuración de ejercicios no evaluados
+    const exMap = getExercises(filter?.groupId || rawEvals[0]?.groupId);
+    const pList = p.phase === 0 ? Object.values(exMap).flat() : exMap[String(p.phase)] ?? [];
+    if (pList.length > 0) {
+      return a + pList.filter((name) => !isExerciseUnevaluated(name, filter?.groupId || rawEvals[0]?.groupId)).length;
+    }
+    const evalCount = (p.countedEvals ?? []).filter((e) => !isExerciseUnevaluated(e.exercise || e.unit, filter?.groupId || rawEvals[0]?.groupId)).length;
+    return a + evalCount;
+  }, 0);
+  const totalExercises = phases.reduce((a, p) => a + p.exercises, 0);
   const expectedExercises = phases.reduce((a, p) => a + p.expected, 0);
-  const completedExercises = phases.reduce((a, p) => a + p.exercises, 0);
+  const completedExercises = totalExercises;
   const totalExerciseScore = phases.reduce((a, p) => a + p.totalScore, 0);
-  const rawOverall = expectedExercises > 0 ? Math.round((totalExerciseScore / expectedExercises) * 10) / 10 : 0;
+  const rawOverall = evaluatedPhasesExpected > 0 ? Math.round((totalExerciseScore / evaluatedPhasesExpected) * 10) / 10 : 0;
   const criticalErrors = phases.reduce((a, p) => a + p.criticalErrors, 0);
   const overall = adjustScoreForCritical(rawOverall, criticalErrors);
   const v =

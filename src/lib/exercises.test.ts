@@ -9,6 +9,7 @@ import {
   setGroupExercises,
   setGroupTypeMemory,
   getGroupType,
+  isExerciseUnevaluated,
 } from "./exercises";
 
 const groupId = "exercise-test-group";
@@ -57,12 +58,16 @@ describe("exercise settings", () => {
         descriptions: {
           ruta: "Pista con curvas",
         },
+        unevaluated: {
+          ruta: true,
+        },
       })
     ).toEqual({
       phases: { "1": ["Ruta Uno", " Ruta "] },
       environments: { ruta: "MONTANA" },
       descriptions: { ruta: "Pista con curvas" },
       phaseNames: {},
+      unevaluated: { ruta: true },
       globalType: "escuela",
       cursoExercises: undefined,
     });
@@ -75,6 +80,7 @@ describe("exercise settings", () => {
         cursoExercises: {
           phases: { "1": ["Curso Ex 1", "Curso Ex 1", ""] },
           environments: { "curso ex 1": "MONTANA" },
+          unevaluated: { "curso ex 1": true },
         },
       })
     ).toEqual({
@@ -82,13 +88,28 @@ describe("exercise settings", () => {
       environments: {},
       descriptions: {},
       phaseNames: {},
+      unevaluated: {},
       globalType: "escuela",
       cursoExercises: {
         phases: { "1": ["Curso Ex 1"] },
         environments: { "curso ex 1": "MONTANA" },
         descriptions: {},
+        unevaluated: { "curso ex 1": true },
       },
     });
+  });
+
+  it("identifies unevaluated / awareness exercises", () => {
+    setGroupExercises(
+      groupId,
+      { "1": ["Alcoholemia Simulada"] },
+      {},
+      {},
+      {},
+      { "alcoholemia simulada": true }
+    );
+    expect(isExerciseUnevaluated("Alcoholemia Simulada", groupId)).toBe(true);
+    expect(isExerciseUnevaluated("Otro Ejercicio", groupId)).toBe(false);
   });
 
   it("looks up phases using normalized names and tracks group type", () => {

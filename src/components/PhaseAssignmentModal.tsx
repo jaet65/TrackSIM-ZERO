@@ -7,7 +7,7 @@ export interface PhaseAssignmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   parsedRows: ParsedExerciseCsvRow[];
-  onConfirm: (assignments: Array<{ name: string; phase: number; env?: string; descripcion?: string }>) => void;
+  onConfirm: (assignments: Array<{ name: string; phase: number; env?: string; descripcion?: string; noEvaluado?: boolean }>) => void;
   phasesList?: PhaseItem[];
 }
 
@@ -101,6 +101,7 @@ export default function PhaseAssignmentModal({
         phase: r.phase,
         env: r.row.entorno,
         descripcion: r.row.descripcion,
+        noEvaluado: r.row.noEvaluado,
       }));
     onConfirm(confirmed);
   };

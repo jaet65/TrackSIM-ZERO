@@ -59,27 +59,29 @@ montaña,Desc 2
     expect(parsed[0].nombre).toBe("Montaña");
   });
 
-  it("extracts phase and environment if present in csv", () => {
-    const sample = `fase,nombre,entorno
-2,02 - Montaña,MONTANA
-4,Maniobras Críticas,CIUDAD`;
+  it("extracts phase, environment and unevaluated flag if present in csv", () => {
+    const sample = `fase,nombre,entorno,no_evaluado
+2,02 - Montaña,MONTANA,NO
+4,Maniobras Críticas,CIUDAD,SI`;
 
     const parsed = parseExerciseCsv(sample);
     expect(parsed).toHaveLength(2);
     expect(parsed[0].fase).toBe(2);
     expect(parsed[0].entorno).toBe("MONTANA");
+    expect(parsed[0].noEvaluado).toBeUndefined();
     expect(parsed[1].fase).toBe(4);
     expect(parsed[1].entorno).toBe("CIUDAD");
+    expect(parsed[1].noEvaluado).toBe(true);
   });
 });
 
 describe("exerciseCsv - exportExercisesToCsv", () => {
   it("exports course configuration without phases", () => {
     const cfg = { "1": ["Montaña", "Manejo defensivo"] };
-    const csv = exportExercisesToCsv(cfg, true, { montana: "MONTANA" });
-    expect(csv).toContain("nombre,descripcion,entorno");
-    expect(csv).toContain("Montaña,,MONTANA");
-    expect(csv).toContain("Manejo defensivo,,AUTO");
+    const csv = exportExercisesToCsv(cfg, true, { montana: "MONTANA" }, undefined, undefined, { "manejo defensivo": true });
+    expect(csv).toContain("nombre,descripcion,entorno,no_evaluado");
+    expect(csv).toContain("Montaña,,MONTANA,NO");
+    expect(csv).toContain("Manejo defensivo,,AUTO,SI");
   });
 
   it("exports school configuration with phases", () => {
@@ -87,9 +89,9 @@ describe("exerciseCsv - exportExercisesToCsv", () => {
       "1": ["Adaptación Básica"],
       "3": ["02 - Montaña"],
     };
-    const csv = exportExercisesToCsv(cfg, false);
-    expect(csv).toContain("fase,nombre_fase,nombre,descripcion,entorno");
-    expect(csv).toContain("1,Adaptación Sensorial,Adaptación Básica,,AUTO");
-    expect(csv).toContain("3,Dinámica en pendientes,02 - Montaña,,AUTO");
+    const csv = exportExercisesToCsv(cfg, false, undefined, undefined, undefined, { "02 montana": true });
+    expect(csv).toContain("fase,nombre_fase,nombre,descripcion,entorno,no_evaluado");
+    expect(csv).toContain("1,Adaptación Sensorial,Adaptación Básica,,AUTO,NO");
+    expect(csv).toContain("3,Dinámica en pendientes,02 - Montaña,,AUTO,SI");
   });
 });

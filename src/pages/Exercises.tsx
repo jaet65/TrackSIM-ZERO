@@ -11,6 +11,7 @@ import {
   getExerciseDescriptions,
   getPhaseNames,
   getPhasesList,
+  getUnevaluatedExercises,
   getGroupType,
   setGlobalTypeMemory,
   setGroupTypeMemory,
@@ -20,6 +21,7 @@ import {
   type ExerciseEnvironmentsMap,
   type ExerciseDescriptionsMap,
   type PhaseNamesMap,
+  type UnevaluatedExercisesMap,
 } from "../lib/exercises";
 import {
   listGroups,
@@ -48,6 +50,7 @@ export default function Exercises() {
   const [envs, setEnvs] = useState<ExerciseEnvironmentsMap>({});
   const [descriptions, setDescriptions] = useState<ExerciseDescriptionsMap>({});
   const [phaseNamesState, setPhaseNamesState] = useState<PhaseNamesMap>({});
+  const [unevaluatedState, setUnevaluatedState] = useState<UnevaluatedExercisesMap>({});
   const [editingPhaseNameId, setEditingPhaseNameId] = useState<number | null>(null);
   const [phaseNameInput, setPhaseNameInput] = useState("");
   const [drafts, setDrafts] = useState<Record<number, string>>({});
@@ -99,10 +102,12 @@ export default function Exercises() {
       const newEnvs = getExerciseEnvironments(null, newType);
       const newDescs = getExerciseDescriptions(null, newType);
       const newNames = getPhaseNames(null, newType);
+      const newUnev = getUnevaluatedExercises(null, newType);
       setCfg(structuredClone(newCfg));
       setEnvs(structuredClone(newEnvs));
       setDescriptions(structuredClone(newDescs));
       setPhaseNamesState(structuredClone(newNames));
+      setUnevaluatedState(structuredClone(newUnev));
       setDirty(false);
       setMsg(`Mostrando Plantilla Global de «${newType === "curso" ? "Curso" : "Escuela (Con Fases)"}».`);
       return;
@@ -146,6 +151,7 @@ export default function Exercises() {
         setEnvs(structuredClone(getExerciseEnvironments(selectedGroupId || null, effectiveGlobalType)));
         setDescriptions(structuredClone(getExerciseDescriptions(selectedGroupId || null, effectiveGlobalType)));
         setPhaseNamesState(structuredClone(getPhaseNames(selectedGroupId || null, effectiveGlobalType)));
+        setUnevaluatedState(structuredClone(getUnevaluatedExercises(selectedGroupId || null, effectiveGlobalType)));
         if (!selectedGroupId) {
           setGlobalTypeState(effectiveGlobalType || "escuela");
         }
@@ -182,6 +188,7 @@ export default function Exercises() {
       setEnvs(structuredClone(getExerciseEnvironments(targetId, groupType)));
       setDescriptions(structuredClone(getExerciseDescriptions(targetId, groupType)));
       setPhaseNamesState(structuredClone(getPhaseNames(targetId, groupType)));
+      setUnevaluatedState(structuredClone(getUnevaluatedExercises(targetId, groupType)));
       setDirty(true);
       setCopySourceId("");
       setMsg(
@@ -207,11 +214,13 @@ export default function Exercises() {
   const update = (
     next: ExerciseConfig,
     nextEnvs?: ExerciseEnvironmentsMap,
-    nextDescs?: ExerciseDescriptionsMap
+    nextDescs?: ExerciseDescriptionsMap,
+    nextUnev?: UnevaluatedExercisesMap
   ) => {
     setCfg(next);
     if (nextEnvs) setEnvs(nextEnvs);
     if (nextDescs) setDescriptions(nextDescs);
+    if (nextUnev) setUnevaluatedState(nextUnev);
     setDirty(true);
     setMsg("");
   };
@@ -255,13 +264,29 @@ export default function Exercises() {
     const key = exerciseKey(name);
     const nextEnvs = { ...envs };
     delete nextEnvs[key];
-    update({ ...cfg, [phase]: (cfg[phase] ?? []).filter((n) => n !== name) }, nextEnvs);
+    const nextUnev = { ...unevaluatedState };
+    delete nextUnev[key];
+    setUnevaluatedState(nextUnev);
+    update({ ...cfg, [phase]: (cfg[phase] ?? []).filter((n) => n !== name) }, nextEnvs, undefined, nextUnev);
   };
 
   const setEnvForExercise = (name: string, env: ExerciseEnvironment) => {
     const key = exerciseKey(name);
     const nextEnvs = { ...envs, [key]: env };
     setEnvs(nextEnvs);
+    setDirty(true);
+    setMsg("");
+  };
+
+  const toggleUnevaluated = (name: string) => {
+    const key = exerciseKey(name);
+    const nextUnev = { ...unevaluatedState };
+    if (nextUnev[key]) {
+      delete nextUnev[key];
+    } else {
+      nextUnev[key] = true;
+    }
+    setUnevaluatedState(nextUnev);
     setDirty(true);
     setMsg("");
   };
@@ -324,7 +349,7 @@ export default function Exercises() {
 
   const handleExportCsv = () => {
     if (!cfg) return;
-    const csvContent = exportExercisesToCsv(cfg, isCurso, envs, descriptions, phasesList);
+    const csvContent = exportExercisesToCsv(cfg, isCurso, envs, descriptions, phasesList, unevaluatedState);
     const dateStr = new Date().toISOString().slice(0, 10);
     const scopeLabel = selectedGroup ? selectedGroup.name.replace(/[^a-zA-Z0-9_-]/g, "_") : "plantilla_global";
     const fileName = `catalogo_ejercicios_${scopeLabel}_${dateStr}.csv`;
@@ -358,6 +383,7 @@ export default function Exercises() {
         const nextList = [...currentList];
         const nextEnvs = { ...envs };
         const nextDescs = { ...descriptions };
+        const nextUnev = { ...unevaluatedState };
         let addedCount = 0;
 
         for (const item of parsed) {
@@ -368,11 +394,14 @@ export default function Exercises() {
             if (item.descripcion) {
               nextDescs[key] = item.descripcion;
             }
+            if (item.noEvaluado) {
+              nextUnev[key] = true;
+            }
             addedCount++;
           }
         }
 
-        update({ ...cfg, 1: nextList }, nextEnvs, nextDescs);
+        update({ ...cfg, 1: nextList }, nextEnvs, nextDescs, nextUnev);
         setMsg(`Se importaron ${addedCount} ejercicio(s) directamente al curso.`);
       } else {
         // En los grupos tipo escuela se abre modal extra para seleccionar fase
@@ -389,13 +418,14 @@ export default function Exercises() {
   };
 
   const handleConfirmPhaseImport = (
-    assignments: Array<{ name: string; phase: number; env?: string; descripcion?: string }>
+    assignments: Array<{ name: string; phase: number; env?: string; descripcion?: string; noEvaluado?: boolean }>
   ) => {
     if (!cfg) return;
 
     const nextCfg: ExerciseConfig = { ...cfg };
     const nextEnvs: ExerciseEnvironmentsMap = { ...envs };
     const nextDescs: ExerciseDescriptionsMap = { ...descriptions };
+    const nextUnev: UnevaluatedExercisesMap = { ...unevaluatedState };
 
     for (const item of assignments) {
       const key = exerciseKey(item.name);
@@ -403,6 +433,9 @@ export default function Exercises() {
       nextEnvs[key] = chosenEnv;
       if (item.descripcion) {
         nextDescs[key] = item.descripcion;
+      }
+      if (item.noEvaluado) {
+        nextUnev[key] = true;
       }
 
       // Quitar de cualquier otra fase para evitar duplicados
@@ -415,7 +448,7 @@ export default function Exercises() {
       nextCfg[pKey] = [...list, item.name];
     }
 
-    update(nextCfg, nextEnvs, nextDescs);
+    update(nextCfg, nextEnvs, nextDescs, nextUnev);
     setIsPhaseModalOpen(false);
     setPendingCsvRows([]);
     setMsg(`Se importaron e integraron ${assignments.length} ejercicio(s) en sus fases correspondientes.`);
@@ -434,7 +467,8 @@ export default function Exercises() {
         selectedGroupId || null,
         descriptions,
         phaseNamesState,
-        selectedGroupId ? undefined : globalTypeState
+        selectedGroupId ? undefined : globalTypeState,
+        unevaluatedState
       );
       setDirty(false);
       setMsg(
@@ -664,9 +698,14 @@ export default function Exercises() {
                           className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 text-xs text-slate-800"
                         >
                           <div className="flex flex-col min-w-0">
-                            <div className="flex items-center gap-2.5">
+                            <div className="flex flex-wrap items-center gap-2.5">
                               <span className="font-semibold text-slate-900 truncate text-sm">{n}</span>
                               {envBadge(effective, isAuto)}
+                              {unevaluatedState[key] && (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-800 border border-sky-300">
+                                  🛡️ No evaluado (Concientización)
+                                </span>
+                              )}
                             </div>
                             {descriptions[key] && (
                               <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5" title={descriptions[key]}>
@@ -676,6 +715,28 @@ export default function Exercises() {
                           </div>
 
                           <div className="flex items-center gap-2 ml-auto">
+                            {canEdit ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleUnevaluated(n)}
+                                className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
+                                  unevaluatedState[key]
+                                    ? "bg-sky-600 text-white border-sky-600 hover:bg-sky-700 shadow-xs"
+                                    : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                                }`}
+                                title={
+                                  unevaluatedState[key]
+                                    ? "Ejercicio marcado como NO EVALUADO (concientización/alcohol). Haz clic para volver a evaluarlo."
+                                    : "Marcar como NO EVALUADO (ej. concientización o alcoholemia planeado para fallar; no computará en notas ni promedios)"
+                                }
+                              >
+                                {unevaluatedState[key] ? "🛡️ No evaluado" : "Evaluado"}
+                              </button>
+                            ) : unevaluatedState[key] ? (
+                              <span className="text-[11px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                                No evaluado
+                              </span>
+                            ) : null}
                             {canEdit ? (
                               <select
                                 value={rawSetting}
@@ -895,9 +956,14 @@ export default function Exercises() {
                             className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 text-xs text-slate-800"
                           >
                             <div className="flex flex-col min-w-0">
-                              <div className="flex items-center gap-2.5">
+                              <div className="flex flex-wrap items-center gap-2.5">
                                 <span className="font-semibold text-slate-900 truncate">{n}</span>
                                 {envBadge(effective, isAuto)}
+                                {unevaluatedState[key] && (
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-800 border border-sky-300">
+                                    🛡️ No evaluado (Concientización)
+                                  </span>
+                                )}
                               </div>
                               {descriptions[key] && (
                                 <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5" title={descriptions[key]}>
@@ -907,6 +973,28 @@ export default function Exercises() {
                             </div>
 
                             <div className="flex items-center gap-2 ml-auto">
+                              {canEdit ? (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleUnevaluated(n)}
+                                  className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition cursor-pointer ${
+                                    unevaluatedState[key]
+                                      ? "bg-sky-600 text-white border-sky-600 hover:bg-sky-700 shadow-xs"
+                                      : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                                  }`}
+                                  title={
+                                    unevaluatedState[key]
+                                      ? "Ejercicio marcado como NO EVALUADO (concientización/alcohol). Haz clic para volver a evaluarlo."
+                                      : "Marcar como NO EVALUADO (ej. concientización o alcoholemia planeado para fallar; no computará en notas ni promedios)"
+                                  }
+                                >
+                                  {unevaluatedState[key] ? "🛡️ No evaluado" : "Evaluado"}
+                                </button>
+                              ) : unevaluatedState[key] ? (
+                                <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                                  No evaluado
+                                </span>
+                              ) : null}
                               {canEdit && (
                                 <select
                                   value={p.id}

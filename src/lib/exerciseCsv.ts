@@ -9,6 +9,7 @@ import {
   type ExerciseDescriptionsMap,
   type ExerciseEnvironment,
   type ExerciseEnvironmentsMap,
+  type UnevaluatedExercisesMap,
 } from "./exercises";
 import { type PhaseItem } from "./config";
 
@@ -17,6 +18,7 @@ export interface ParsedExerciseCsvRow {
   descripcion?: string;
   fase?: number;
   entorno?: ExerciseEnvironment;
+  noEvaluado?: boolean;
 }
 
 /**
@@ -105,6 +107,14 @@ export function parseExerciseCsv(csvText: string): ParsedExerciseCsvRow[] {
   let descCol = header.findIndex((h) => h === "descripcion" || h === "description" || h === "detalle");
   let phaseCol = header.findIndex((h) => h === "fase" || h === "phase");
   let envCol = header.findIndex((h) => h === "entorno" || h === "ambiente" || h === "environment");
+  let unevCol = header.findIndex(
+    (h) =>
+      h === "no_evaluado" ||
+      h === "no evaluado" ||
+      h === "unevaluated" ||
+      h === "concientizacion" ||
+      h === "evaluado"
+  );
 
   let startIndex = 1;
 
@@ -148,11 +158,25 @@ export function parseExerciseCsv(csvText: string): ParsedExerciseCsvRow[] {
       else if (rawEnv === "AUTO") entorno = "AUTO";
     }
 
+    let noEvaluado: boolean | undefined;
+    if (unevCol !== -1 && row[unevCol]) {
+      const val = row[unevCol].toLowerCase().trim();
+      const colHeader = header[unevCol];
+      if (colHeader === "evaluado") {
+        if (val === "no" || val === "false" || val === "0") noEvaluado = true;
+      } else {
+        if (val === "si" || val === "sí" || val === "true" || val === "1" || val.includes("no evaluado") || val.includes("concientiz")) {
+          noEvaluado = true;
+        }
+      }
+    }
+
     results.push({
       nombre,
       descripcion,
       fase,
       entorno: entorno || (detectEnvironmentFromName(nombre) as ExerciseEnvironment),
+      noEvaluado,
     });
   }
 
@@ -167,21 +191,23 @@ export function exportExercisesToCsv(
   isCurso: boolean,
   envs?: ExerciseEnvironmentsMap,
   descriptions?: ExerciseDescriptionsMap,
-  phasesList?: PhaseItem[]
+  phasesList?: PhaseItem[],
+  unevaluated?: UnevaluatedExercisesMap
 ): string {
   const lines: string[] = [];
 
   if (isCurso) {
-    lines.push("nombre,descripcion,entorno");
+    lines.push("nombre,descripcion,entorno,no_evaluado");
     const list = cfg[1] ?? [];
     for (const name of list) {
       const key = exerciseKey(name);
       const env = envs?.[key] || "AUTO";
       const desc = descriptions?.[key] || "";
-      lines.push(`${escapeCsvField(name)},${escapeCsvField(desc)},${escapeCsvField(env)}`);
+      const unev = unevaluated?.[key] ? "SI" : "NO";
+      lines.push(`${escapeCsvField(name)},${escapeCsvField(desc)},${escapeCsvField(env)},${unev}`);
     }
   } else {
-    lines.push("fase,nombre_fase,nombre,descripcion,entorno");
+    lines.push("fase,nombre_fase,nombre,descripcion,entorno,no_evaluado");
     const effectivePhases = phasesList && phasesList.length > 0 ? phasesList : getPhasesList(null, cfg);
     for (const p of effectivePhases) {
       const list = cfg[p.id] ?? [];
@@ -189,8 +215,9 @@ export function exportExercisesToCsv(
         const key = exerciseKey(name);
         const env = envs?.[key] || "AUTO";
         const desc = descriptions?.[key] || "";
+        const unev = unevaluated?.[key] ? "SI" : "NO";
         lines.push(
-          `${p.id},${escapeCsvField(p.name)},${escapeCsvField(name)},${escapeCsvField(desc)},${escapeCsvField(env)}`
+          `${p.id},${escapeCsvField(p.name)},${escapeCsvField(name)},${escapeCsvField(desc)},${escapeCsvField(env)},${unev}`
         );
       }
     }
