@@ -562,6 +562,73 @@ ipcMain.handle("lander:extractSessions", async (_, { inicio, fin, anon, limit })
   }
 });
 
+ipcMain.handle("lander:getLatestSessionId", async () => {
+  let client: Client | null = null;
+  try {
+    client = await createPgClient();
+    const res = await client.query(`
+      SELECT MAX(id) as max_id 
+      FROM sessions 
+      WHERE ncicles > 0
+    `);
+    const maxId = res.rows[0]?.max_id ? Number(res.rows[0].max_id) : 0;
+    return { ok: true, maxId };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  } finally {
+    if (client) await client.end().catch(() => {});
+  }
+});
+
+ipcMain.handle("lander:extractNewSessions", async (_, { afterId, anon, limit }) => {
+  let client: Client | null = null;
+  try {
+    client = await createPgClient();
+    const minId = Number(afterId) || 0;
+    const lim = Math.min(Number(limit) || 10, 50);
+
+    let q = `
+      SELECT id, sstudentname, dtcreation, 
+             sinstructorname, (ncicles * dcicleperiod / 1000.0) as duration,
+             idexercise, idaula
+      FROM sessions 
+      WHERE ncicles > 0 AND id > $1
+    `;
+    if (!anon) {
+      q += " AND LOWER(sstudentname) NOT IN ('anonymous', 'anónimo')";
+    }
+    q += ` ORDER BY id ASC LIMIT ${lim};`;
+
+    const res = await client.query(q, [minId]);
+    const sessionsOut: any[] = [];
+
+    for (const row of res.rows) {
+      try {
+        const { filename, csv } = await generateCsvForSession(client, row);
+        sessionsOut.push({
+          id: row.id,
+          driver: row.sstudentname,
+          date: row.dtcreation ? new Date(row.dtcreation).toISOString().split("T")[0] : "",
+          filename,
+          csv,
+        });
+      } catch (procErr: any) {
+        sessionsOut.push({
+          id: row.id,
+          driver: row.sstudentname,
+          error: procErr.message,
+        });
+      }
+    }
+
+    return { ok: true, extracted: sessionsOut.length, sessions: sessionsOut };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  } finally {
+    if (client) await client.end().catch(() => {});
+  }
+});
+
 // --------------------------------------------------------
 // Auto-Updater en Segundo Plano contra GitHub Releases
 // --------------------------------------------------------

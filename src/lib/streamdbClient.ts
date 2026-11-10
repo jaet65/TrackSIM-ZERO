@@ -106,3 +106,25 @@ export async function extractSimulatorSessions(
   if (!res.ok) throw new Error(res.error || "Error al extraer sesiones");
   return res;
 }
+
+export async function getLatestSimulatorSessionId(): Promise<number> {
+  const bridge = getLanderBridge();
+  if (!bridge || !bridge.getLatestSessionId) return 0;
+  const res = await bridge.getLatestSessionId();
+  if (res && res.ok) return Number(res.maxId) || 0;
+  return 0;
+}
+
+export async function extractNewSimulatorSessions(
+  afterId: number,
+  anon = false,
+  limit = 10
+): Promise<ExtractResult> {
+  const bridge = getLanderBridge();
+  if (!bridge || !bridge.extractNewSessions) {
+    throw new Error("Solo disponible en la aplicación de escritorio.");
+  }
+  const res = await bridge.extractNewSessions({ afterId, anon, limit });
+  if (!res.ok) throw new Error(res.error || "Error al extraer nuevas sesiones");
+  return res;
+}

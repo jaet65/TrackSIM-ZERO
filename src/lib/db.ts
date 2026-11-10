@@ -2,7 +2,7 @@ import { collection, doc, query, setDoc, updateDoc, where, writeBatch } from "fi
 import { firestore, getDb, safeGetDoc, safeGetDocs, fastWrite } from "./firebase";
 import type { Mark, ParsedReport, TelemetryMetrics } from "./parse";
 import { evaluateMarks, normalizeRpmZones } from "./parse";
-import { classify, type Severity } from "./catalog";
+import { classify, isOffRoadError, type Severity } from "./catalog";
 import { loadCatalog } from "./catalogStore";
 import { CRITICAL_LIMIT, verdictFor } from "./config";
 import {
@@ -771,7 +771,7 @@ export function buildDriverDataFromEvals(
     (a, b) => a.phase - b.phase || a.date.localeCompare(b.date) || a.createdAt - b.createdAt,
   );
 
-  // Agrupar incidencias considerando el entorno del ejercicio donde ocurrieron y las reglas del grupo
+  // Agrupar incidencias considerando el entorno del ejercicio solo cuando afecta la severidad y el texto visible (ej. salirse de la vía en montaña vs carretera)
   const incidentMap = new Map<string, { description: string; environment: string; groupId?: string; count: number }>();
 
   const grpId = filter?.groupId || rawEvals[0]?.groupId;
@@ -780,7 +780,10 @@ export function buildDriverDataFromEvals(
     const env = resolveExerciseEnvironment(e.exercise || e.unit, filter?.groupId || e.groupId);
     for (const m of e.marks) {
       if (m.type !== "ERROR" || m.ignored) continue;
-      const key = `${m.description}|${env}`;
+      const isOffRoad = isOffRoadError(m.description);
+      // Solo diferenciamos el key por entorno si es salida de vía (ya que en montaña cambia a riesgo de precipicio y severidad crítica).
+      // Para todos los demás errores (como colisiones), se agrupan juntos sin importar el ejercicio.
+      const key = isOffRoad ? `${m.description}|${env}` : m.description;
       const existing = incidentMap.get(key);
       if (existing) {
         existing.count++;
@@ -793,7 +796,7 @@ export function buildDriverDataFromEvals(
   const breakdown = [...incidentMap.values()]
     .map((item) => {
       const cls = classify(item.description, item.environment, filter?.groupId || item.groupId);
-      const isOffRoad = item.description.toLowerCase().includes("salirse de la via");
+      const isOffRoad = isOffRoadError(item.description);
       // Si es salida de vía, aclarar en el texto del desglose el contexto de peligro
       const displayDescription = isOffRoad
         ? item.environment === "MONTANA"

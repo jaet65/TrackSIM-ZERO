@@ -5,6 +5,7 @@ import { ALLOWED_DOMAIN } from "../lib/config";
 import UpdateNotifier from "./UpdateNotifier";
 import NetworkStatusBadge from "./NetworkStatusBadge";
 import BackupRestoreModal from "./BackupRestoreModal";
+import AutoSyncBadge from "./AutoSyncBadge";
 
 export default function ProtectedLayout() {
   const { user, loading, error, signIn, logout } = useAuth();
@@ -201,6 +202,7 @@ export default function ProtectedLayout() {
             </div>
 
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+              <AutoSyncBadge />
               <NetworkStatusBadge />
               <div className="hidden flex-col text-right sm:flex">
                 <span className="text-xs font-semibold text-slate-800">{user.displayName || "Usuario"}</span>

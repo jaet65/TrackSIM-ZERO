@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld("landerBridge", {
   saveConfig: (cfg) => ipcRenderer.invoke("lander:saveConfig", cfg),
   countSessions: (args) => ipcRenderer.invoke("lander:countSessions", args),
   extractSessions: (args) => ipcRenderer.invoke("lander:extractSessions", args),
+  getLatestSessionId: () => ipcRenderer.invoke("lander:getLatestSessionId"),
+  extractNewSessions: (args) => ipcRenderer.invoke("lander:extractNewSessions", args),
   // Auto-updater (GitHub Releases en segundo plano)
   checkForUpdates: () => ipcRenderer.invoke("updater:check"),
   downloadAndInstallUpdate: (downloadUrl, fileName, version, expectedBytes) =>

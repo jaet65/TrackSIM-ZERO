@@ -3,6 +3,8 @@ import {
   checkStreamDBStatus,
   countSimulatorSessions,
   extractSimulatorSessions,
+  getLatestSimulatorSessionId,
+  extractNewSimulatorSessions,
   isElectronApp,
   saveStreamDBConfig,
 } from "./streamdbClient";
@@ -65,6 +67,8 @@ describe("StreamDB bridge", () => {
         saveConfig: vi.fn(),
         countSessions: vi.fn().mockResolvedValue({ ok: false, error: "bad range" }),
         extractSessions: vi.fn().mockResolvedValue({ ok: false }),
+        getLatestSessionId: vi.fn().mockResolvedValue({ ok: true, maxId: 105 }),
+        extractNewSessions: vi.fn().mockResolvedValue({ ok: true, extracted: 0, sessions: [] }),
       },
     });
 
@@ -75,5 +79,21 @@ describe("StreamDB bridge", () => {
     });
     await expect(countSimulatorSessions("x", "y")).rejects.toThrow("bad range");
     await expect(extractSimulatorSessions("x", "y")).rejects.toThrow("Error al extraer sesiones");
+  });
+
+  it("supports getLatestSimulatorSessionId and extractNewSimulatorSessions", async () => {
+    const bridge = {
+      getLatestSessionId: vi.fn().mockResolvedValue({ ok: true, maxId: 42 }),
+      extractNewSessions: vi.fn().mockResolvedValue({ ok: true, extracted: 1, sessions: [{ id: 42, driver: "Carlos" }] }),
+    };
+    vi.stubGlobal("window", { landerBridge: bridge });
+
+    const maxId = await getLatestSimulatorSessionId();
+    expect(maxId).toBe(42);
+    expect(bridge.getLatestSessionId).toHaveBeenCalled();
+
+    const res = await extractNewSimulatorSessions(40, false, 5);
+    expect(res.extracted).toBe(1);
+    expect(bridge.extractNewSessions).toHaveBeenCalledWith({ afterId: 40, anon: false, limit: 5 });
   });
 });
