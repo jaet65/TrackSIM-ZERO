@@ -223,7 +223,7 @@ export default function SimulatorSyncModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
         {/* Header Modal */}
-        <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50 to-indigo-50/30 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-linear-to-r from-slate-50 to-indigo-50/30 px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-md shadow-indigo-600/30">
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -486,7 +486,7 @@ export default function SimulatorSyncModal({
               </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-indigo-200/60">
                 <div
-                  className="h-full bg-gradient-to-r from-indigo-600 to-blue-600 transition-all duration-300"
+                  className="h-full bg-linear-to-r from-indigo-600 to-blue-600 transition-all duration-300"
                   style={{
                     width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%`,
                   }}
@@ -543,7 +543,7 @@ export default function SimulatorSyncModal({
             type="button"
             onClick={handleStartSync}
             disabled={syncing || !status?.db_connected || !activeGroup}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-indigo-600/25 hover:from-indigo-700 hover:to-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 rounded-xl bg-linear-to-r from-indigo-600 to-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-indigo-600/25 hover:from-indigo-700 hover:to-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {syncing ? (
               <>
