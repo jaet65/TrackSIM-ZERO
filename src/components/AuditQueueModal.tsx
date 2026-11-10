@@ -1,8 +1,9 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import type { PendingAuditItem } from "../lib/useAutoSync";
 import type { Mark } from "../lib/parse";
 import { classify } from "../lib/catalog";
-import { updateEvaluationMarks } from "../lib/db";
+import { dictamen, updateEvaluationMarks } from "../lib/db";
 import { useAuth } from "./AuthProvider";
 import { useEscapeKey } from "../lib/useEscapeKey";
 
@@ -122,11 +123,11 @@ export default function AuditQueueModal({
     .map((m, originalIdx) => ({ ...m, originalIdx }))
     .filter((m) => m.type === "ERROR");
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-      <div className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
+  const content = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 p-4 sm:p-6 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="flex h-[88vh] max-h-[850px] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
         {/* Cabecera del Modal */}
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/20">
               ⚡
@@ -167,7 +168,7 @@ export default function AuditQueueModal({
 
         {/* Barra de Navegación de Sesiones Pendientes */}
         {total > 1 && (
-          <div className="flex items-center gap-2 overflow-x-auto border-b border-slate-100 bg-slate-100/60 px-6 py-2.5">
+          <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-100 bg-slate-100/60 px-6 py-2.5">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-2 shrink-0">
               Turnos en cola:
             </span>
@@ -196,9 +197,9 @@ export default function AuditQueueModal({
         )}
 
         {/* Cuerpo Principal */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* Panel Izquierdo: Resumen del Conductor & Calificación */}
-          <div className="w-80 border-r border-slate-200 bg-slate-50/50 p-6 flex flex-col justify-between overflow-y-auto">
+          <div className="w-80 shrink-0 border-r border-slate-200 bg-slate-50/50 p-6 flex flex-col justify-between overflow-y-auto">
             <div className="space-y-4">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Conductor Evaluado</span>
@@ -207,23 +208,32 @@ export default function AuditQueueModal({
               </div>
 
               {/* Tarjeta de Calificación */}
-              <div className={`rounded-xl border p-4 text-center ${
-                currentItem.criticalCount > 0
-                  ? "border-rose-200 bg-rose-50/80 text-rose-900"
-                  : currentItem.score >= 80
-                  ? "border-emerald-200 bg-emerald-50/80 text-emerald-900"
-                  : "border-amber-200 bg-amber-50/80 text-amber-900"
-              }`}>
-                <div className="text-xs font-semibold uppercase tracking-wider opacity-80">Calificación Actual</div>
-                <div className="text-4xl font-black mt-1">{Math.round(currentItem.score)}</div>
-                <div className="text-xs font-medium mt-1">
-                  {currentItem.criticalCount > 0
-                    ? `❌ REPROBADO (${currentItem.criticalCount} Accidente/s)`
-                    : currentItem.score >= 80
-                    ? "✅ APROBADO"
-                    : "⚠️ REGULAR"}
-                </div>
-              </div>
+              {(() => {
+                const v = dictamen(currentItem.score, currentItem.criticalCount);
+                const isNoApto = v.label === "NO APTO";
+                const isApto = v.label === "APTO";
+                return (
+                  <div
+                    className={`rounded-xl border p-4 text-center ${
+                      isNoApto
+                        ? "border-rose-200 bg-rose-50/80 text-rose-900"
+                        : isApto
+                        ? "border-emerald-200 bg-emerald-50/80 text-emerald-900"
+                        : "border-amber-200 bg-amber-50/80 text-amber-900"
+                    }`}
+                  >
+                    <div className="text-xs font-semibold uppercase tracking-wider opacity-80">Calificación Actual</div>
+                    <div className="text-4xl font-black mt-1">{currentItem.score.toFixed(1)}</div>
+                    <div className="text-xs font-bold mt-1">
+                      {isNoApto ? (
+                        <span>❌ {v.label} ({currentItem.criticalCount} Crítico/s)</span>
+                      ) : (
+                        <span>{isApto ? "✅ " : "⚠️ "}{v.label}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Estadísticas Rápidas */}
               <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 text-xs">
@@ -286,8 +296,8 @@ export default function AuditQueueModal({
           </div>
 
           {/* Panel Derecho: Lista de Infracciones y Botón de Falso Positivo */}
-          <div className="flex-1 flex flex-col overflow-hidden bg-white">
-            <div className="border-b border-slate-100 px-6 py-3 bg-slate-50/50 flex items-center justify-between">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-white">
+            <div className="shrink-0 border-b border-slate-100 px-6 py-3 bg-slate-50/50 flex items-center justify-between">
               <div>
                 <h4 className="text-sm font-bold text-slate-800">
                   Desglose de Infracciones y Eventos ({errorMarks.length})
@@ -304,7 +314,7 @@ export default function AuditQueueModal({
             </div>
 
             {errorMessage && (
-              <div className="bg-rose-50 border-b border-rose-200 px-6 py-2 text-xs text-rose-700">
+              <div className="shrink-0 bg-rose-50 border-b border-rose-200 px-6 py-2 text-xs text-rose-700">
                 {errorMessage}
               </div>
             )}
@@ -386,5 +396,7 @@ export default function AuditQueueModal({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(content, document.body) : content;
 }
 
