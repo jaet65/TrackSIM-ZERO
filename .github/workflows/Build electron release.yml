@@ -60,7 +60,8 @@ jobs:
 
           $exeFiles = Get-ChildItem -Path "release" -Filter "*Setup-*.exe" | Select-Object -ExpandProperty FullName
           $blockmapFiles = Get-ChildItem -Path "release" -Filter "*Setup-*.blockmap" | Select-Object -ExpandProperty FullName
-          $assets = @($exeFiles) + @($blockmapFiles) | Where-Object { $_ }
+          $ymlFiles = Get-ChildItem -Path "release" -Filter "latest*.yml" | Select-Object -ExpandProperty FullName
+          $assets = @($exeFiles) + @($blockmapFiles) + @($ymlFiles) | Where-Object { $_ }
 
           if (-not $exeFiles) {
             Write-Host "Directory contents of release/:"

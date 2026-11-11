@@ -57,12 +57,15 @@
       ]
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "differentialPackage": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true
     }
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "pg": "^8.23.1"
   },
   "devDependencies": {

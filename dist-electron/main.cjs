@@ -201,7 +201,7 @@ if (Test-Path -LiteralPath $installer) {
     }
     Start-Sleep -Milliseconds 25
   }
-  Start-Sleep -Milliseconds 800
+  Start-Sleep -Milliseconds 100
   Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
 }
 
@@ -209,25 +209,25 @@ if ($win) {
   $win.Close()
 }
 
-# 4. Relanzar TrackSIM PRO si corresponde
+# 4. Relanzar TrackSIM PRO de inmediato
 if ($restart) {
   $logFile = Join-Path $env:TEMP 'tracksim-update.log'
   $candidates = @($appExe, (Join-Path $env:LOCALAPPDATA 'Programs\\TrackSIM PRO\\TrackSIM PRO.exe'), (Join-Path $env:ProgramFiles 'TrackSIM PRO\\TrackSIM PRO.exe'), (Join-Path $env:LOCALAPPDATA 'Programs\\TrackSIM ZERO\\TrackSIM ZERO.exe'), (Join-Path $env:ProgramFiles 'TrackSIM ZERO\\TrackSIM ZERO.exe')) | Where-Object { $_ }
   $launched = $false
-  Start-Sleep -Milliseconds 1500
+  Start-Sleep -Milliseconds 200
   for ($attempt = 0; $attempt -lt 10 -and -not $launched; $attempt++) {
     foreach ($c in $candidates) {
       if (Test-Path -LiteralPath $c) {
         try {
           Start-Process -FilePath $c -WorkingDirectory (Split-Path -Parent $c) -ErrorAction Stop
-          Start-Sleep -Milliseconds 1500
+          Start-Sleep -Milliseconds 500
           if (Get-Process -Name 'TrackSIM PRO','TrackSIM ZERO' -ErrorAction SilentlyContinue) { $launched = $true; break }
         } catch {
           Add-Content -LiteralPath $logFile -Value ("$(Get-Date -Format o) fallo al relanzar $c : $($_.Exception.Message)")
         }
       }
     }
-    if (-not $launched) { Start-Sleep -Milliseconds 1000 }
+    if (-not $launched) { Start-Sleep -Milliseconds 300 }
   }
   if (-not $launched) { Add-Content -LiteralPath $logFile -Value ("$(Get-Date -Format o) no se pudo relanzar la app") }
 }
