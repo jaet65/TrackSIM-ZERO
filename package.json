@@ -57,10 +57,8 @@
       ]
     },
     "nsis": {
-      "oneClick": true,
-      "perMachine": false,
-      "differentialPackage": true,
-      "allowToChangeInstallationDirectory": false,
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
     }
   },
