@@ -104,6 +104,9 @@ export default function AutoSyncBadge() {
         onUpdateItem={updateQueueItem}
         onClearQueue={clearQueue}
         activeGroupId={activeGroup?.id}
+        onEvaluationUpdated={() => {
+          window.dispatchEvent(new CustomEvent("tracksim:evaluations-updated"));
+        }}
       />
     </>
   );

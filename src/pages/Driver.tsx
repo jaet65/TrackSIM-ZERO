@@ -12,6 +12,7 @@ import { downloadCertificate } from "../lib/certificates";
 import { useAuth } from "../components/AuthProvider";
 import type { Mark } from "../lib/parse";
 import { useEscapeKey } from "../lib/useEscapeKey";
+import ErrorCombobox, { type CatalogErrorOption } from "../components/ErrorCombobox";
 
 type Data = NonNullable<Awaited<ReturnType<typeof driverData>>>;
 type BreakdownItem = Data["breakdown"][number];
@@ -65,6 +66,25 @@ export default function Driver() {
     driverData(id, dateFilter).then(setData).catch((e: Error) => setError(e.message));
   }, [id, dateFilter]);
 
+  // Actualizar datos del conductor en tiempo real ante eventos de AutoSync
+  useEffect(() => {
+    const handleSyncUpdate = () => {
+      driverData(id, dateFilter).then((refreshed) => {
+        if (refreshed) {
+          setData(refreshed);
+          setSelectedEval((prev) => {
+            if (!prev?.docId) return prev;
+            return [...refreshed.evals, ...refreshed.groupEvals].find((ev) => ev.docId === prev.docId) || prev;
+          });
+        }
+      }).catch(() => {});
+    };
+    window.addEventListener("tracksim:evaluations-updated", handleSyncUpdate);
+    return () => {
+      window.removeEventListener("tracksim:evaluations-updated", handleSyncUpdate);
+    };
+  }, [id, dateFilter]);
+
   // Al cambiar de ejercicio seleccionado, reiniciar al orden por defecto cronológico
   useEffect(() => {
     setSortField("time");
@@ -72,6 +92,7 @@ export default function Driver() {
     setMarksActionError("");
     setShowAddErrorForm(false);
     setCustomErrorText("");
+    setSelectedCatalogError("");
     setManualErrorTime("00:00:00");
   }, [selectedEval?.docId, selectedEval?.fileName]);
 
@@ -162,7 +183,7 @@ export default function Driver() {
       globalDestreza: String(destrezaPonderada),
       globalEco: ecoPonderado !== null ? String(ecoPonderado) : "—",
     };
-  }, [data]);
+  }, [data, groupParam]);
 
   // Filtrar exclusivamente los eventos de tipo ERROR y calcular conteos por severidad para el modal
   const { sortedErrorMarks, severityCounts, ignoredErrorCount } = useMemo(() => {
@@ -226,7 +247,7 @@ export default function Driver() {
       ? resolveExerciseEnvironment(selectedEval.exercise || selectedEval.unit, evalGroupId)
       : "CARRETERA";
     const cfg = getCatalog(evalGroupId);
-    const grouped: Record<Severity, { name: string; severity: Severity }[]> = {
+    const grouped: Record<Severity, CatalogErrorOption[]> = {
       CRITICO: [],
       GRAVE: [],
       MODERADO: [],
@@ -234,7 +255,11 @@ export default function Driver() {
     };
     for (const entry of cfg.entries) {
       const resolved = classify(entry.name, evalEnv, evalGroupId);
-      grouped[resolved.severity].push({ name: entry.name, severity: resolved.severity });
+      grouped[resolved.severity].push({
+        name: entry.name,
+        severity: resolved.severity,
+        weight: resolved.weight,
+      });
     }
     return grouped;
   }, [selectedEval, groupParam]);
@@ -305,10 +330,7 @@ export default function Driver() {
   const handleAddManualError = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEval || selectedEval.frozen) return;
-    const desc =
-      selectedCatalogError === "__CUSTOM__"
-        ? customErrorText.trim()
-        : selectedCatalogError.trim();
+    const desc = selectedCatalogError.trim();
 
     if (!desc) {
       setMarksActionError("Selecciona o escribe la descripción del error a agregar.");
@@ -327,6 +349,7 @@ export default function Driver() {
 
     await applyMarksUpdate([...selectedEval.marks, newMark]);
     setCustomErrorText("");
+    setSelectedCatalogError("");
     setShowAddErrorForm(false);
   };
 
@@ -2062,29 +2085,16 @@ export default function Driver() {
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
                         <div className="sm:col-span-7 space-y-1">
                           <label className="block text-[11px] font-semibold text-slate-700">
-                            Error del catálogo del grupo
+                            Error o infracción (catálogo o personalizada)
                           </label>
-                          <select
+                          <ErrorCombobox
+                            optionsBySeverity={catalogEntriesBySeverity}
                             value={selectedCatalogError}
-                            onChange={(e) => setSelectedCatalogError(e.target.value)}
-                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
-                          >
-                            <option value="">— Selecciona un error del catálogo —</option>
-                            {SEVERITY_ORDER.map((sev) => {
-                              const items = catalogEntriesBySeverity[sev];
-                              if (!items.length) return null;
-                              return (
-                                <optgroup key={sev} label={`Nivel ${SEVERITIES[sev].label}`}>
-                                  {items.map((it) => (
-                                    <option key={it.name} value={it.name}>
-                                      {it.name}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              );
-                            })}
-                            <option value="__CUSTOM__">✏️ Escribir otro error personalizado...</option>
-                          </select>
+                            onChange={(val) => {
+                              setSelectedCatalogError(val);
+                            }}
+                            placeholder="Buscar por nombre o escribir nueva..."
+                          />
                         </div>
 
                         <div className="sm:col-span-2 space-y-1">
@@ -2110,21 +2120,6 @@ export default function Driver() {
                           </button>
                         </div>
                       </div>
-
-                      {selectedCatalogError === "__CUSTOM__" && (
-                        <div className="space-y-1">
-                          <label className="block text-[11px] font-semibold text-slate-700">
-                            Descripción personalizada del error
-                          </label>
-                          <input
-                            type="text"
-                            value={customErrorText}
-                            onChange={(e) => setCustomErrorText(e.target.value)}
-                            placeholder="Ej. Invadir carril contrario en curva cerrada"
-                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
-                          />
-                        </div>
-                      )}
                     </form>
                   );
                 })()}

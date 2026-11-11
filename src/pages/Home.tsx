@@ -61,6 +61,9 @@ export default function Home() {
   const [startDate, setStartDate] = useState(params.get("desde") || "");
   const [endDate, setEndDate] = useState(params.get("hasta") || "");
 
+  // Filtro de búsqueda por nombre de conductor
+  const [driverSearchQuery, setDriverSearchQuery] = useState("");
+
   // Ordenamiento interactivo por columna
   const [sortField, setSortField] = useState<SortField>("driver");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -185,6 +188,17 @@ export default function Home() {
 
   useEffect(load, [load]);
 
+  // Actualizar la lista en tiempo real cuando AutoSync ingiere una nueva sesión o se audita
+  useEffect(() => {
+    const handleSyncUpdate = () => {
+      load();
+    };
+    window.addEventListener("tracksim:evaluations-updated", handleSyncUpdate);
+    return () => {
+      window.removeEventListener("tracksim:evaluations-updated", handleSyncUpdate);
+    };
+  }, [load]);
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -200,7 +214,12 @@ export default function Home() {
 
   const sortedRows = useMemo(() => {
     if (!rows) return null;
-    const sorted = [...rows];
+    let list = rows;
+    const q = driverSearchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((r) => r.driver.toLowerCase().includes(q));
+    }
+    const sorted = [...list];
     sorted.sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
@@ -234,7 +253,7 @@ export default function Home() {
       return sortDirection === "asc" ? comparison : -comparison;
     });
     return sorted;
-  }, [rows, sortField, sortDirection]);
+  }, [rows, driverSearchQuery, sortField, sortDirection]);
 
   // Actualizar URL params cuando cambian filtros
   const updateUrl = (newPhase: number | null, start: string, end: string, newGroup: string) => {
@@ -598,6 +617,32 @@ export default function Home() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Buscador de conductor */}
+            <div className="relative min-w-[200px] sm:min-w-[240px]">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-slate-400">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </span>
+              <input
+                type="text"
+                value={driverSearchQuery}
+                onChange={(e) => setDriverSearchQuery(e.target.value)}
+                placeholder="Buscar conductor por nombre..."
+                className="w-full rounded-xl border border-slate-300 bg-slate-50/50 py-1.5 pl-8 pr-7 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-600 focus:bg-white focus:outline-none transition shadow-xs"
+              />
+              {driverSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setDriverSearchQuery("")}
+                  className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                  title="Limpiar búsqueda"
+                >
+                  <span className="text-xs">✕</span>
+                </button>
+              )}
+            </div>
+
             <button
               onClick={handleExportExecutiveSummary}
               disabled={!sortedRows || sortedRows.length === 0 || isLoadingExecutivePreview}
@@ -652,7 +697,9 @@ export default function Home() {
           </div>
         ) : sortedRows?.length === 0 ? (
           <div className="py-20 text-center text-xs text-slate-500">
-            No se encontraron evaluaciones con los filtros seleccionados.
+            {driverSearchQuery.trim()
+              ? `No se encontraron conductores que coincidan con "${driverSearchQuery}".`
+              : "No se encontraron evaluaciones con los filtros seleccionados."}
           </div>
         ) : (
           <div className="overflow-x-auto">

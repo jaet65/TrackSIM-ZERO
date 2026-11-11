@@ -22,6 +22,9 @@ export interface AuditQueueModalProps {
   onEvaluationUpdated?: () => void;
 }
 
+// Helper de tiempo fuera de la función de render del componente para pureza de React
+const getCurrentTimestamp = () => Date.now();
+
 export default function AuditQueueModal({
   isOpen,
   onClose,
@@ -160,13 +163,16 @@ export default function AuditQueueModal({
       const target = marks[markIndex];
       const nextIgnored = !target.ignored;
       const actor = user?.displayName || user?.email || "Instructor";
-
-      marks[markIndex] = {
-        ...target,
-        ignored: nextIgnored,
-        ignoredBy: nextIgnored ? actor : undefined,
-        ignoredAt: nextIgnored ? Date.now() : undefined,
-      };
+      const now = getCurrentTimestamp();
+      const nextMarks = marks.map((m, idx) => {
+        if (idx !== markIndex) return m;
+        return {
+          ...m,
+          ignored: nextIgnored,
+          ignoredBy: nextIgnored ? actor : undefined,
+          ignoredAt: nextIgnored ? now : undefined,
+        };
+      });
 
       const docId = currentItem.savedDocId || "";
       const evalViewStub: any = {
@@ -185,17 +191,17 @@ export default function AuditQueueModal({
         durationSec: currentItem.report.durationSec,
         errorCount: currentItem.errorCount,
         score: currentItem.score,
-        marks,
+        marks: nextMarks,
         telemetry: currentItem.report.telemetry,
         createdAt: currentItem.timestamp,
         groupId: activeGroupId,
       };
 
-      const updated = await updateEvaluationMarks(evalViewStub, marks, activeGroupId);
+      const updated = await updateEvaluationMarks(evalViewStub, nextMarks, activeGroupId);
 
       // Recalcular accidentes críticos según el entorno del ejercicio
       const newAccidents: string[] = [];
-      for (const m of marks) {
+      for (const m of nextMarks) {
         if (m.type === "ERROR" && !m.ignored) {
           const cl = classify(m.description, currentEnv, activeGroupId);
           if (cl.severity === "CRITICO") newAccidents.push(m.description);
@@ -205,20 +211,13 @@ export default function AuditQueueModal({
       if (onUpdateItem) {
         onUpdateItem(currentItem.id, (prev) => ({
           ...prev,
-          report: { ...prev.report, marks },
+          report: { ...prev.report, marks: nextMarks },
           score: updated.score,
           errorCount: updated.errorCount,
           accidents: newAccidents,
           criticalCount: newAccidents.length,
           pacing: updated.pacing,
         }));
-      } else {
-        currentItem.report.marks = marks;
-        currentItem.score = updated.score;
-        currentItem.errorCount = updated.errorCount;
-        currentItem.accidents = newAccidents;
-        currentItem.criticalCount = newAccidents.length;
-        currentItem.pacing = updated.pacing;
       }
 
       if (onEvaluationUpdated) onEvaluationUpdated();
@@ -279,13 +278,6 @@ export default function AuditQueueModal({
           criticalCount: newAccidents.length,
           pacing: updated.pacing,
         }));
-      } else {
-        currentItem.report.marks = marks;
-        currentItem.score = updated.score;
-        currentItem.errorCount = updated.errorCount;
-        currentItem.accidents = newAccidents;
-        currentItem.criticalCount = newAccidents.length;
-        currentItem.pacing = updated.pacing;
       }
 
       if (onEvaluationUpdated) onEvaluationUpdated();
@@ -385,13 +377,6 @@ export default function AuditQueueModal({
           criticalCount: newAccidents.length,
           pacing: updated.pacing,
         }));
-      } else {
-        currentItem.report.marks = marks;
-        currentItem.score = updated.score;
-        currentItem.errorCount = updated.errorCount;
-        currentItem.accidents = newAccidents;
-        currentItem.criticalCount = newAccidents.length;
-        currentItem.pacing = updated.pacing;
       }
 
       setCustomErrorText("");

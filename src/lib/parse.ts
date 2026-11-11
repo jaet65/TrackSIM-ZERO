@@ -1,6 +1,7 @@
 import { PENALTY_PER_ERROR_RATE } from "./config";
 import { classify, type Severity } from "./catalog";
 import { resolveExerciseEnvironment } from "./exercises";
+import { autoAccentDriverName } from "./driverName";
 
 export type Mark = {
   time: string;
@@ -332,8 +333,9 @@ export function parseReport(text: string, groupId?: string | null): ParsedReport
 
   const [lesson = "", unit = "", exCell = ""] = cells(lessonIdx + 1);
   const exercise = exCell && exCell !== "N/A" ? exCell : (unit && unit !== "N/A" ? unit : lesson);
-  const [date = "", , driver = "", duration = ""] = cells(headerIdx + 1);
-  if (!driver) throw new Error("El CSV no indica el conductor");
+  const [date = "", , rawDriver = "", duration = ""] = cells(headerIdx + 1);
+  if (!rawDriver) throw new Error("El CSV no indica el conductor");
+  const driver = autoAccentDriverName(rawDriver);
 
   const vehLine = lines.find((l) => /^Veh.culo:/i.test(l));
   const vehicle = vehLine ? vehLine.split(";")[1]?.trim() ?? "" : "";

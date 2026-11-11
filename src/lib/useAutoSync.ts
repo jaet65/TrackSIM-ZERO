@@ -4,10 +4,9 @@ import {
   checkStreamDBStatus,
   getLatestSimulatorSessionId,
   extractNewSimulatorSessions,
-  type ExtractedSession,
 } from "./streamdbClient";
-import { parseReport, type ParsedReport, type Mark } from "./parse";
-import { saveEvaluation, type EvaluationView, type EvaluationDoc } from "./db";
+import { parseReport, type ParsedReport } from "./parse";
+import { saveEvaluation, type EvaluationDoc } from "./db";
 import { getDb, safeGetDocs } from "./firebase";
 import { collection, query, where } from "firebase/firestore";
 import { loadCatalog } from "./catalogStore";
@@ -82,12 +81,14 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
   const [queue, setQueue] = useState<PendingAuditItem[]>(() => loadPendingQueue());
   const [dbConnected, setDbConnected] = useState<boolean | null>(null);
   const [activeGroup, setActiveGroup] = useState<GroupDoc | null>(null);
-  const [lastCheckTime, setLastCheckTime] = useState<number>(Date.now());
+  const [lastCheckTime, setLastCheckTime] = useState<number>(() => Date.now());
   const [recentNotification, setRecentNotification] = useState<PendingAuditItem | null>(null);
 
   const isPollingRef = useRef(false);
   const queueRef = useRef(queue);
-  queueRef.current = queue;
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
 
   // Actualizar estado del grupo activo
   const checkGroup = async () => {
@@ -234,7 +235,7 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
               const report = parseReport(s.csv, activeGrpId);
               const phase = phaseForExercise(report.exercise, activeGrpId) || 1;
 
-              const saveStatus = await saveEvaluation(
+              await saveEvaluation(
                 phase,
                 s.filename,
                 report,
@@ -303,6 +304,8 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
             const latest = newItems[newItems.length - 1];
             setRecentNotification(latest);
             if (onNewSessionAudited) onNewSessionAudited(latest);
+            // Notificar a la aplicación para refrescar vistas en tiempo real (Home, Driver, etc.)
+            window.dispatchEvent(new CustomEvent("tracksim:evaluations-updated"));
           }
         }
       } catch (err) {
@@ -321,7 +324,7 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
       isCancelled = true;
       if (timer) clearInterval(timer);
     };
-  }, [enabled, pollIntervalMs, userName, userEmail]);
+  }, [enabled, pollIntervalMs, userName, userEmail, onNewSessionAudited]);
 
   return {
     enabled,

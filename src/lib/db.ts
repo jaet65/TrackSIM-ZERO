@@ -23,6 +23,7 @@ import {
   type ExerciseBenchmark,
   type PacingAnalysis,
 } from "./pacingBenchmark";
+import { autoAccentDriverName } from "./driverName";
 
 export type EvaluationDoc = {
   phase: number;
@@ -233,6 +234,7 @@ export function withCurrentScore(
   const exerciseName = d.unit || d.exercise;
   const effectiveGroupId = d.groupId || fallbackGroupId || undefined;
   const resolvedDocId = docId || evaluationId(d.phase, d.fileName, d.groupId);
+  const resolvedDriverName = autoAccentDriverName(d.driverName);
   
   // Si la evaluación ya fue congelada, sus métricas son inalterables (normalizando a escala 0-10 si se congeló en escala 0-100)
   if (d.frozen && typeof d.frozenScore === "number") {
@@ -240,6 +242,7 @@ export function withCurrentScore(
       val !== undefined ? (val > 10 ? Math.round((val / 10) * 10) / 10 : val) : undefined;
     return {
       ...d,
+      driverName: resolvedDriverName,
       docId: resolvedDocId,
       exercise: exerciseName,
       errorCount: d.frozenErrorCount ?? d.errorCount,
@@ -292,6 +295,7 @@ export function withCurrentScore(
 
   return {
     ...d,
+    driverName: resolvedDriverName,
     docId: resolvedDocId,
     phase: resolvedPhase,
     telemetry,
