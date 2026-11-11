@@ -221,9 +221,21 @@ export default function Home() {
   const sortedRows = useMemo(() => {
     if (!rows) return null;
     let list = rows;
-    const q = driverSearchQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter((r) => r.driver.toLowerCase().includes(q));
+    const rawQ = driverSearchQuery.trim();
+    if (rawQ) {
+      // Normalizar quitando acentos y diacríticos para búsqueda insensible a tildes
+      const normalizedQ = rawQ
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+      list = list.filter((r) => {
+        const normalizedDriver = (r.driver || "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase();
+        return normalizedDriver.includes(normalizedQ);
+      });
     }
     const sorted = [...list];
     sorted.sort((a, b) => {
