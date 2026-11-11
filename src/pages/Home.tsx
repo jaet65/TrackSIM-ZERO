@@ -830,14 +830,8 @@ export default function Home() {
                         {r.driver}
                       </Link>
                     </td>
-                    <td className="px-4 py-3.5 text-center">
-                      {r.lastDate ? (
-                        <span className="inline-flex items-center gap-1 font-mono text-[11px] text-slate-600 bg-slate-100/80 px-2 py-0.5 rounded-md border border-slate-200/70">
-                          📅 {r.lastDate}
-                        </span>
-                      ) : (
-                        <span className="text-slate-300 text-[11px]">—</span>
-                      )}
+                    <td className="px-4 py-3.5 text-center font-mono text-slate-600">
+                      {r.lastDate || "—"}
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2">
