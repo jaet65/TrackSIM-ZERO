@@ -175,6 +175,8 @@ export type PhaseSummary = {
   avgScore: number;
   verdict: string;
   color: string;
+  lastDate?: string;
+  lastCreatedAt?: number;
 };
 
 export type DriverOverallSummary = {
@@ -189,6 +191,8 @@ export type DriverOverallSummary = {
   avgScore: number;
   verdict: string;
   color: string;
+  lastDate?: string;
+  lastCreatedAt?: number;
 };
 
 // Con CRITICAL_LIMIT o más errores críticos el dictamen es NO APTO; con menos solo pesan en la calificación.
@@ -453,6 +457,13 @@ function summarizeDriverPhases(
         ? { label: "INCOMPLETO", color: "bg-amber-50 text-amber-700 border border-amber-200" }
         : dictamen(avgScore, criticalErrors);
 
+    // Determinar la fecha y timestamp de la última conducción de esta fase
+    const phaseEvalsWithDate = [...counted].sort(
+      (a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0)
+    );
+    const lastDate = phaseEvalsWithDate[0]?.date || undefined;
+    const lastCreatedAt = phaseEvalsWithDate[0]?.createdAt || undefined;
+
     return {
       driverId,
       driver: driverName,
@@ -467,6 +478,8 @@ function summarizeDriverPhases(
       avgScore,
       verdict: v.label,
       color: v.color,
+      lastDate,
+      lastCreatedAt,
     };
   });
 }
@@ -731,6 +744,13 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
         ? { label: "NO REALIZADO", color: "bg-slate-100 text-slate-600 border border-slate-300" }
         : dictamen(avgScore, criticalErrors);
 
+    // Determinar la fecha y timestamp de la última conducción registrada del conductor
+    const sortedDocs = [...docs].sort(
+      (a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0)
+    );
+    const lastDate = sortedDocs[0]?.date || undefined;
+    const lastCreatedAt = sortedDocs[0]?.createdAt || undefined;
+
     results.push({
       driverId,
       driver: docs[0].driverName,
@@ -743,6 +763,8 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
       avgScore,
       verdict: v.label,
       color: v.color,
+      lastDate,
+      lastCreatedAt,
     });
   }
 

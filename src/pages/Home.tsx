@@ -37,9 +37,11 @@ export type DisplayRow = {
   avgScore: number;
   verdict: string;
   color: string;
+  lastDate?: string;
+  lastCreatedAt?: number;
 };
 
-export type SortField = "driver" | "progress" | "errors" | "criticalErrors" | "avgScore" | "verdict";
+export type SortField = "driver" | "lastDate" | "progress" | "errors" | "criticalErrors" | "avgScore" | "verdict";
 export type SortDirection = "asc" | "desc";
 
 export default function Home() {
@@ -159,6 +161,8 @@ export default function Home() {
               avgScore: d.avgScore,
               verdict: d.verdict,
               color: d.color,
+              lastDate: d.lastDate,
+              lastCreatedAt: d.lastCreatedAt,
             }))
           );
         })
@@ -179,6 +183,8 @@ export default function Home() {
               avgScore: d.avgScore,
               verdict: d.verdict,
               color: d.color,
+              lastDate: d.lastDate,
+              lastCreatedAt: d.lastCreatedAt,
             }))
           );
         })
@@ -226,6 +232,14 @@ export default function Home() {
         case "driver":
           comparison = a.driver.localeCompare(b.driver, "es", { sensitivity: "base" });
           break;
+        case "lastDate": {
+          const dateA = a.lastDate || "";
+          const dateB = b.lastDate || "";
+          const createdA = a.lastCreatedAt || 0;
+          const createdB = b.lastCreatedAt || 0;
+          comparison = dateA.localeCompare(dateB) || createdA - createdB;
+          break;
+        }
         case "progress":
           comparison = a.progressValue - b.progressValue;
           break;
@@ -718,6 +732,18 @@ export default function Home() {
                     </div>
                   </th>
                   <th
+                    onClick={() => handleSort("lastDate")}
+                    className="cursor-pointer py-3.5 px-4 hover:bg-slate-100 transition text-center"
+                    title="Fecha de la última conducción registrada"
+                  >
+                    <div className="flex items-center justify-center gap-1.5">
+                      <span>Última Conducción</span>
+                      {sortField === "lastDate" && (
+                        <span>{sortDirection === "asc" ? "▲" : "▼"}</span>
+                      )}
+                    </div>
+                  </th>
+                  <th
                     onClick={() => handleSort("progress")}
                     className="cursor-pointer py-3.5 px-4 hover:bg-slate-100 transition"
                   >
@@ -791,6 +817,15 @@ export default function Home() {
                       >
                         {r.driver}
                       </Link>
+                    </td>
+                    <td className="px-4 py-3.5 text-center">
+                      {r.lastDate ? (
+                        <span className="inline-flex items-center gap-1 font-mono text-[11px] text-slate-600 bg-slate-100/80 px-2 py-0.5 rounded-md border border-slate-200/70">
+                          📅 {r.lastDate}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 text-[11px]">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2">
