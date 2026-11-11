@@ -1,4 +1,4 @@
-import { collection, doc, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { collection, deleteDoc, doc, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { firestore, getDb, safeGetDoc, safeGetDocs, fastWrite } from "./firebase";
 import type { Mark, ParsedReport, TelemetryMetrics } from "./parse";
 import { evaluateMarks, normalizeRpmZones } from "./parse";
@@ -1010,6 +1010,15 @@ export async function updateEvaluationMarks(
   );
 
   return updatedView;
+}
+
+// Elimina una evaluación específica por su ID de documento o por sus parámetros clave (fase, archivo, grupo).
+export async function deleteEvaluation(docIdOrParams: string | { phase: number; fileName: string; groupId?: string }): Promise<void> {
+  const docId = typeof docIdOrParams === "string" 
+    ? docIdOrParams 
+    : evaluationId(docIdOrParams.phase, docIdOrParams.fileName, docIdOrParams.groupId);
+  const ref = doc(evaluations(), docId);
+  await fastWrite(deleteDoc(ref), 2000);
 }
 
 // Elimina todas las evaluaciones en lotes de hasta 400 documentos por batch.
