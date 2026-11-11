@@ -28,7 +28,8 @@ export default defineConfig({
         "os",
         "http",
         "https",
-        "child_process"
+        "child_process",
+        "electron-updater"
       ],
     },
   },
