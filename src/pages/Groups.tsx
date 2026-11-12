@@ -522,8 +522,16 @@ export default function Groups() {
 
       {/* Modal: Crear Nuevo Grupo */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <div
+          onClick={() => {
+            if (!creating) setShowCreateModal(false);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
             <h3 className="text-base font-bold text-slate-900 mb-1">Crear Nuevo Grupo de Evaluación</h3>
             <p className="text-xs text-slate-500 mb-4">
               Ingresa el nombre descriptivo para agrupar las evaluaciones (ej. "Generación Octubre 2026", "Curso Mina Pinos").
@@ -647,8 +655,16 @@ export default function Groups() {
 
       {/* Modal: Editar Nombre y Descripción de Grupo */}
       {editingGroup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <div
+          onClick={() => {
+            if (!savingEdit) setEditingGroup(null);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
             <h3 className="text-base font-bold text-slate-900 mb-1">Editar Información del Grupo</h3>
             <p className="text-xs text-slate-500 mb-4">
               Modifica el nombre o la descripción del grupo.
@@ -710,8 +726,16 @@ export default function Groups() {
 
       {/* Modal: Confirmar Cierre y Congelamiento */}
       {closingGroup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-lg rounded-2xl border border-amber-200 bg-white p-6 shadow-2xl">
+        <div
+          onClick={() => {
+            if (!closing) setClosingGroup(null);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-lg rounded-2xl border border-amber-200 bg-white p-6 shadow-2xl"
+          >
             <div className="flex items-center gap-3 text-amber-600 mb-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100">
                 <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -759,8 +783,16 @@ export default function Groups() {
 
       {/* Modal: Confirmar Eliminación */}
       {deletingGroup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl">
+        <div
+          onClick={() => {
+            if (!deleting) setDeletingGroup(null);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl"
+          >
             <h3 className="text-base font-bold text-rose-900 mb-1">Eliminar Grupo</h3>
             <p className="text-xs text-slate-600 mb-4">
               Esta acción eliminará el grupo y todas sus evaluaciones asociadas de forma irreversible.

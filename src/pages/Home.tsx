@@ -21,6 +21,7 @@ import {
 } from "../lib/groups";
 import { useAuth } from "../components/AuthProvider";
 import ExecutiveSummaryPreviewModal from "../components/ExecutiveSummaryPreviewModal";
+import DriverModal from "../components/DriverModal";
 import { downloadBulkReportsZip, downloadExecutiveSummaryPdf } from "../lib/pdfExport";
 import { useEscapeKey } from "../lib/useEscapeKey";
 import type { ReportExerciseSummary } from "../lib/db";
@@ -131,6 +132,9 @@ export default function Home() {
     metrics: { total: number; promedio: number; aptos: number; noAptos: number };
     exercises: ReportExerciseSummary[];
   } | null>(null);
+
+  // Modal interactivo de expediente de conductor
+  const [activeDriverId, setActiveDriverId] = useState<string | null>(null);
 
   const isAdmin = isAdminEmail(user?.email);
 
@@ -473,6 +477,27 @@ export default function Home() {
     } catch (err: any) {
       console.error("Error al generar el PDF del resumen ejecutivo:", err);
       alert("No se pudo generar el PDF del reporte: " + (err?.message || "Error desconocido"));
+    }
+  };
+
+  // Navegación entre conductores en el modal
+  const activeDriverIndex = useMemo(() => {
+    if (!activeDriverId || !sortedRows) return -1;
+    return sortedRows.findIndex((r) => r.driverId === activeDriverId);
+  }, [activeDriverId, sortedRows]);
+
+  const hasPrevDriver = activeDriverIndex > 0;
+  const hasNextDriver = activeDriverIndex >= 0 && sortedRows ? activeDriverIndex < sortedRows.length - 1 : false;
+
+  const handlePrevDriver = () => {
+    if (hasPrevDriver && sortedRows) {
+      setActiveDriverId(sortedRows[activeDriverIndex - 1].driverId);
+    }
+  };
+
+  const handleNextDriver = () => {
+    if (hasNextDriver && sortedRows) {
+      setActiveDriverId(sortedRows[activeDriverIndex + 1].driverId);
     }
   };
 
@@ -869,21 +894,22 @@ export default function Home() {
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {sortedRows?.map((r) => (
-                  <tr key={r.driverId} className="hover:bg-slate-50/60 transition group">
+                  <tr
+                    key={r.driverId}
+                    onClick={() => setActiveDriverId(r.driverId)}
+                    className="hover:bg-slate-50/60 transition group cursor-pointer"
+                  >
                     <td className="px-4 py-3.5">
-                      <Link
-                        to={`/drivers/${r.driverId}${selectedGroupId || startDate || endDate
-                          ? `?${new URLSearchParams({
-                            ...(selectedGroupId ? { grupo: selectedGroupId } : {}),
-                            ...(startDate ? { desde: startDate } : {}),
-                            ...(endDate ? { hasta: endDate } : {}),
-                          }).toString()}`
-                          : ""
-                          }`}
-                        className="font-bold text-slate-900 group-hover:text-indigo-600 transition"
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveDriverId(r.driverId);
+                        }}
+                        className="text-left font-bold text-slate-900 group-hover:text-indigo-600 transition cursor-pointer"
                       >
                         {r.driver}
-                      </Link>
+                      </button>
                     </td>
                     <td className="px-4 py-3.5 text-center font-mono text-slate-600">
                       {r.lastDate || "—"}
@@ -945,6 +971,23 @@ export default function Home() {
       </section>
 
       {/* Modal de confirmación para vaciar evaluaciones del grupo seleccionado */}
+      {activeDriverId && (
+        <DriverModal
+          isOpen={!!activeDriverId}
+          driverId={activeDriverId}
+          groupId={selectedGroupId}
+          startDate={startDate}
+          endDate={endDate}
+          onClose={() => setActiveDriverId(null)}
+          onNavigatePrev={handlePrevDriver}
+          onNavigateNext={handleNextDriver}
+          hasPrev={hasPrevDriver}
+          hasNext={hasNextDriver}
+          currentIndex={activeDriverIndex >= 0 ? activeDriverIndex : undefined}
+          totalDrivers={sortedRows?.length}
+        />
+      )}
+
       {executivePreview && (
         <ExecutiveSummaryPreviewModal
           {...executivePreview}
@@ -954,8 +997,16 @@ export default function Home() {
       )}
 
       {showConfirmModal && currentGroupObj && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">
+        <div
+          onClick={() => {
+            if (!isDeleting) setShowConfirmModal(false);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4"
+          >
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 border border-rose-200 text-rose-600">
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

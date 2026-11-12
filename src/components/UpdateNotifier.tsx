@@ -392,8 +392,16 @@ export default function UpdateNotifier() {
         info?.updateAvailable &&
         typeof document !== "undefined" &&
         createPortal(
-          <div className="fixed inset-0 z-9999 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <div
+            onClick={() => {
+              if (!applyingUpdate || !readyToInstall) setModalOpen(false);
+            }}
+            className="fixed inset-0 z-9999 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+            >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div

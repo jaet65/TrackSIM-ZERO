@@ -22,12 +22,42 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "
 type SortField = "time" | "description" | "severity";
 type SortDirection = "asc" | "desc";
 
-export default function Driver() {
-  const { id = "" } = useParams();
+export interface DriverProps {
+  driverId?: string;
+  groupId?: string;
+  startDate?: string;
+  endDate?: string;
+  onClose?: () => void;
+  onNavigatePrev?: () => void;
+  onNavigateNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
+  currentIndex?: number;
+  totalDrivers?: number;
+  isModal?: boolean;
+}
+
+export default function Driver({
+  driverId: propDriverId,
+  groupId: propGroupId,
+  startDate: propStartDate,
+  endDate: propEndDate,
+  onClose,
+  onNavigatePrev,
+  onNavigateNext,
+  hasPrev = false,
+  hasNext = false,
+  currentIndex,
+  totalDrivers,
+  isModal = false,
+}: DriverProps = {}) {
+  const params = useParams();
   const [searchParams] = useSearchParams();
-  const groupParam = searchParams.get("grupo") || "";
-  const startDateParam = searchParams.get("desde") || "";
-  const endDateParam = searchParams.get("hasta") || "";
+
+  const id = propDriverId ?? params.id ?? "";
+  const groupParam = propGroupId ?? (searchParams.get("grupo") || "");
+  const startDateParam = propStartDate ?? (searchParams.get("desde") || "");
+  const endDateParam = propEndDate ?? (searchParams.get("hasta") || "");
 
   const dateFilter = useMemo<DateFilter>(
     () => ({
@@ -413,29 +443,64 @@ export default function Driver() {
   };
 
   return (
-    <main className="w-full space-y-6 px-4 py-8 sm:px-8 xl:px-12">
+    <main className={`w-full space-y-6 ${isModal ? "p-4 sm:p-6" : "px-4 py-8 sm:px-8 xl:px-12"}`}>
       {/* Top back & title */}
       <div>
-        <Link
-          to={groupParam ? `/?grupo=${groupParam}` : "/"}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition mb-3"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          Volver a resultados
-        </Link>
+        {!isModal && (
+          <Link
+            to={groupParam ? `/?grupo=${groupParam}` : "/"}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition mb-3"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Volver a resultados
+          </Link>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-lg font-bold text-white shadow-md shadow-indigo-600/20">
               {name.charAt(0).toUpperCase()}
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">{name}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">{name}</h1>
+                {currentIndex !== undefined && totalDrivers !== undefined && (
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                    {currentIndex + 1} de {totalDrivers}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500">Expediente de Desempeño y Telemetría</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+              {/* Botones de navegación entre conductores */}
+              {(onNavigatePrev || onNavigateNext) && (
+                <div className="no-print flex items-center rounded-xl border border-slate-300 bg-white p-0.5 shadow-xs">
+                  <button
+                    type="button"
+                    onClick={onNavigatePrev}
+                    disabled={!hasPrev}
+                    title="Conductor anterior (flecha izquierda ←)"
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                  >
+                    <span>‹</span>
+                    <span className="hidden sm:inline">Anterior</span>
+                  </button>
+                  <div className="h-4 w-px bg-slate-200" />
+                  <button
+                    type="button"
+                    onClick={onNavigateNext}
+                    disabled={!hasNext}
+                    title="Siguiente conductor (flecha derecha →)"
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                  >
+                    <span className="hidden sm:inline">Siguiente</span>
+                    <span>›</span>
+                  </button>
+                </div>
+              )}
               <button type="button" disabled={!groupParam || exportingCertificate}
                 onClick={handleCertificate}
                 title={groupParam ? "Utiliza todas las evaluaciones del grupo" : "Selecciona un grupo para emitir el documento"}
@@ -476,6 +541,18 @@ export default function Driver() {
             <span className={`rounded-full px-3.5 py-1 text-xs font-bold ${color}`}>
               {verdict}
             </span>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                title="Cerrar modal (Esc)"
+                className="no-print flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 transition cursor-pointer"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1371,8 +1448,14 @@ export default function Driver() {
 
       {/* Modal de Reporte Detallado del Ejercicio */}
       {selectedEval && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm modal-open-for-print">
-          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden print-modal-content">
+        <div
+          onClick={() => setSelectedEval(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm modal-open-for-print"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden print-modal-content"
+          >
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-6 py-4">
               <div className="flex items-center gap-3">

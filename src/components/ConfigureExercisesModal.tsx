@@ -115,8 +115,16 @@ export default function ConfigureExercisesModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+    <div
+      onClick={() => {
+        if (!saving) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+      >
         {/* Cabecera del Modal */}
         <div className="flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-amber-50/70 via-white to-indigo-50/40 p-5">
           <div className="flex items-center gap-3">
