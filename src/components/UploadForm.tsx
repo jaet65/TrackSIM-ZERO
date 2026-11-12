@@ -495,47 +495,19 @@ export default function UploadForm({
     );
   }
 
-  // SI HAY GRUPO ACTIVO: Se muestra la barra de carga normal y el grupo asociado
+  // SI HAY GRUPO ACTIVO: Se muestra la barra de carga compacta e integrada
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-4">
-      {activeGroup && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-bold text-slate-800">
-              Grupo de Trabajo Activo: <span className="text-indigo-600 font-extrabold">{activeGroup.name}</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            {results.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowResultsModal(true)}
-                className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 underline"
-              >
-                Ver último registro ({results.length})
-              </button>
-            )}
-            <Link
-              to="/grupos"
-              className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline"
-            >
-              Administrar Grupos
-            </Link>
-          </div>
-        </div>
-      )}
-
-      <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 flex-col gap-1.5 sm:flex-row sm:items-center">
-          <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-2.5 text-xs font-medium text-slate-700 hover:border-indigo-500 hover:bg-indigo-50/40 transition">
-            <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div className="rounded-xl border border-slate-200/80 bg-white px-3.5 py-2.5 shadow-2xs">
+      <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50/70 hover:bg-indigo-50/40 hover:border-indigo-400 px-3 py-1.5 text-xs font-medium text-slate-700 transition">
+            <svg className="h-3.5 w-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
-            <span>
+            <span className="truncate max-w-[200px] sm:max-w-none text-xs">
               {fileCount > 0
-                ? `${fileCount} archivo(s) seleccionado(s)`
-                : "Seleccionar archivos CSV del simulador"}
+                ? `${fileCount} archivo(s)`
+                : "Elegir CSVs del simulador"}
             </span>
             <input
               type="file"
@@ -548,20 +520,27 @@ export default function UploadForm({
               onChange={(e) => setFileCount(e.target.files?.length || 0)}
             />
           </label>
-          <span className="text-[11px] text-slate-500">
-            Detección inteligente de fase automática según el catálogo de ejercicios.
-          </span>
+
+          {results.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowResultsModal(true)}
+              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/80 transition"
+            >
+              Último registro ({results.length})
+            </button>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {isDesktop ? (
             <button
               type="button"
               disabled={busy}
               onClick={() => setShowSyncModal(true)}
-              className="flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-xs"
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-2xs"
             >
-              <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-3.5 w-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3V7M4 7c0-2 1.5-3 3.5-3h9c2 0 3.5 1 3.5 3M4 7h16m-5 4h.01M9 15h6" />
               </svg>
               <span>Sincronizar Lander DB</span>
@@ -571,10 +550,10 @@ export default function UploadForm({
               type="button"
               disabled={busy}
               onClick={handleLaunchDesktopApp}
-              className="flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-xs"
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-2xs"
               title="Abrir la versión de escritorio para sincronizar con Lander DB o descargar el instalador"
             >
-              <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-3.5 w-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
               <span>Abrir App de Escritorio</span>
@@ -584,21 +563,20 @@ export default function UploadForm({
           <button
             type="submit"
             disabled={busy || fileCount === 0}
-            className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm shadow-indigo-600/20 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            className="flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs hover:from-indigo-700 hover:to-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
           >
             {busy ? (
               <>
-                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
                 <span>
-                  Procesando telemetría…{" "}
                   {uploadProgress
-                    ? `${uploadProgress.percent}% (${uploadProgress.current}/${uploadProgress.total})`
-                    : "0%"}
+                    ? `${uploadProgress.percent}%`
+                    : "Procesando..."}
                 </span>
               </>
             ) : (
               <>
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <span>Subir y Evaluar CSV</span>

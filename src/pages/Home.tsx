@@ -501,25 +501,12 @@ export default function Home() {
   };
 
   return (
-    <main className="w-full space-y-6 px-4 py-8 sm:px-8 xl:px-12">
-      {/* Hero Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-            <span className="text-xs font-semibold tracking-wider uppercase text-slate-500">Panel de Control</span>
-          </div>
-          <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-            Evaluación de Conductores
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            {selectedGroupId && currentGroupObj
-              ? `Filtrando por el grupo: «${currentGroupObj.name}» ${currentGroupObj.status === "closed" ? "(🔒 Cerrado/Congelado)" : "(Abierto)"}`
-              : selectedPhase === null
-                ? "Vista global: Calificaciones promediadas de todo el programa de capacitación."
-                : `Vista focalizada: Resultados detallados de la Fase ${selectedPhase}.`}
-          </p>
-        </div>
+    <main className="w-full space-y-4 px-4 py-4 sm:px-6 xl:px-8">
+      {/* Header Compacto */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-3">
+        <h1 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
+          Evaluación de Conductores
+        </h1>
 
         {/* Botón de Limpiar Grupo: Solo visible si hay un grupo seleccionado, es admin y NO está cerrado */}
         {isAdmin && selectedGroupId && currentGroupObj?.status !== "closed" && (
@@ -529,10 +516,10 @@ export default function Home() {
               setDeleteError("");
               setShowConfirmModal(true);
             }}
-            className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-semibold text-rose-700 shadow-sm hover:border-rose-300 hover:bg-rose-100 active:scale-95 transition"
+            className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 shadow-2xs hover:border-rose-300 hover:bg-rose-100 active:scale-95 transition"
             title="Limpiar únicamente las evaluaciones asociadas a este grupo"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
             <span>Limpiar Evaluaciones del Grupo</span>
@@ -540,19 +527,14 @@ export default function Home() {
         )}
       </div>
 
-      {/* Barra de Filtros: Grupos, Fases y Fechas */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-4">
+      {/* Barra de Filtros Compacta: Grupos, Fases y Fechas */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5 rounded-xl border border-slate-200/80 bg-white px-3.5 py-2.5 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Selector de Grupo */}
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-200/70 text-indigo-600">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            </div>
-            <label htmlFor="group-select" className="text-xs font-bold uppercase tracking-wider text-slate-700 whitespace-nowrap">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">
               Grupo:
-            </label>
+            </span>
             <select
               id="group-select"
               value={selectedGroupId}
@@ -562,7 +544,7 @@ export default function Home() {
                 setActiveGroupId(val || null);
                 updateUrl(selectedPhase, startDate, endDate, val);
               }}
-              className="rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm focus:border-indigo-600 focus:bg-white focus:outline-none transition cursor-pointer"
+              className="rounded-lg border border-slate-300 bg-slate-50/50 px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-2xs focus:border-indigo-600 focus:bg-white focus:outline-none transition cursor-pointer"
             >
               <option value="">🌐 Todos los Grupos</option>
               {allGroups.map((g) => (
@@ -575,10 +557,10 @@ export default function Home() {
 
           {/* Selector de Fase (Solo si no es modalidad Curso) */}
           {currentGroupObj?.type !== "curso" ? (
-            <div className="flex items-center gap-2">
-              <label htmlFor="phase-select" className="text-xs font-bold uppercase tracking-wider text-slate-700 whitespace-nowrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">
                 Fase:
-              </label>
+              </span>
               <select
                 id="phase-select"
                 value={selectedPhase === null ? "ALL" : String(selectedPhase)}
@@ -587,7 +569,7 @@ export default function Home() {
                   const nextPhase = val === "ALL" ? null : Number(val);
                   updateUrl(nextPhase, startDate, endDate, selectedGroupId);
                 }}
-                className="w-full sm:w-56 rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm focus:border-indigo-600 focus:bg-white focus:outline-none transition cursor-pointer"
+                className="w-full sm:w-52 rounded-lg border border-slate-300 bg-slate-50/50 px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-2xs focus:border-indigo-600 focus:bg-white focus:outline-none transition cursor-pointer"
               >
                 <option value="ALL">🌐 Promedio General (Todas)</option>
                 {phasesList.filter((p) => availablePhases.includes(p.id)).map((p) => (
@@ -598,8 +580,8 @@ export default function Home() {
               </select>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <span className="rounded-xl bg-purple-50 border border-purple-200 px-3 py-1.5 text-xs font-bold text-purple-700 flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
+              <span className="rounded-lg bg-purple-50 border border-purple-200 px-2 py-0.5 text-[11px] font-bold text-purple-700 flex items-center gap-1">
                 🎯 Modalidad Curso
               </span>
             </div>
@@ -607,51 +589,49 @@ export default function Home() {
         </div>
 
         {/* Selector de Rango de Fechas */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-t lg:border-t-0 pt-3 lg:pt-0 border-slate-100">
-          <div className="flex items-center gap-1.5 text-slate-600">
-            <svg className="h-4 w-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="flex flex-wrap items-center gap-1.5 border-t lg:border-t-0 pt-2 lg:pt-0 border-slate-100">
+          <div className="flex items-center gap-1 text-slate-600">
+            <svg className="h-3.5 w-3.5 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-700 whitespace-nowrap">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">
               Fechas:
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => {
-                const val = e.target.value;
-                setStartDate(val);
-                updateUrl(selectedPhase, val, endDate, selectedGroupId);
-              }}
-              className="rounded-xl border border-slate-300 bg-slate-50/50 px-2.5 py-1.5 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-600 focus:bg-white focus:outline-none transition"
-              title="Fecha inicial (Desde)"
-            />
-            <span className="text-xs text-slate-400 font-medium">—</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => {
-                const val = e.target.value;
-                setEndDate(val);
-                updateUrl(selectedPhase, startDate, val, selectedGroupId);
-              }}
-              className="rounded-xl border border-slate-300 bg-slate-50/50 px-2.5 py-1.5 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-600 focus:bg-white focus:outline-none transition"
-              title="Fecha final (Hasta)"
-            />
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => {
+              const val = e.target.value;
+              setStartDate(val);
+              updateUrl(selectedPhase, val, endDate, selectedGroupId);
+            }}
+            className="rounded-lg border border-slate-300 bg-slate-50/50 px-2 py-1 text-xs font-medium text-slate-800 shadow-2xs focus:border-indigo-600 focus:bg-white focus:outline-none transition"
+            title="Fecha inicial (Desde)"
+          />
+          <span className="text-xs text-slate-400 font-medium">—</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => {
+              const val = e.target.value;
+              setEndDate(val);
+              updateUrl(selectedPhase, startDate, val, selectedGroupId);
+            }}
+            className="rounded-lg border border-slate-300 bg-slate-50/50 px-2 py-1 text-xs font-medium text-slate-800 shadow-2xs focus:border-indigo-600 focus:bg-white focus:outline-none transition"
+            title="Fecha final (Hasta)"
+          />
 
-            {hasDateFilter && (
-              <button
-                onClick={clearDateFilter}
-                className="rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition shadow-sm"
-                title="Limpiar filtro de fechas"
-              >
-                Limpiar fechas
-              </button>
-            )}
-          </div>
+          {hasDateFilter && (
+            <button
+              onClick={clearDateFilter}
+              className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition shadow-2xs"
+              title="Limpiar filtro de fechas"
+            >
+              Limpiar fechas
+            </button>
+          )}
         </div>
       </div>
 
@@ -670,54 +650,54 @@ export default function Home() {
         }}
       />
 
-      {/* Tarjetas de métricas rápidas */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500">Conductores Evaluados</span>
-          <p className="mt-1 text-2xl font-black text-slate-900">{totalConductores}</p>
-          <span className="text-[11px] text-slate-400">Total en vista actual</span>
+      {/* Tarjetas de métricas rápidas compactas */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
+        <div className="rounded-xl border border-slate-200/80 bg-white px-3.5 py-2.5 shadow-2xs">
+          <span className="text-[11px] font-semibold text-slate-500">Conductores Evaluados</span>
+          <p className="mt-0.5 text-xl font-black text-slate-900">{totalConductores}</p>
+          <span className="text-[10px] text-slate-400">Total en vista</span>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500">Promedio General</span>
-          <p className="mt-1 text-2xl font-black text-slate-900">{promedioGeneral}</p>
-          <div className="mt-1 flex items-center gap-1.5">
+        <div className="rounded-xl border border-slate-200/80 bg-white px-3.5 py-2.5 shadow-2xs">
+          <span className="text-[11px] font-semibold text-slate-500">Promedio General</span>
+          <p className="mt-0.5 text-xl font-black text-slate-900">{promedioGeneral}</p>
+          <div className="mt-0.5 flex items-center gap-1.5">
             <span
               className={`h-2 w-2 rounded-full ${promedioGeneral >= 8 ? "bg-emerald-500" : promedioGeneral >= 6 ? "bg-amber-500" : "bg-rose-500"
                 }`}
             />
-            <span className="text-[11px] font-medium text-slate-600">
-              {promedioGeneral >= 8 ? "Nivel Satisfactorio" : promedioGeneral >= 6 ? "En Riesgo / Regular" : "No Apto"}
+            <span className="text-[10px] font-medium text-slate-600">
+              {promedioGeneral >= 8 ? "Satisfactorio" : promedioGeneral >= 6 ? "Regular" : "No Apto"}
             </span>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 shadow-sm">
-          <span className="text-xs font-semibold text-emerald-700">Aptos</span>
-          <p className="mt-1 text-2xl font-black text-emerald-700">{aptos}</p>
-          <span className="text-[11px] text-emerald-600/80">
-            {totalConductores > 0 ? `${Math.round((aptos / totalConductores) * 100)}% de aprobación` : "Sin datos"}
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 px-3.5 py-2.5 shadow-2xs">
+          <span className="text-[11px] font-semibold text-emerald-700">Aptos</span>
+          <p className="mt-0.5 text-xl font-black text-emerald-700">{aptos}</p>
+          <span className="text-[10px] text-emerald-600/80">
+            {totalConductores > 0 ? `${Math.round((aptos / totalConductores) * 100)}% aprobación` : "Sin datos"}
           </span>
         </div>
 
-        <div className="rounded-2xl border border-rose-100 bg-rose-50/50 p-4 shadow-sm">
-          <span className="text-xs font-semibold text-rose-700">No Aptos</span>
-          <p className="mt-1 text-2xl font-black text-rose-700">{noAptos}</p>
-          <span className="text-[11px] text-rose-600/80">
+        <div className="rounded-xl border border-rose-100 bg-rose-50/50 px-3.5 py-2.5 shadow-2xs">
+          <span className="text-[11px] font-semibold text-rose-700">No Aptos</span>
+          <p className="mt-0.5 text-xl font-black text-rose-700">{noAptos}</p>
+          <span className="text-[10px] text-rose-600/80">
             {totalConductores > 0 ? `${Math.round((noAptos / totalConductores) * 100)}% en riesgo` : "Sin datos"}
           </span>
         </div>
       </div>
 
       {/* Tabla Principal de Conductores */}
-      <section className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 p-5">
+      <section className="rounded-xl border border-slate-200/80 bg-white shadow-2xs overflow-hidden">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 px-4 py-3">
           <div>
-            <h2 className="text-base font-bold text-slate-900">
+            <h2 className="text-sm font-bold text-slate-900">
               {selectedPhase === null ? "Resultados Globales de Conductores" : `Conductores en Fase ${selectedPhase}`}
             </h2>
-            <p className="text-xs text-slate-500">
-              Haz clic sobre el encabezado de cualquier columna para ordenar ascendentemente o descendentemente.
+            <p className="text-[11px] text-slate-500">
+              Haz clic sobre el encabezado de cualquier columna para ordenar.
             </p>
           </div>
 
