@@ -215,6 +215,12 @@ export default function Driver({
     };
   }, [data, groupParam]);
 
+  // Navegación entre ejercicios evaluados en el modal de detalle del ejercicio
+  const currentEvalIndex = useMemo(() => {
+    if (!selectedEval || !data?.evals) return -1;
+    return data.evals.findIndex((e) => (e.docId && e.docId === selectedEval.docId) || (e.fileName === selectedEval.fileName && e.phase === selectedEval.phase));
+  }, [selectedEval, data?.evals]);
+
   // Filtrar exclusivamente los eventos de tipo ERROR y calcular conteos por severidad para el modal
   const { sortedErrorMarks, severityCounts, ignoredErrorCount } = useMemo(() => {
     const counts: Record<Severity, number> = {
@@ -426,6 +432,21 @@ export default function Driver({
     ...missingExercises.map((m, idx) => ({ type: "missing" as const, phase: m.phase, exercise: m.exercise, key: `missing-${m.phase}-${idx}-${m.exercise}` })),
   ].sort((a, b) => a.phase - b.phase || (a.type === "done" && b.type === "missing" ? -1 : a.type === "missing" && b.type === "done" ? 1 : 0));
 
+  const hasPrevEval = currentEvalIndex > 0;
+  const hasNextEval = currentEvalIndex >= 0 && currentEvalIndex < (evals?.length ?? 0) - 1;
+
+  const handlePrevEval = () => {
+    if (hasPrevEval && evals) {
+      setSelectedEval(evals[currentEvalIndex - 1]);
+    }
+  };
+
+  const handleNextEval = () => {
+    if (hasNextEval && evals) {
+      setSelectedEval(evals[currentEvalIndex + 1]);
+    }
+  };
+
   const displayedSeverities = activeSeverityTab === "ALL"
     ? SEVERITY_ORDER
     : [activeSeverityTab];
@@ -443,9 +464,15 @@ export default function Driver({
   };
 
   return (
-    <main className={`w-full space-y-6 ${isModal ? "p-4 sm:p-6" : "px-4 py-8 sm:px-8 xl:px-12"}`}>
-      {/* Top back & title */}
-      <div>
+    <main className={`w-full ${isModal ? "p-0" : "space-y-6 px-4 py-8 sm:px-8 xl:px-12"}`}>
+      {/* Top back & title - Anclado a la parte superior cuando está en modal */}
+      <div
+        className={`${
+          isModal
+            ? "sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md px-4 py-4 sm:px-6 sm:py-5 border-b border-slate-200/80 shadow-xs"
+            : ""
+        }`}
+      >
         {!isModal && (
           <Link
             to={groupParam ? `/?grupo=${groupParam}` : "/"}
@@ -572,7 +599,8 @@ export default function Driver({
         </div>
       </div>
 
-      {/* Main Score Card */}
+      <div className={`${isModal ? "p-4 sm:p-6 space-y-6" : "space-y-6"}`}>
+        {/* Main Score Card */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="sm:col-span-2 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm flex flex-col justify-between">
           <div>
@@ -652,6 +680,125 @@ export default function Driver({
           </span>
         </div>
       </div>
+
+      {/* Historial detallado de ejercicios */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Desglose de Ejercicios Evaluados</h2>
+            <p className="text-xs text-slate-500">Haz clic en el nombre de cualquier ejercicio para ver su reporte de errores y telemetría.</p>
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Fase</th>
+                  <th className="px-4 py-3">Ejercicio / Unidad</th>
+                  <th className="px-4 py-3">Fecha</th>
+                  <th className="px-4 py-3">Instructor</th>
+                  <th className="px-4 py-3">Duración</th>
+                  <th className="px-4 py-3">Errores</th>
+                  <th className="px-4 py-3 text-right">Calif. Final</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {allExerciseRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-xs text-slate-500">
+                      Sin ejercicios asignados en el catálogo de este grupo.
+                    </td>
+                  </tr>
+                ) : (
+                  allExerciseRows.map((row) => {
+                    if (row.type === "done") {
+                      const isUneval = isExerciseUnevaluated(row.eval.exercise || row.eval.unit, row.eval.groupId || groupParam || null);
+                      return (
+                        <tr
+                          key={`${row.eval.phase}-${row.eval.fileName}`}
+                          className="group hover:bg-indigo-50/30 transition cursor-pointer"
+                          onClick={() => setSelectedEval(row.eval)}
+                        >
+                          <td className="px-4 py-3">
+                            <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
+                              F{row.eval.phase}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-900">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-indigo-600 group-hover:text-indigo-700 underline decoration-indigo-200 group-hover:decoration-indigo-500 underline-offset-2 transition">
+                                {row.eval.exercise}
+                              </span>
+                              {isUneval && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-800" title="Ejercicio de concientización: no afecta el promedio ni la calificación">
+                                  🛡️ No evaluado
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-slate-500 font-mono">{row.eval.date || "—"}</td>
+                          <td className="px-4 py-3 text-slate-700">{row.eval.instructor || "—"}</td>
+                          <td className="px-4 py-3 text-slate-500 font-mono">{fmt(row.eval.durationSec)}</td>
+                          <td className="px-4 py-3 font-mono text-slate-700">
+                            {row.eval.errorCount > 0 ? (
+                              <span className="font-semibold text-rose-600">{row.eval.errorCount}</span>
+                            ) : (
+                              <span className="text-emerald-600">0</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono font-bold">
+                            {isUneval ? (
+                              <span className="text-slate-400 text-xs font-semibold" title="No evaluado para métricas ni promedios">N/E</span>
+                            ) : (
+                              <span className="text-indigo-600">{row.eval.score}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    } else {
+                      const isUneval = isExerciseUnevaluated(row.exercise, groupParam || null);
+                      return (
+                        <tr
+                          key={`missing-${row.phase}-${row.exercise}`}
+                          className="bg-slate-50/50 italic opacity-75"
+                        >
+                          <td className="px-4 py-3">
+                            <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-500">
+                              F{row.phase}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-medium text-slate-500">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span>{row.exercise}</span>
+                              <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+                                No realizado
+                              </span>
+                              {isUneval && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                                  🛡️ No evaluado
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-slate-400">—</td>
+                          <td className="px-4 py-3 text-slate-400">—</td>
+                          <td className="px-4 py-3 font-mono text-slate-400">—</td>
+                          <td className="px-4 py-3 font-mono text-slate-400">—</td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-slate-400">
+                            {isUneval ? "N/E" : "0"}
+                          </td>
+                        </tr>
+                      );
+                    }
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
 
       {/* Tarjeta de Recomendaciones Automatizadas para el Instructor */}
       {recommendations.length > 0 && (
@@ -1176,122 +1323,6 @@ export default function Driver({
         )}
       </section>
 
-      {/* Historial detallado de ejercicios */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Desglose de Ejercicios Evaluados</h2>
-            <p className="text-xs text-slate-500">Haz clic en el nombre de cualquier ejercicio para ver su reporte de errores y telemetría.</p>
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                <tr>
-                  <th className="px-4 py-3">Fase</th>
-                  <th className="px-4 py-3">Ejercicio / Unidad</th>
-                  <th className="px-4 py-3">Fecha</th>
-                  <th className="px-4 py-3">Instructor</th>
-                  <th className="px-4 py-3">Duración</th>
-                  <th className="px-4 py-3">Errores</th>
-                  <th className="px-4 py-3 text-right">Calif. Final</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {allExerciseRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-xs text-slate-500">
-                      Sin ejercicios asignados en el catálogo de este grupo.
-                    </td>
-                  </tr>
-                ) : (
-                  allExerciseRows.map((row) => {
-                    if (row.type === "done") {
-                      const isUneval = isExerciseUnevaluated(row.eval.exercise || row.eval.unit, row.eval.groupId || groupParam || null);
-                      return (
-                        <tr
-                          key={`${row.eval.phase}-${row.eval.fileName}`}
-                          className="group hover:bg-indigo-50/30 transition cursor-pointer"
-                          onClick={() => setSelectedEval(row.eval)}
-                        >
-                          <td className="px-4 py-3">
-                            <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
-                              F{row.eval.phase}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-semibold text-slate-900">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-indigo-600 group-hover:text-indigo-700 underline decoration-indigo-200 group-hover:decoration-indigo-500 underline-offset-2 transition">
-                                {row.eval.exercise}
-                              </span>
-                              {isUneval && (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-800" title="Ejercicio de concientización: no afecta el promedio ni la calificación">
-                                  🛡️ No evaluado
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-slate-500">{row.eval.date}</td>
-                          <td className="px-4 py-3 text-slate-700">{row.eval.instructor}</td>
-                          <td className="px-4 py-3 text-slate-500 font-mono">{fmt(row.eval.durationSec)}</td>
-                          <td className="px-4 py-3 font-mono text-slate-700">
-                            {row.eval.errorCount > 0 ? (
-                              <span className="font-semibold text-rose-600">{row.eval.errorCount}</span>
-                            ) : (
-                              <span className="text-emerald-600">0</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono font-bold">
-                            {isUneval ? (
-                              <span className="text-slate-400 text-xs font-semibold" title="No evaluado para métricas ni promedios">N/E</span>
-                            ) : (
-                              <span className="text-indigo-600">{row.eval.score}</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    } else {
-                      const isUneval = isExerciseUnevaluated(row.exercise, groupParam || null);
-                      return (
-                        <tr key={row.key} className="bg-slate-50/60 text-slate-400">
-                          <td className="px-4 py-3">
-                            <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-500">
-                              F{row.phase}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-medium text-slate-500">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span>{row.exercise}</span>
-                              <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
-                                No realizado
-                              </span>
-                              {isUneval && (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-                                  🛡️ No evaluado
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-slate-400">—</td>
-                          <td className="px-4 py-3 text-slate-400">—</td>
-                          <td className="px-4 py-3 font-mono text-slate-400">—</td>
-                          <td className="px-4 py-3 font-mono text-slate-400">—</td>
-                          <td className="px-4 py-3 text-right font-mono font-bold text-slate-400">
-                            {isUneval ? "N/E" : "0"}
-                          </td>
-                        </tr>
-                      );
-                    }
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
       {/* Puntos Débiles (Agrupados por Gravedad con Visualización Gráfica) */}
       <section className="space-y-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1496,6 +1527,38 @@ export default function Driver({
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {/* Navegación entre ejercicios del conductor */}
+                {evals.length > 1 && (
+                  <div className="no-print flex items-center rounded-xl border border-slate-300 bg-white p-0.5 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={handlePrevEval}
+                      disabled={!hasPrevEval}
+                      title="Ejercicio anterior"
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                    >
+                      <span>‹</span>
+                      <span className="hidden sm:inline">Anterior</span>
+                    </button>
+                    {currentEvalIndex >= 0 && (
+                      <span className="px-2 text-[11px] font-mono font-medium text-slate-500 whitespace-nowrap">
+                        {currentEvalIndex + 1} de {evals.length}
+                      </span>
+                    )}
+                    <div className="h-4 w-px bg-slate-200" />
+                    <button
+                      type="button"
+                      onClick={handleNextEval}
+                      disabled={!hasNextEval}
+                      title="Siguiente ejercicio"
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                    >
+                      <span className="hidden sm:inline">Siguiente</span>
+                      <span>›</span>
+                    </button>
+                  </div>
+                )}
+
                 <button
                   onClick={() => window.print()}
                   className="no-print inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition shadow-xs"
@@ -2381,26 +2444,62 @@ export default function Driver({
             </div>
 
             {/* Modal Footer */}
-            <div className="no-print flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-3">
-              <button
-                onClick={() => window.print()}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
-              >
-                <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                </svg>
-                <span>Imprimir Hoja (PDF)</span>
-              </button>
-              <button
-                onClick={() => setSelectedEval(null)}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition shadow-sm"
-              >
-                Cerrar
-              </button>
+            <div className="no-print flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-3">
+              <div>
+                {evals.length > 1 && (
+                  <div className="flex items-center rounded-xl border border-slate-300 bg-white p-0.5 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={handlePrevEval}
+                      disabled={!hasPrevEval}
+                      title="Ejercicio anterior"
+                      className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                    >
+                      <span>‹</span>
+                      <span>Anterior</span>
+                    </button>
+                    {currentEvalIndex >= 0 && (
+                      <span className="px-2.5 text-xs font-mono font-medium text-slate-500 whitespace-nowrap">
+                        {currentEvalIndex + 1} de {evals.length}
+                      </span>
+                    )}
+                    <div className="h-4 w-px bg-slate-200" />
+                    <button
+                      type="button"
+                      onClick={handleNextEval}
+                      disabled={!hasNextEval}
+                      title="Siguiente ejercicio"
+                      className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                    >
+                      <span>Siguiente</span>
+                      <span>›</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
+                >
+                  <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  <span>Imprimir Hoja (PDF)</span>
+                </button>
+                <button
+                  onClick={() => setSelectedEval(null)}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition shadow-sm"
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
+      </div>
     </main>
   );
 }
