@@ -183,7 +183,6 @@ export default function Home() {
       endDate: endDate || undefined,
       groupId: selectedGroupId || undefined,
     };
-    setRows(null);
     setError("");
 
     // Cargar las fases que tienen resultados que cumplan los filtros

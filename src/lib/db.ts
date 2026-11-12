@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { collection, deleteDoc, doc, query, setDoc, updateDoc, where, writeBatch, type Query } from "firebase/firestore";
 import { firestore, getDb, safeGetDoc, safeGetDocs, fastWrite } from "./firebase";
 import type { Mark, ParsedReport, TelemetryMetrics } from "./parse";
 import { evaluateMarks, normalizeRpmZones } from "./parse";
@@ -517,15 +517,46 @@ function matchesDateRange(dateStr: string, filter?: DateFilter): boolean {
   return true;
 }
 
+// Caché en memoria para reutilizar evaluaciones calculadas y responder en 0 ms
+let inMemoryEvaluationsCache: { key: string; docs: EvaluationView[]; timestamp: number } | null = null;
+
+export function invalidateEvaluationsMemoryCache() {
+  inMemoryEvaluationsCache = null;
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("tracksim:evaluations-updated", () => {
+    invalidateEvaluationsMemoryCache();
+  });
+}
+
 async function fetchEvaluations(field?: "phase" | "driverId", value?: number | string, filter?: DateFilter) {
   await Promise.all([
-    loadCatalog(true, filter?.groupId),
-    loadExercises(true, filter?.groupId),
+    loadCatalog(false, filter?.groupId),
+    loadExercises(false, filter?.groupId),
     listGroups(),
   ]);
-  const q = field !== undefined && value !== undefined
-    ? query(evaluations(), where(field, "==", value))
-    : query(evaluations());
+
+  // Si no se pide un campo específico, podemos usar/poblar la caché en memoria por groupId
+  const cacheKey = `g:${filter?.groupId || "ALL"}`;
+  if (!field && inMemoryEvaluationsCache && inMemoryEvaluationsCache.key === cacheKey && (Date.now() - inMemoryEvaluationsCache.timestamp < 30000)) {
+    const cached = inMemoryEvaluationsCache.docs;
+    return cached.filter((d) => {
+      if (!matchesDateRange(d.date, filter)) return false;
+      if (filter?.groupId && d.groupId !== filter.groupId) return false;
+      return true;
+    });
+  }
+
+  // Filtrado optimizado directo a Firestore si hay groupId
+  let q: Query;
+  if (field !== undefined && value !== undefined) {
+    q = query(evaluations(), where(field, "==", value));
+  } else if (filter?.groupId) {
+    q = query(evaluations(), where("groupId", "==", filter.groupId));
+  } else {
+    q = query(evaluations());
+  }
 
   const snap = await safeGetDocs(q);
   const rawDocs = snap.docs.map((d) => ({
@@ -567,6 +598,10 @@ async function fetchEvaluations(field?: "phase" | "driverId", value?: number | s
     const groupBenchmarks = effectiveGId ? benchmarksByGroup.get(effectiveGId) : undefined;
     return withCurrentScore(doc, filter?.groupId, id, groupBenchmarks);
   });
+
+  if (!field) {
+    inMemoryEvaluationsCache = { key: cacheKey, docs, timestamp: Date.now() };
+  }
   
   return docs.filter((d) => {
     if (!matchesDateRange(d.date, filter)) return false;
@@ -907,6 +942,22 @@ export function buildDriverDataFromEvals(
 }
 
 export async function driverData(driverId: string, filter?: DateFilter): Promise<DriverData | null> {
+  const targetGroupId = filter?.groupId;
+  const cacheKey = `g:${targetGroupId || "ALL"}`;
+
+  // Si ya tenemos en memoria las evaluaciones del grupo (cargadas por Home), extraer directamente de RAM en 0 ms
+  if (inMemoryEvaluationsCache && inMemoryEvaluationsCache.key === cacheKey) {
+    const allGroupDocs = inMemoryEvaluationsCache.docs;
+    const rawEvals = allGroupDocs
+      .filter((d) => d.driverId === driverId && matchesDateRange(d.date, filter))
+      .sort((a, b) => a.phase - b.phase || a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
+
+    if (rawEvals.length) {
+      const groupEvals = targetGroupId ? allGroupDocs.filter((d) => d.groupId === targetGroupId) : allGroupDocs;
+      return buildDriverDataFromEvals(driverId, rawEvals, filter, groupEvals);
+    }
+  }
+
   const rawEvals = (await fetchEvaluations("driverId", driverId, filter)).sort(
     (a, b) => a.phase - b.phase || a.date.localeCompare(b.date) || a.createdAt - b.createdAt,
   );
@@ -914,11 +965,11 @@ export async function driverData(driverId: string, filter?: DateFilter): Promise
 
   // Obtener telemetrías del resto del grupo para benchmark comparativo si existe un grupo
   let groupEvals: EvaluationView[] = [];
-  const targetGroupId = filter?.groupId || rawEvals[0]?.groupId;
+  const effectiveGroupId = filter?.groupId || rawEvals[0]?.groupId;
   try {
-    const allGroupDocs = await fetchEvaluations(undefined, undefined, targetGroupId ? { groupId: targetGroupId } : undefined);
-    if (targetGroupId) {
-      groupEvals = allGroupDocs.filter((d) => d.groupId === targetGroupId);
+    const allGroupDocs = await fetchEvaluations(undefined, undefined, effectiveGroupId ? { groupId: effectiveGroupId } : undefined);
+    if (effectiveGroupId) {
+      groupEvals = allGroupDocs.filter((d) => d.groupId === effectiveGroupId);
     } else {
       // Si no hay grupo asignado o filtrado, comparar contra todas las evaluaciones disponibles (flota global)
       groupEvals = allGroupDocs;

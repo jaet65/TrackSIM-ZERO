@@ -213,12 +213,14 @@ export async function safeGetDoc<T = DocumentData>(
 }
 
 /**
- * Lectura resiliente de una colección o consulta (Query):
- * - Si está offline o la red tarda más de `timeoutMs`, responde desde la caché IndexedDB.
+ * Lectura ultra-rápida y resiliente de una colección o consulta (Query) con estrategia Cache-First:
+ * 1. Intenta leer primero de la caché persistente IndexedDB local. Si ya hay datos en caché,
+ *    los devuelve de inmediato (0 ms) para que la pantalla no muestre spinners innecesarios.
+ * 2. En segundo plano o si no hay caché local, consulta la red con timeout resiliente.
  */
 export async function safeGetDocs<T = DocumentData>(
   q: Query<T>,
-  timeoutMs = 3500
+  timeoutMs = 2500
 ): Promise<QuerySnapshot<T>> {
   const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
 
@@ -228,9 +230,26 @@ export async function safeGetDocs<T = DocumentData>(
     } catch {}
   }
 
+  // 1. Probar caché local primero (instantáneo)
+  try {
+    const cached = await getDocsFromCache(q);
+    if (!cached.empty) {
+      // Revalidación silenciosa en segundo plano para refrescar caché local
+      getDocs(q)
+        .then((fresh) => {
+          if (!fresh.metadata.fromCache) {
+            markHealthyConnection();
+          }
+        })
+        .catch(() => {});
+      return cached;
+    }
+  } catch {}
+
+  // 2. Si no hay caché o estaba vacía, consultar la red con timeout
   let timer: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise<"TIMEOUT">((resolve) => {
-    timer = setTimeout(() => resolve("TIMEOUT"), isOffline ? 400 : timeoutMs);
+    timer = setTimeout(() => resolve("TIMEOUT"), isOffline ? 300 : timeoutMs);
   });
 
   try {
@@ -245,12 +264,10 @@ export async function safeGetDocs<T = DocumentData>(
       return winner;
     }
 
-    // Si la conexión es muy lenta, servir de inmediato desde IndexedDB
+    // Si la conexión es muy lenta, intentar caché nuevamente antes de fallar
     markDegradedConnection();
     try {
-      const cached = await getDocsFromCache(q);
-      netPromise.then(() => markHealthyConnection()).catch(() => {});
-      return cached;
+      return await getDocsFromCache(q);
     } catch {
       return await netPromise;
     }
