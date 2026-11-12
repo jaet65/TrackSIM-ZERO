@@ -457,33 +457,36 @@ export default function Driver({
             Volver a resultados
           </Link>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-lg font-bold text-white shadow-md shadow-indigo-600/20">
-              {name.charAt(0).toUpperCase()}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">{name}</h1>
-                {currentIndex !== undefined && totalDrivers !== undefined && (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
-                    {currentIndex + 1} de {totalDrivers}
-                  </span>
-                )}
+        <div className="flex flex-col gap-3">
+          {/* Fila Superior: Nombre/Avatar a la izquierda, Navegación y Cerrar anclados a la derecha */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-lg font-bold text-white shadow-md shadow-indigo-600/20 shrink-0">
+                {name.charAt(0).toUpperCase()}
               </div>
-              <p className="text-xs text-slate-500">Expediente de Desempeño y Telemetría</p>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 truncate">{name}</h1>
+                  {currentIndex !== undefined && totalDrivers !== undefined && (
+                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 whitespace-nowrap">
+                      {currentIndex + 1} de {totalDrivers}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500">Expediente de Desempeño y Telemetría</p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-3">
-              {/* Botones de navegación entre conductores */}
+
+            {/* Acciones de la esquina superior derecha: Anterior/Siguiente y botón de Cerrar */}
+            <div className="flex items-center gap-2 shrink-0">
               {(onNavigatePrev || onNavigateNext) && (
-                <div className="no-print flex items-center rounded-xl border border-slate-300 bg-white p-0.5 shadow-xs">
+                <div className="no-print flex items-center rounded-xl border border-slate-300 bg-white p-0.5 shadow-2xs">
                   <button
                     type="button"
                     onClick={onNavigatePrev}
                     disabled={!hasPrev}
                     title="Conductor anterior (flecha izquierda ←)"
-                    className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
                   >
                     <span>‹</span>
                     <span className="hidden sm:inline">Anterior</span>
@@ -494,19 +497,41 @@ export default function Driver({
                     onClick={onNavigateNext}
                     disabled={!hasNext}
                     title="Siguiente conductor (flecha derecha →)"
-                    className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
                   >
                     <span className="hidden sm:inline">Siguiente</span>
                     <span>›</span>
                   </button>
                 </div>
               )}
-              <button type="button" disabled={!groupParam || exportingCertificate}
-                onClick={handleCertificate}
-                title={groupParam ? "Utiliza todas las evaluaciones del grupo" : "Selecciona un grupo para emitir el documento"}
-                className="no-print rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 disabled:opacity-40">
-                {exportingCertificate ? "Generando..." : "Diploma"}
-              </button>
+
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  title="Cerrar modal (Esc)"
+                  className="no-print flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 transition cursor-pointer"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Fila Inferior: Diploma, Exportar Expediente, Ejercicios Incompletos y Dictamen alineados a la izquierda */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              disabled={!groupParam || exportingCertificate}
+              onClick={handleCertificate}
+              title={groupParam ? "Utiliza todas las evaluaciones del grupo" : "Selecciona un grupo para emitir el documento"}
+              className="no-print rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50/60 disabled:opacity-40 transition cursor-pointer"
+            >
+              {exportingCertificate ? "Generando..." : "Diploma"}
+            </button>
+
             <button
               onClick={async () => {
                 if (isExportingPdf || !data) return;
@@ -521,7 +546,7 @@ export default function Driver({
                 }
               }}
               disabled={isExportingPdf}
-              className="no-print inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 hover:text-indigo-600 disabled:opacity-50 transition cursor-pointer"
+              className="no-print inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-indigo-600 disabled:opacity-50 transition cursor-pointer"
               title="Descargar el expediente oficial en formato PDF"
             >
               {isExportingPdf ? (
@@ -533,26 +558,16 @@ export default function Driver({
               )}
               <span>{isExportingPdf ? "Generando PDF..." : "Exportar Expediente PDF"}</span>
             </button>
+
             {completedExercises < expectedExercises && (
               <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
                 Ejercicios incompletos
               </span>
             )}
+
             <span className={`rounded-full px-3.5 py-1 text-xs font-bold ${color}`}>
               {verdict}
             </span>
-            {onClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                title="Cerrar modal (Esc)"
-                className="no-print flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 transition cursor-pointer"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
           </div>
         </div>
       </div>
