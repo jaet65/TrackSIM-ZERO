@@ -211,7 +211,7 @@ export default function UpdateNotifier() {
     setActionError(null);
     const bridge = getLanderBridge();
 
-    if (bridge?.downloadAndInstallUpdate && (info.downloadUrl || readyToInstall)) {
+    if (bridge?.downloadAndInstallUpdate && (info.updateAvailable || readyToInstall)) {
       setApplyingUpdate(true);
       if (!readyToInstall) {
         setDownloading(true);
@@ -265,7 +265,7 @@ export default function UpdateNotifier() {
             <button
               type="button"
               onClick={() => setModalOpen(true)}
-              className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm shadow-emerald-600/30 hover:from-emerald-700 hover:to-teal-700 transition"
+              className="flex items-center gap-1.5 rounded-full bg-linear-to-r from-emerald-600 to-teal-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm shadow-emerald-600/30 hover:from-emerald-700 hover:to-teal-700 transition"
               title={`v${info.latestVersion} descargada en segundo plano · Haz clic para reiniciar o ver detalles`}
             >
               <span className="h-2 w-2 rounded-full bg-white animate-ping" />
@@ -288,7 +288,7 @@ export default function UpdateNotifier() {
             <button
               type="button"
               onClick={() => setModalOpen(true)}
-              className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm shadow-amber-500/30 hover:from-amber-600 hover:to-orange-700 transition"
+              className="flex items-center gap-1.5 rounded-full bg-linear-to-r from-amber-500 to-orange-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm shadow-amber-500/30 hover:from-amber-600 hover:to-orange-700 transition"
               title={`Nueva versión v${info.latestVersion} disponible en GitHub`}
             >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -336,7 +336,7 @@ export default function UpdateNotifier() {
         readyToInstall &&
         typeof document !== "undefined" &&
         createPortal(
-          <div className="fixed bottom-5 right-5 z-[9998] w-full max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-2xl">
+          <div className="fixed bottom-5 right-5 z-9998 w-full max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
@@ -392,15 +392,15 @@ export default function UpdateNotifier() {
         info?.updateAvailable &&
         typeof document !== "undefined" &&
         createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">
+          <div className="fixed inset-0 z-9999 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">
             <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div
                     className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md ${
                       readyToInstall
-                        ? "bg-gradient-to-tr from-emerald-600 to-teal-600 shadow-emerald-600/25"
-                        : "bg-gradient-to-tr from-indigo-600 to-blue-600 shadow-indigo-600/25"
+                        ? "bg-linear-to-tr from-emerald-600 to-teal-600 shadow-emerald-600/25"
+                        : "bg-linear-to-tr from-indigo-600 to-blue-600 shadow-indigo-600/25"
                     }`}
                   >
                     <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -473,7 +473,7 @@ export default function UpdateNotifier() {
                   </div>
                   <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-blue-600 transition-all duration-200"
+                      className="h-full rounded-full bg-linear-to-r from-indigo-600 to-blue-600 transition-all duration-200"
                       style={{ width: `${progress?.percent ?? 0}%` }}
                     />
                   </div>
@@ -517,8 +517,8 @@ export default function UpdateNotifier() {
                   disabled={applyingUpdate}
                   className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-60 ${
                     readyToInstall
-                      ? "bg-gradient-to-r from-emerald-600 to-teal-600 shadow-emerald-600/25 hover:from-emerald-700 hover:to-teal-700"
-                      : "bg-gradient-to-r from-indigo-600 to-blue-600 shadow-indigo-600/25 hover:from-indigo-700 hover:to-blue-700"
+                      ? "bg-linear-to-r from-emerald-600 to-teal-600 shadow-emerald-600/25 hover:from-emerald-700 hover:to-teal-700"
+                      : "bg-linear-to-r from-indigo-600 to-blue-600 shadow-indigo-600/25 hover:from-indigo-700 hover:to-blue-700"
                   }`}
                 >
                   {applyingUpdate ? (

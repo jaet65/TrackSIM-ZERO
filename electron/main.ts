@@ -6,6 +6,7 @@ import * as https from "https";
 import { spawn } from "child_process";
 import { pipeline } from "stream";
 import { Client } from "pg";
+import { autoUpdater } from "electron-updater";
 import { createDownloadCoordinator, installAfterDownload, isValidInstallerSize } from "./updateDownload";
 
 const GITHUB_OWNER = "jaet65";
@@ -637,6 +638,85 @@ let downloadedInstallerPath: string | null = null;
 let downloadedVersion: string | null = null;
 let lastDownloadProgress: { percent: number; transferredMB: number; totalMB: number } | null = null;
 let installingNow = false;
+let differentialDownloadPromise: Promise<void> | null = null;
+let differentialUpdateReady = false;
+let differentialUpdateVersion: string | null = null;
+
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = false;
+autoUpdater.allowPrerelease = false;
+
+function sendUpdateEvent(channel: string, data: Record<string, unknown>) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, data);
+  }
+}
+
+function startDifferentialDownload(): Promise<void> {
+  if (differentialUpdateReady) return Promise.resolve();
+  if (differentialDownloadPromise) return differentialDownloadPromise;
+
+  differentialDownloadPromise = autoUpdater.downloadUpdate().then(() => undefined).catch((err) => {
+    differentialDownloadPromise = null;
+    sendUpdateEvent("updater:downloadError", {
+      version: differentialUpdateVersion,
+      error: err instanceof Error ? err.message : "No se pudo descargar la actualización.",
+    });
+    throw err;
+  });
+  return differentialDownloadPromise;
+}
+
+autoUpdater.on("update-available", (updateInfo) => {
+  differentialUpdateVersion = updateInfo.version;
+  differentialUpdateReady = false;
+  lastDownloadProgress = null;
+  startDifferentialDownload().catch((err) => {
+    console.error("Differential update download error:", err);
+  });
+});
+
+autoUpdater.on("update-not-available", () => {
+  differentialUpdateVersion = null;
+  differentialUpdateReady = false;
+  differentialDownloadPromise = null;
+  lastDownloadProgress = null;
+});
+
+autoUpdater.on("download-progress", (progress) => {
+  lastDownloadProgress = {
+    percent: Math.round(progress.percent),
+    transferredMB: Number((progress.transferred / (1024 * 1024)).toFixed(1)),
+    totalMB: Number((progress.total / (1024 * 1024)).toFixed(1)),
+  };
+  sendUpdateEvent("updater:downloadProgress", {
+    ...lastDownloadProgress,
+    version: differentialUpdateVersion,
+  });
+});
+
+autoUpdater.on("update-downloaded", (updateInfo) => {
+  differentialUpdateReady = true;
+  differentialDownloadPromise = null;
+  differentialUpdateVersion = updateInfo.version;
+  lastDownloadProgress = {
+    percent: 100,
+    transferredMB: lastDownloadProgress?.totalMB || 0,
+    totalMB: lastDownloadProgress?.totalMB || 0,
+  };
+  sendUpdateEvent("updater:downloaded", {
+    version: updateInfo.version,
+    filePath: null,
+  });
+});
+
+autoUpdater.on("error", (err) => {
+  console.error("Auto-updater error:", err);
+  sendUpdateEvent("updater:downloadError", {
+    version: differentialUpdateVersion,
+    error: err.message || "No se pudo verificar o descargar la actualización.",
+  });
+});
 
 function getPendingUpdateFile(): string {
   return path.join(app.getPath("userData"), "pending-update.json");
@@ -1099,39 +1179,36 @@ ipcMain.handle("updater:check", async () => {
       };
     }
 
-    const latestVersion = String(data.tag_name).replace(/^[vV]/, "");
-    const updateAvailable = isNewerVersion(currentVersion, latestVersion);
+    if (!app.isPackaged) {
+      return {
+        ok: false,
+        currentVersion,
+        error: "El actualizador solo está disponible en la versión instalada de TrackSIM PRO.",
+      };
+    }
 
-    // Buscar el instalador .exe entre los assets del release
+    const releaseVersion = String(data.tag_name).replace(/^[vV]/, "");
+    const checkResult = await autoUpdater.checkForUpdates();
+    if (!checkResult) throw new Error("electron-updater no pudo comprobar la versión publicada.");
+    const latestVersion = checkResult.updateInfo.version || releaseVersion;
+    const updateAvailable = checkResult.isUpdateAvailable &&
+      isNewerVersion(currentVersion, latestVersion);
     const assets: any[] = Array.isArray(data.assets) ? data.assets : [];
-    const exeAsset =
-      assets.find(
-        (a) =>
-          typeof a.name === "string" &&
-          a.name.toLowerCase().endsWith(".exe") &&
-          !a.name.toLowerCase().endsWith(".blockmap")
-      ) || null;
+    const exeAsset = assets.find(
+      (asset) => typeof asset.name === "string" &&
+        asset.name.toLowerCase().endsWith(".exe") &&
+        !asset.name.toLowerCase().endsWith(".blockmap")
+    );
 
-    const downloadUrl = exeAsset ? exeAsset.browser_download_url : null;
-    const fileName = exeAsset ? exeAsset.name : `TrackSIM-PRO-Setup-${latestVersion}.exe`;
-    const expectedSize = exeAsset?.size ? Number(exeAsset.size) : undefined;
-
-    // Si hay actualización disponible con instalador .exe, iniciar descarga automática en segundo plano
-    if (updateAvailable && downloadUrl) {
-      startBackgroundDownload(downloadUrl, fileName, latestVersion, expectedSize).catch((err) => {
-        console.error("Background update download error:", err);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("updater:downloadError", {
-            version: latestVersion,
-            error: err instanceof Error ? err.message : "No se pudo descargar la actualización.",
-          });
-        }
+    if (updateAvailable && !differentialUpdateReady && !differentialDownloadPromise) {
+      differentialUpdateVersion = latestVersion;
+      startDifferentialDownload().catch((err) => {
+        console.error("Differential update download error:", err);
       });
     }
 
-    const isReadyToInstall =
-      Boolean(downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) &&
-      downloadedVersion === latestVersion;
+    const isReadyToInstall = differentialUpdateReady &&
+      differentialUpdateVersion === latestVersion;
 
     return {
       ok: true,
@@ -1143,11 +1220,11 @@ ipcMain.handle("updater:check", async () => {
       releaseUrl:
         data.html_url || `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
       publishedAt: data.published_at || null,
-      downloadUrl,
-      fileName,
+      downloadUrl: exeAsset?.browser_download_url || null,
+      fileName: exeAsset?.name || null,
       assetSizeMB: exeAsset?.size ? Number((exeAsset.size / (1024 * 1024)).toFixed(1)) : null,
-      assetSizeBytes: expectedSize,
-      downloadingInBackground: downloadCoordinator.isDownloading(),
+      assetSizeBytes: exeAsset?.size ? Number(exeAsset.size) : undefined,
+      downloadingInBackground: Boolean(differentialDownloadPromise),
       readyToInstall: isReadyToInstall,
       progress: lastDownloadProgress,
     };
@@ -1162,27 +1239,32 @@ ipcMain.handle("updater:check", async () => {
 
 ipcMain.handle("updater:downloadAndInstall", async (_, { downloadUrl, fileName, version, expectedBytes }) => {
   try {
-    const targetVersion = version || downloadedVersion || "latest";
+    if (!app.isPackaged) throw new Error("El actualizador solo está disponible en la versión instalada.");
 
-    const destPath = await installAfterDownload(
-      () => {
-        if (downloadUrl) return startBackgroundDownload(downloadUrl, fileName, targetVersion, expectedBytes);
-        if (downloadedInstallerPath && downloadedVersion === targetVersion && fs.existsSync(downloadedInstallerPath) &&
-            isValidInstallerSize(fs.statSync(downloadedInstallerPath).size, expectedBytes)) {
-          return Promise.resolve(downloadedInstallerPath);
-        }
-        return Promise.reject(new Error("No se encontró el archivo instalador (.exe) en el Release de GitHub."));
-      },
-      (installerPath) => launchSilentInstaller(installerPath, true),
-      () => setTimeout(() => {
-        if (localStaticServer) localStaticServer.close();
-        app.exit(0);
-      }, 300)
-    );
+    try {
+      if (!differentialUpdateReady) await startDifferentialDownload();
+      if (!differentialUpdateReady) throw new Error("La actualización todavía no está lista para instalarse.");
+    } catch (differentialError) {
+      if (!downloadUrl) throw differentialError;
+      console.error("Differential update failed; trying the full installer:", differentialError);
+      await installAfterDownload(
+        () => startBackgroundDownload(downloadUrl, fileName, version || "latest", expectedBytes),
+        (installerPath) => launchSilentInstaller(installerPath, true),
+        () => setTimeout(() => {
+          if (localStaticServer) localStaticServer.close();
+          app.exit(0);
+        }, 300)
+      );
+      return { ok: true };
+    }
 
-    return { ok: true, filePath: destPath };
+    setTimeout(() => {
+      if (localStaticServer) localStaticServer.close();
+      autoUpdater.quitAndInstall(true, true);
+    }, 100);
+    return { ok: true };
   } catch (err: any) {
-    return { ok: false, error: err.message || "Error al descargar o iniciar el instalador" };
+    return { ok: false, error: err.message || "Error al descargar o iniciar la actualización" };
   }
 });
 

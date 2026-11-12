@@ -12,7 +12,7 @@ Sistema de telemetría y evaluación de conductores para simuladores Lander. Dis
 - Diplomas PDF individuales o en ZIP para todos los conductores evaluados de un grupo.
 - Respaldo y restauración de datos.
 - Autenticación con Firebase (Google).
-- Actualizaciones automáticas en segundo plano desde GitHub Releases: la actualización se descarga y se instala al volver a abrir la app, o el usuario puede programar la instalación al terminar la descarga. La aplicación permanece abierta mientras descarga y, si ocurre un error, permite reintentar.
+- Actualizaciones en segundo plano desde GitHub Releases con descarga diferencial para reducir el tamaño y el tiempo de descarga; la instalación se inicia cuando el usuario elige reiniciar la aplicación.
 - Protocolo `tracksim://` para abrir la app de escritorio desde el navegador.
 
 La referencia de velocidad y distancia para detectar conducción lenta se calcula por ejercicio y grupo. Las evaluaciones con una marca activa de exceso de velocidad se excluyen de ambos promedios; las marcas anuladas no provocan exclusión. Se requieren al menos dos evaluaciones válidas para crear la referencia. Las calificaciones de grupos ya cerrados permanecen congeladas.
@@ -64,7 +64,7 @@ El instalador se genera como `TrackSIM-PRO-Setup-<versión>.exe`.
 2. Crea y sube un tag, por ejemplo `v1.0.13`. El flujo de GitHub Actions (`.github/workflows/release.yml`) compila y publica el instalador en GitHub Releases.
 3. También se puede publicar desde local con `npm run release` (requiere `GH_TOKEN`).
 
-La app consulta los Releases del repositorio `jaet65/TrackSIM-ZERO` para detectar nuevas versiones.
+La app consulta los Releases del repositorio `jaet65/TrackSIM-ZERO` para detectar nuevas versiones. Para habilitar descargas diferenciales, conserva en cada Release los archivos generados por electron-builder: instalador `.exe`, `.exe.blockmap` y `latest.yml`. Si falta el mapa de bloques de la versión anterior o el actualizador no puede usarlo, electron-updater descarga el instalador completo; si falla la descarga diferencial, la app intenta el instalador completo como alternativa.
 
 ## Estructura
 
