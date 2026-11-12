@@ -57,10 +57,10 @@ export default function NetworkStatusBadge() {
   return (
     <div
       title="Conectado y sincronizado con la nube (respaldo local activo)"
-      className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-2.5 py-1 text-[11px] font-medium text-emerald-700"
+      className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-2.5 py-1 text-[11px] font-medium text-emerald-700"
     >
       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-      <span className="hidden lg:inline">Sincronizado</span>
+      <span>Sincronizado</span>
     </div>
   );
 }

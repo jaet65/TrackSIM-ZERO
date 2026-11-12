@@ -44,31 +44,70 @@ export type DisplayRow = {
 export type SortField = "driver" | "lastDate" | "progress" | "errors" | "criticalErrors" | "avgScore" | "verdict";
 export type SortDirection = "asc" | "desc";
 
+const STORAGE_KEY_HOME_PREFS = "tracksim_home_view_preferences";
+
+interface HomePreferences {
+  selectedPhase: number | null;
+  groupId: string;
+  startDate: string;
+  endDate: string;
+  sortField: SortField;
+  sortDirection: SortDirection;
+}
+
+function loadSavedPreferences(): Partial<HomePreferences> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_HOME_PREFS);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+
+function saveHomePreferences(prefs: Partial<HomePreferences>) {
+  try {
+    const prev = loadSavedPreferences();
+    localStorage.setItem(STORAGE_KEY_HOME_PREFS, JSON.stringify({ ...prev, ...prefs }));
+  } catch {}
+}
+
 export default function Home() {
   const [params, setParams] = useSearchParams();
+  const savedPrefs = useMemo(() => loadSavedPreferences(), []);
+
   const phaseParam = params.get("fase");
   const selectedPhase = phaseParam !== null && !isNaN(Number(phaseParam))
     ? Number(phaseParam)
-    : null;
+    : phaseParam === null && savedPrefs.selectedPhase !== undefined
+      ? savedPrefs.selectedPhase
+      : null;
 
-  // Filtro de grupo: por defecto toma el parámetro de URL o el grupo activo actual
+  // Filtro de grupo: toma URL param, si no hay toma savedPrefs, o el grupo activo actual
   const [selectedGroupId, setSelectedGroupId] = useState<string>(() => {
     const fromUrl = params.get("grupo");
     if (fromUrl !== null) return fromUrl === "ALL" ? "" : fromUrl;
+    if (savedPrefs.groupId !== undefined) return savedPrefs.groupId;
     return getActiveGroupId() || "";
   });
   const [allGroups, setAllGroups] = useState<GroupDoc[]>([]);
 
   // Filtro de fechas (Desde / Hasta)
-  const [startDate, setStartDate] = useState(params.get("desde") || "");
-  const [endDate, setEndDate] = useState(params.get("hasta") || "");
+  const [startDate, setStartDate] = useState(
+    params.get("desde") ?? savedPrefs.startDate ?? ""
+  );
+  const [endDate, setEndDate] = useState(
+    params.get("hasta") ?? savedPrefs.endDate ?? ""
+  );
 
   // Filtro de búsqueda por nombre de conductor
   const [driverSearchQuery, setDriverSearchQuery] = useState("");
 
   // Ordenamiento interactivo por columna
-  const [sortField, setSortField] = useState<SortField>("driver");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [sortField, setSortField] = useState<SortField>(
+    savedPrefs.sortField || "driver"
+  );
+  const [sortDirection, setSortDirection] = useState<SortDirection>(
+    savedPrefs.sortDirection || "asc"
+  );
 
   const [availablePhases, setAvailablePhases] = useState<number[]>([]);
   const [rows, setRows] = useState<DisplayRow[] | null>(null);
@@ -102,9 +141,11 @@ export default function Home() {
         setAllGroups(list);
         setSelectedGroupId((prev) => {
           if (prev && !list.some((g) => g.id === prev)) {
-            return getActiveGroupId() && list.some((g) => g.id === getActiveGroupId())
+            const fallback = getActiveGroupId() && list.some((g) => g.id === getActiveGroupId())
               ? getActiveGroupId()!
               : "";
+            saveHomePreferences({ groupId: fallback });
+            return fallback;
           }
           return prev;
         });
@@ -206,16 +247,23 @@ export default function Home() {
   }, [load]);
 
   const handleSort = (field: SortField) => {
+    let nextDirection: SortDirection;
     if (sortField === field) {
-      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      nextDirection = sortDirection === "asc" ? "desc" : "asc";
+      setSortDirection(nextDirection);
     } else {
       setSortField(field);
       if (field === "errors" || field === "criticalErrors" || field === "avgScore" || field === "progress") {
-        setSortDirection("desc");
+        nextDirection = "desc";
       } else {
-        setSortDirection("asc");
+        nextDirection = "asc";
       }
+      setSortDirection(nextDirection);
     }
+    saveHomePreferences({
+      sortField: field,
+      sortDirection: nextDirection,
+    });
   };
 
   const sortedRows = useMemo(() => {
@@ -281,7 +329,7 @@ export default function Home() {
     return sorted;
   }, [rows, driverSearchQuery, sortField, sortDirection]);
 
-  // Actualizar URL params cuando cambian filtros
+  // Actualizar URL params y persistir cuando cambian filtros
   const updateUrl = (newPhase: number | null, start: string, end: string, newGroup: string) => {
     const next: Record<string, string> = {};
     if (newPhase !== null) next.fase = String(newPhase);
@@ -294,6 +342,13 @@ export default function Home() {
       next.grupo = "ALL";
     }
     setParams(next);
+
+    saveHomePreferences({
+      selectedPhase: newPhase,
+      startDate: start,
+      endDate: end,
+      groupId: newGroup,
+    });
   };
 
   // Vaciado seguro: Únicamente del grupo seleccionado

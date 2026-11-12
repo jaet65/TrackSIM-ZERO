@@ -5,7 +5,9 @@ import { ALLOWED_DOMAIN } from "../lib/config";
 import UpdateNotifier from "./UpdateNotifier";
 import NetworkStatusBadge from "./NetworkStatusBadge";
 import BackupRestoreModal from "./BackupRestoreModal";
-import AutoSyncBadge from "./AutoSyncBadge";
+import StatusBar from "./StatusBar";
+import { AutoSyncProvider } from "./AutoSyncContext";
+import AutoSyncAuditBadge from "./AutoSyncAuditBadge";
 
 export default function ProtectedLayout() {
   const { user, loading, error, signIn, logout } = useAuth();
@@ -75,8 +77,9 @@ export default function ProtectedLayout() {
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-50 text-slate-900 selection:bg-indigo-600 selection:text-white">
-      <aside className={`sticky top-0 flex h-screen shrink-0 flex-col bg-white transition-[width] duration-200 ${isSidebarExpanded ? "w-64" : "w-16"}`}>
+    <AutoSyncProvider>
+      <div className="flex min-h-screen bg-slate-50 text-slate-900 selection:bg-indigo-600 selection:text-white">
+        <aside className={`sticky top-0 flex h-screen shrink-0 flex-col bg-white transition-[width] duration-200 ${isSidebarExpanded ? "w-64" : "w-16"}`}>
           <Link to="/" className={`flex h-[73px] items-center gap-3 px-3 ${isSidebarExpanded ? "justify-start px-5" : "justify-center"}`}>
             <img src="/Logo.png" alt="TrackSIM Logo" className="h-10 w-10 shrink-0 rounded-full object-contain shadow-sm" />
             {isSidebarExpanded && <span className="whitespace-nowrap font-bold tracking-tight text-slate-900">
@@ -202,8 +205,7 @@ export default function ProtectedLayout() {
             </div>
 
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-              <AutoSyncBadge />
-              <NetworkStatusBadge />
+              <AutoSyncAuditBadge />
               <div className="hidden flex-col text-right sm:flex">
                 <span className="text-xs font-semibold text-slate-800">{user.displayName || "Usuario"}</span>
                 <span className="text-[11px] text-slate-500">{user.email}</span>
@@ -222,16 +224,19 @@ export default function ProtectedLayout() {
         <main className="flex-1">
           <Outlet />
         </main>
+
+        <StatusBar />
       </div>
 
-      {/* Modal Global de Respaldo y Restauración de Base de Datos */}
-      <BackupRestoreModal
-        isOpen={showBackupModal}
-        onClose={() => setShowBackupModal(false)}
-        onRestored={() => {
-          window.location.reload();
-        }}
-      />
-    </div>
+        {/* Modal Global de Respaldo y Restauración de Base de Datos */}
+        <BackupRestoreModal
+          isOpen={showBackupModal}
+          onClose={() => setShowBackupModal(false)}
+          onRestored={() => {
+            window.location.reload();
+          }}
+        />
+      </div>
+    </AutoSyncProvider>
   );
 }

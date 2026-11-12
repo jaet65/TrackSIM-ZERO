@@ -8,6 +8,7 @@ import { dictamen, updateEvaluationMarks, deleteEvaluation } from "../lib/db";
 import { analyzePacing, computeGroupBenchmarks, type ExerciseBenchmark } from "../lib/pacingBenchmark";
 import { useAuth } from "./AuthProvider";
 import { useEscapeKey } from "../lib/useEscapeKey";
+import ErrorCombobox, { type CatalogErrorOption } from "./ErrorCombobox";
 
 export interface AuditQueueModalProps {
   isOpen: boolean;
@@ -44,7 +45,6 @@ export default function AuditQueueModal({
   const [severityFilter, setSeverityFilter] = useState<Severity | "ALL">("ALL");
   const [showAddErrorForm, setShowAddErrorForm] = useState(false);
   const [selectedCatalogError, setSelectedCatalogError] = useState<string>("");
-  const [customErrorText, setCustomErrorText] = useState<string>("");
   const [manualErrorTime, setManualErrorTime] = useState<string>("00:00:00");
 
   const [isDeleting, setIsDeleting] = useState(false);
@@ -105,7 +105,7 @@ export default function AuditQueueModal({
 
   const catalogEntriesBySeverity = useMemo(() => {
     const cfg = getCatalog(activeGroupId);
-    const grouped: Record<Severity, { name: string; severity: Severity }[]> = {
+    const grouped: Record<Severity, CatalogErrorOption[]> = {
       CRITICO: [],
       GRAVE: [],
       MODERADO: [],
@@ -113,7 +113,11 @@ export default function AuditQueueModal({
     };
     for (const entry of cfg.entries) {
       const resolved = classify(entry.name, currentEnv, activeGroupId);
-      grouped[resolved.severity].push({ name: entry.name, severity: resolved.severity });
+      grouped[resolved.severity].push({
+        name: entry.name,
+        severity: resolved.severity,
+        weight: resolved.weight,
+      });
     }
     return grouped;
   }, [currentEnv, activeGroupId]);
@@ -311,10 +315,7 @@ export default function AuditQueueModal({
   const handleAddManualError = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentItem || isSaving) return;
-    const desc =
-      selectedCatalogError === "__CUSTOM__"
-        ? customErrorText.trim()
-        : selectedCatalogError.trim();
+    const desc = selectedCatalogError.trim();
 
     if (!desc) {
       setErrorMessage("Selecciona o escribe la descripción del error faltante a agregar.");
@@ -381,7 +382,6 @@ export default function AuditQueueModal({
         }));
       }
 
-      setCustomErrorText("");
       setSelectedCatalogError("");
       setShowAddErrorForm(false);
       if (onEvaluationUpdated) onEvaluationUpdated();
@@ -695,8 +695,7 @@ export default function AuditQueueModal({
 
               {/* Formulario para agregar una falta manual faltante */}
               {showAddErrorForm && (() => {
-                const previewDesc =
-                  selectedCatalogError === "__CUSTOM__" ? customErrorText.trim() : selectedCatalogError.trim();
+                const previewDesc = selectedCatalogError.trim();
                 const previewCls = previewDesc ? classify(previewDesc, currentEnv, activeGroupId) : null;
 
                 return (
@@ -718,29 +717,16 @@ export default function AuditQueueModal({
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
                       <div className="sm:col-span-7 space-y-1">
                         <label className="block text-[11px] font-semibold text-slate-700">
-                          Falta del catálogo
+                          Error o infracción (catálogo o personalizada)
                         </label>
-                        <select
+                        <ErrorCombobox
+                          optionsBySeverity={catalogEntriesBySeverity}
                           value={selectedCatalogError}
-                          onChange={(e) => setSelectedCatalogError(e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
-                        >
-                          <option value="">— Seleccionar infracción —</option>
-                          {SEVERITY_ORDER.map((sev) => {
-                            const items = catalogEntriesBySeverity[sev];
-                            if (!items.length) return null;
-                            return (
-                              <optgroup key={sev} label={`Nivel ${SEVERITIES[sev].label}`}>
-                                {items.map((it) => (
-                                  <option key={it.name} value={it.name}>
-                                    {it.name}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            );
-                          })}
-                          <option value="__CUSTOM__">✏️ Otra falta personalizada...</option>
-                        </select>
+                          onChange={(val) => {
+                            setSelectedCatalogError(val);
+                          }}
+                          placeholder="Buscar por nombre o escribir nueva..."
+                        />
                       </div>
 
                       <div className="sm:col-span-2 space-y-1">
@@ -760,27 +746,12 @@ export default function AuditQueueModal({
                         <button
                           type="submit"
                           disabled={isSaving}
-                          className="w-full rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50 transition"
+                          className="w-full rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50 transition cursor-pointer"
                         >
                           {isSaving ? "Guardando..." : "Agregar y Recalcular"}
                         </button>
                       </div>
                     </div>
-
-                    {selectedCatalogError === "__CUSTOM__" && (
-                      <div className="space-y-1 pt-1">
-                        <label className="block text-[11px] font-semibold text-slate-700">
-                          Descripción de la falta
-                        </label>
-                        <input
-                          type="text"
-                          value={customErrorText}
-                          onChange={(e) => setCustomErrorText(e.target.value)}
-                          placeholder="Ej: Golpe lateral contra objeto fijo..."
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
-                        />
-                      </div>
-                    )}
                   </form>
                 );
               })()}
