@@ -79,6 +79,8 @@ export default function Driver({
   // Estado de ordenamiento para el modal de errores
   const [sortField, setSortField] = useState<SortField>("time");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  // Filtro por gravedad en el modal de detalle del ejercicio (null = todas)
+  const [selectedModalSeverity, setSelectedModalSeverity] = useState<Severity | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [exportingCertificate, setExportingCertificate] = useState(false);
 
@@ -115,10 +117,11 @@ export default function Driver({
     };
   }, [id, dateFilter]);
 
-  // Al cambiar de ejercicio seleccionado, reiniciar al orden por defecto cronológico
+  // Al cambiar de ejercicio seleccionado, reiniciar al orden por defecto cronológico y filtro de gravedad
   useEffect(() => {
     setSortField("time");
     setSortDirection("asc");
+    setSelectedModalSeverity(null);
     setMarksActionError("");
     setShowAddErrorForm(false);
     setCustomErrorText("");
@@ -219,7 +222,7 @@ export default function Driver({
   const currentEvalIndex = useMemo(() => {
     if (!selectedEval || !data?.evals) return -1;
     return data.evals.findIndex((e) => (e.docId && e.docId === selectedEval.docId) || (e.fileName === selectedEval.fileName && e.phase === selectedEval.phase));
-  }, [selectedEval, data?.evals]);
+  }, [selectedEval, data]);
 
   // Filtrar exclusivamente los eventos de tipo ERROR y calcular conteos por severidad para el modal
   const { sortedErrorMarks, severityCounts, ignoredErrorCount } = useMemo(() => {
@@ -255,7 +258,11 @@ export default function Driver({
         };
       });
 
-    const sorted = [...errors].sort((a, b) => {
+    const filteredErrors = selectedModalSeverity
+      ? errors.filter((e) => e.severity === selectedModalSeverity)
+      : errors;
+
+    const sorted = [...filteredErrors].sort((a, b) => {
       // Mostrar primero los errores activos y al final los anulados como falso positivo
       if (Boolean(a.ignored) !== Boolean(b.ignored)) {
         return a.ignored ? 1 : -1;
@@ -274,7 +281,7 @@ export default function Driver({
     });
 
     return { sortedErrorMarks: sorted, severityCounts: counts, ignoredErrorCount: ignoredCount };
-  }, [selectedEval, sortField, sortDirection, groupParam]);
+  }, [selectedEval, sortField, sortDirection, selectedModalSeverity, groupParam]);
 
   // Catálogo de errores agrupado por severidad para el selector de error manual
   const catalogEntriesBySeverity = useMemo(() => {
@@ -2149,30 +2156,53 @@ export default function Driver({
                 );
               })()}
 
-              {/* Conteo detallado por Nivel de Gravedad */}
+              {/* Conteo detallado por Nivel de Gravedad (Filtrable) */}
               <div className="space-y-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Desglose de Errores por Gravedad
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Desglose de Errores por Gravedad
+                  </span>
+                  {selectedModalSeverity && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedModalSeverity(null)}
+                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
+                    >
+                      Mostrar todos ({selectedEval.errorCount + ignoredErrorCount})
+                    </button>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                   {SEVERITY_ORDER.map((sev) => {
                     const count = severityCounts[sev] || 0;
+                    const isSelected = selectedModalSeverity === sev;
                     return (
-                      <div
+                      <button
+                        type="button"
                         key={sev}
-                        className={`rounded-xl border p-2.5 transition flex flex-col justify-between ${count > 0 ? SEVERITIES[sev].badge : "border-slate-200 bg-slate-50/50 text-slate-400"
-                          }`}
+                        onClick={() => setSelectedModalSeverity((prev) => (prev === sev ? null : sev))}
+                        className={`rounded-xl border p-2.5 text-left transition flex flex-col justify-between cursor-pointer select-none active:scale-[0.98] ${
+                          isSelected
+                            ? "ring-2 ring-indigo-600 ring-offset-1 shadow-sm " + SEVERITIES[sev].badge
+                            : count > 0
+                              ? SEVERITIES[sev].badge + " hover:shadow-xs"
+                              : "border-slate-200 bg-slate-50/50 text-slate-400 hover:bg-slate-100/70"
+                        }`}
+                        title={isSelected ? `Quitar filtro de ${SEVERITIES[sev].label}` : `Filtrar solo errores de gravedad ${SEVERITIES[sev].label}`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold uppercase tracking-wider">
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
                             {SEVERITIES[sev].label}
+                            {isSelected && (
+                              <span className="rounded bg-indigo-600 text-white text-[9px] px-1 py-0.2">Filtro activo</span>
+                            )}
                           </span>
                           <span className={`h-2 w-2 rounded-full ${count > 0 ? SEVERITIES[sev].dot : "bg-slate-300"}`} />
                         </div>
                         <div className="mt-1.5 text-xl font-extrabold font-mono">
                           {count}
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -2184,7 +2214,10 @@ export default function Driver({
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
                       Registro de Errores ({selectedEval.errorCount} vigentes
-                      {ignoredErrorCount > 0 ? ` · ${ignoredErrorCount} falso(s) positivo(s) anulado(s)` : ""})
+                      {ignoredErrorCount > 0 ? ` · ${ignoredErrorCount} falso(s) positivo(s) anulado(s)` : ""}
+                      {selectedModalSeverity && SEVERITIES[selectedModalSeverity]?.label
+                        ? ` · Mostrando solo ${SEVERITIES[selectedModalSeverity].label}`
+                        : ""})
                     </h4>
                     {selectedEval.frozen && (
                       <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">

@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, query, setDoc, updateDoc, where, writeBatch, type Query } from "firebase/firestore";
+import { collection, deleteDoc, doc, limit, onSnapshot, orderBy, query, setDoc, updateDoc, where, writeBatch, type Query } from "firebase/firestore";
 import { firestore, getDb, safeGetDoc, safeGetDocs, fastWrite } from "./firebase";
 import type { Mark, ParsedReport, TelemetryMetrics } from "./parse";
 import { evaluateMarks, normalizeRpmZones } from "./parse";
@@ -158,6 +158,10 @@ export async function saveEvaluation(
   }
 
   await fastWrite(setDoc(ref, data), 2000);
+  invalidateEvaluationsMemoryCache();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("tracksim:evaluations-updated"));
+  }
   return "saved";
 }
 
@@ -1083,6 +1087,69 @@ export async function updateEvaluationMarks(
   );
 
   return updatedView;
+}
+
+export async function getLatestEvaluation(dateFilter?: DateFilter): Promise<EvaluationView | null> {
+  const docs = await fetchEvaluations(undefined, undefined, dateFilter);
+  if (!docs.length) return null;
+  const sorted = [...docs].sort(
+    (a, b) => (b.createdAt || 0) - (a.createdAt || 0) || (b.date || "").localeCompare(a.date || "")
+  );
+  return sorted[0] || null;
+}
+
+/**
+ * Escucha en tiempo real la última evaluación agregada en Firestore.
+ * Se actualiza inmediatamente cuando se ingiere una prueba por AutoSync, Lander DB o subida de CSV.
+ */
+export function subscribeToLatestEvaluation(
+  onUpdate: (latest: EvaluationView | null) => void,
+  dateFilter?: DateFilter
+): () => void {
+  let q: Query;
+  if (dateFilter?.groupId) {
+    q = query(
+      evaluations(),
+      where("groupId", "==", dateFilter.groupId),
+      orderBy("createdAt", "desc"),
+      limit(1)
+    );
+  } else {
+    q = query(
+      evaluations(),
+      orderBy("createdAt", "desc"),
+      limit(1)
+    );
+  }
+
+  const unsubscribe = onSnapshot(
+    q,
+    async (snap) => {
+      if (snap.empty) {
+        onUpdate(null);
+        return;
+      }
+      try {
+        const rawDoc = snap.docs[0].data() as EvaluationDoc;
+        const id = snap.docs[0].id;
+        const effectiveGroupId = rawDoc.groupId || dateFilter?.groupId;
+        await Promise.all([
+          loadCatalog(false, effectiveGroupId),
+          loadExercises(false, effectiveGroupId),
+        ]);
+        const view = withCurrentScore(rawDoc, effectiveGroupId, id);
+        onUpdate(view);
+      } catch (err) {
+        console.warn("Error al procesar actualización en tiempo real de última evaluación:", err);
+      }
+    },
+    (err) => {
+      console.warn("Fallo en snapshot de última evaluación (posible falta de índice), usando fallback:", err);
+      getLatestEvaluation(dateFilter).then(onUpdate).catch(() => onUpdate(null));
+    }
+  );
+
+  return unsubscribe;
 }
 
 // Elimina una evaluación específica por su ID de documento o por sus parámetros clave (fase, archivo, grupo).

@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import UploadForm from "../components/UploadForm";
 import { isAdminEmail } from "../lib/config";
-import { getPhasesList, getPhaseName } from "../lib/exercises";
+import { getPhasesList, getPhaseName, resolveExerciseEnvironment } from "../lib/exercises";
 import {
   getPhasesWithEvaluations,
   listReportExercises,
   overallSummaries,
   phaseSummaries,
+  getLatestEvaluation,
+  subscribeToLatestEvaluation,
   type DateFilter,
   type DriverOverallSummary,
   type PhaseSummary,
+  type EvaluationView,
 } from "../lib/db";
 import {
   listGroups,
@@ -136,6 +139,9 @@ export default function Home() {
   // Modal interactivo de expediente de conductor
   const [activeDriverId, setActiveDriverId] = useState<string | null>(null);
 
+  // Última evaluación registrada
+  const [latestEval, setLatestEval] = useState<EvaluationView | null>(null);
+
   const isAdmin = isAdminEmail(user?.email);
 
   // Cargar grupos registrados y validar que el grupo seleccionado exista
@@ -188,6 +194,9 @@ export default function Home() {
     // Cargar las fases que tienen resultados que cumplan los filtros
     getPhasesWithEvaluations(filter).then(setAvailablePhases).catch(() => { });
 
+    // Cargar la última evaluación registrada
+    getLatestEvaluation(filter).then(setLatestEval).catch(() => setLatestEval(null));
+
     if (selectedPhase === null) {
       // Promedio General por defecto
       overallSummaries(filter)
@@ -237,6 +246,21 @@ export default function Home() {
   }, [selectedPhase, startDate, endDate, selectedGroupId]);
 
   useEffect(load, [load]);
+
+  // Suscripción en tiempo real a la última evaluación para que se actualice de inmediato en pantalla
+  useEffect(() => {
+    const filter: DateFilter = {
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      groupId: selectedGroupId || undefined,
+    };
+    const unsubscribe = subscribeToLatestEvaluation((latest) => {
+      setLatestEval(latest);
+    }, filter);
+    return () => {
+      unsubscribe();
+    };
+  }, [selectedGroupId, startDate, endDate]);
 
   // Actualizar la lista en tiempo real cuando AutoSync ingiere una nueva sesión o se audita
   useEffect(() => {
@@ -688,6 +712,119 @@ export default function Home() {
           </span>
         </div>
       </div>
+
+      {/* Tarjeta de Última Evaluación Registrada */}
+      {latestEval && (() => {
+        const latestEnv = resolveExerciseEnvironment(
+          latestEval.exercise || latestEval.unit,
+          latestEval.groupId || selectedGroupId || null
+        );
+
+        const envAvatar =
+          latestEnv === "MONTANA"
+            ? {
+                bg: "bg-gradient-to-tr from-amber-600 to-orange-500 text-white border-amber-200/60 shadow-amber-600/20",
+                icon: (
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m8 3 4 8 5-5 5 11H2L8 3z" />
+                  </svg>
+                ),
+                title: "Entorno Montaña / Sierra",
+              }
+            : latestEnv === "CIUDAD"
+              ? {
+                  bg: "bg-gradient-to-tr from-blue-600 to-cyan-500 text-white border-blue-200/60 shadow-blue-600/20",
+                  icon: (
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                  ),
+                  title: "Entorno Ciudad / Maniobras Urbanas",
+                }
+              : {
+                  bg: "bg-gradient-to-tr from-emerald-600 to-teal-500 text-white border-emerald-200/60 shadow-emerald-600/20",
+                  icon: (
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 19L9 5m11 14l-5-14M12 5v3m0 4v3m0 4v2" />
+                    </svg>
+                  ),
+                  title: "Entorno Carretera / Autopista",
+                };
+
+        return (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-white to-blue-50/40 px-4 py-2.5 shadow-2xs">
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className={`relative flex h-10 w-10 items-center justify-center rounded-xl border shadow-sm shrink-0 ${envAvatar.bg}`}
+                title={`${envAvatar.title} · Fase ${latestEval.phase}`}
+              >
+                {envAvatar.icon}
+                <span className="absolute -bottom-1 -right-1 rounded-md bg-slate-900/80 px-1 py-0.2 text-[9px] font-mono font-bold text-white shadow-2xs leading-none">
+                  F{latestEval.phase}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
+                    Última Evaluación
+                  </span>
+                  <span className="text-slate-300">·</span>
+                  <span className="text-xs font-bold text-slate-900 truncate">
+                    {latestEval.driverName}
+                  </span>
+                  <span className="text-slate-300">·</span>
+                  <span className="text-xs text-slate-600 font-medium truncate">
+                    {latestEval.exercise || latestEval.unit}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 truncate flex items-center gap-2 mt-0.5">
+                  <span>Fecha: <strong className="text-slate-700">{latestEval.date || "—"}</strong></span>
+                  {latestEval.instructor && (
+                    <>
+                      <span>·</span>
+                      <span>Instructor: <strong className="text-slate-700">{latestEval.instructor}</strong></span>
+                    </>
+                  )}
+                  {latestEval.durationSec > 0 && (
+                    <>
+                      <span>·</span>
+                      <span>Duración: <strong className="text-slate-700 font-mono">{Math.floor(latestEval.durationSec / 60)}:{String(latestEval.durationSec % 60).padStart(2, "0")}</strong></span>
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
+              <div className="flex items-center gap-2">
+                <div className="text-right">
+                  <span className="block text-[10px] uppercase font-semibold text-slate-400">Calificación</span>
+                  <span className="text-base font-black font-mono text-indigo-700">{latestEval.score}</span>
+                  <span className="text-[10px] text-slate-400">/10</span>
+                </div>
+                <div className="text-right pl-2 border-l border-slate-200">
+                  <span className="block text-[10px] uppercase font-semibold text-slate-400">Errores</span>
+                  <span className={`text-base font-bold font-mono ${latestEval.errorCount > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                    {latestEval.errorCount}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveDriverId(latestEval.driverId)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300 transition shadow-2xs cursor-pointer"
+                title="Abrir expediente del conductor"
+              >
+                <span>Ver Expediente</span>
+                <svg className="h-3.5 w-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Tabla Principal de Conductores */}
       <section className="rounded-xl border border-slate-200/80 bg-white shadow-2xs overflow-hidden">

@@ -14,7 +14,14 @@ vi.mock("react", async (importOriginal) => {
     ...react,
     useState: (initialState: unknown) => {
       if (initialState === undefined) return react.useState(state.data);
-      if (initialState === null) return react.useState(state.selectedEval);
+      if (initialState === null) {
+        // Driver initializes selectedEval to null, but also selectedModalSeverity to null.
+        // We only want to inject state.selectedEval into selectedEval, which has type EvaluationView | null.
+        // If state.selectedEval is already consumed or for subsequent null state calls, return null.
+        const val = state.selectedEval;
+        state.selectedEval = null;
+        return react.useState(val);
+      }
       return react.useState(initialState);
     },
   };

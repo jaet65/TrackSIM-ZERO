@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
 import { decodeCsv, parseReport } from "../lib/parse";
 import { saveEvaluation } from "../lib/db";
 import { loadCatalog } from "../lib/catalogStore";
