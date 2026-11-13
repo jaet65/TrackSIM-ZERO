@@ -37,3 +37,17 @@ node_modules/
 dist/
 dist-electron/
 release/
+
+# Archivos de soporte y pruebas locales
+Material Apoyo/
+Material de apoyo/
+
+# Configuración y skills de agentes IA
+.agents/
+skills-lock.json
+
+# Configuraciones de editor e IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
