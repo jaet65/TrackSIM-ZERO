@@ -96,4 +96,30 @@ describe("StreamDB bridge", () => {
     expect(res.extracted).toBe(1);
     expect(bridge.extractNewSessions).toHaveBeenCalledWith({ afterId: 40, anon: false, limit: 5 });
   });
+
+  it("supports getActiveSimulatorSession and showDesktopNotification", async () => {
+    const bridge = {
+      getActiveSession: vi.fn().mockResolvedValue({
+        ok: true,
+        active: true,
+        session: { id: 100, driver: "Mario Agraz", elapsedSeconds: 120 },
+      }),
+      showDesktopNotification: vi.fn().mockResolvedValue({ ok: true }),
+    };
+    vi.stubGlobal("window", { landerBridge: bridge });
+
+    const activeRes = await (await import("./streamdbClient")).getActiveSimulatorSession();
+    expect(activeRes.active).toBe(true);
+    expect(activeRes.session?.driver).toBe("Mario Agraz");
+
+    const notifyRes = await (await import("./streamdbClient")).showDesktopNotification(
+      "Alerta",
+      "Mensaje de prueba"
+    );
+    expect(notifyRes.ok).toBe(true);
+    expect(bridge.showDesktopNotification).toHaveBeenCalledWith({
+      title: "Alerta",
+      body: "Mensaje de prueba",
+    });
+  });
 });

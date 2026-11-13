@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell, Notification } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import * as http from "http";
@@ -627,6 +627,110 @@ ipcMain.handle("lander:extractNewSessions", async (_, { afterId, anon, limit }) 
     return { ok: false, error: err.message };
   } finally {
     if (client) await client.end().catch(() => {});
+  }
+});
+
+// Monitoreo en vivo del simulador (100% SOLO LECTURA)
+ipcMain.handle("lander:getActiveSession", async () => {
+  let client: Client | null = null;
+  try {
+    client = await createPgClient();
+    // Forzamos la sesión como READ ONLY a nivel de protocolo PostgreSQL
+    await client.query("SET TRANSACTION READ ONLY").catch(() => {});
+
+    // Obtenemos la última sesión registrada en el simulador y la telemetría en curso
+    const q = `
+      SELECT 
+        s.id, 
+        s.sstudentname, 
+        s.sinstructorname, 
+        s.sname, 
+        s.ncicles, 
+        s.dcicleperiod, 
+        s.dttimecreation, 
+        EXTRACT(EPOCH FROM NOW())::bigint - s.dttimecreation AS wall_seconds,
+        (SELECT COUNT(*)::int FROM idxmarkssessions m WHERE m.idsession = s.id) AS mark_count,
+        (SELECT MAX(m.ncicle * 8.333 / 1000.0) FROM idxmarkssessions im JOIN marks m ON m.id = im.idmark WHERE im.idsession = s.id) AS latest_mark_sec
+      FROM sessions s
+      ORDER BY s.id DESC 
+      LIMIT 1;
+    `;
+    const res = await client.query(q);
+    const row = res.rows[0];
+
+    if (!row) {
+      return { ok: true, active: false };
+    }
+
+    const ncicles = Number(row.ncicles) || 0;
+    const wallSeconds = Math.max(0, Number(row.wall_seconds) || 0);
+
+    // Si ncicles == 0 y el inicio fue hace menos de 3600 segundos (1 hora), está en curso
+    const isActive = ncicles === 0 && wallSeconds >= 0 && wallSeconds < 3600;
+
+    // Sincronización precisa con el reloj del simulador Lander:
+    // Lander tarda típicamente ~15 segundos entre que graba la sesión y el camión arranca (carga de escenario 3D).
+    // Si ya hay marcas de telemetría de faltas/conducción, re-calibramos con el ciclo del simulador.
+    const latestMarkSec = row.latest_mark_sec != null ? Number(row.latest_mark_sec) : null;
+    let adjustedSeconds = Math.max(0, wallSeconds - 14);
+
+    if (latestMarkSec != null && latestMarkSec > 0) {
+      // Si la última marca está por delante del tiempo ajustado, sincronizamos directamente con ella
+      if (latestMarkSec > adjustedSeconds) {
+        adjustedSeconds = Math.round(latestMarkSec);
+      }
+    }
+
+    return {
+      ok: true,
+      active: isActive,
+      session: {
+        id: row.id,
+        driver: row.sstudentname || "Desconocido",
+        instructor: row.sinstructorname || "",
+        exercise: row.sname || "",
+        startTime: Number(row.dttimecreation), // Epoch Unix en segundos
+        elapsedSeconds: adjustedSeconds,
+        ncicles,
+        markCount: Number(row.mark_count) || 0,
+      },
+    };
+  } catch (err: any) {
+    return { ok: false, active: false, error: err.message };
+  } finally {
+    if (client) await client.end().catch(() => {});
+  }
+});
+
+// Enviar notificación nativa de escritorio de Windows
+ipcMain.handle("notify:showDesktop", async (_, { title, body }) => {
+  try {
+    app.setAppUserModelId("com.tracksim.zero");
+    if (Notification.isSupported()) {
+      const pubIcon = path.join(__dirname, "../public/favicon.png");
+      const distIcon = path.join(__dirname, "../dist/favicon.png");
+      const iconPath = fs.existsSync(pubIcon) ? pubIcon : fs.existsSync(distIcon) ? distIcon : undefined;
+
+      const notif = new Notification({
+        title: title || "TrackSIM PRO",
+        body: body || "",
+        icon: iconPath,
+        silent: false,
+      });
+
+      notif.on("click", () => {
+        if (mainWindow) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.focus();
+        }
+      });
+
+      notif.show();
+      return { ok: true };
+    }
+    return { ok: false, error: "Notificaciones no soportadas" };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
   }
 });
 
@@ -1297,6 +1401,9 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
+    // Configuración requerida por Windows para mostrar Notificaciones de Escritorio (Action Center / Toast)
+    app.setAppUserModelId("com.tracksim.zero");
+
     if (await applyPendingUpdateOnStartup()) return;
     createWindow();
 

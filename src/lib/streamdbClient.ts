@@ -128,3 +128,62 @@ export async function extractNewSimulatorSessions(
   if (!res.ok) throw new Error(res.error || "Error al extraer nuevas sesiones");
   return res;
 }
+
+export type ActiveSimulatorSession = {
+  id: number;
+  driver: string;
+  instructor: string;
+  exercise: string;
+  startTime: number;
+  elapsedSeconds: number;
+  ncicles: number;
+  markCount: number;
+};
+
+export type ActiveSessionResult = {
+  ok: boolean;
+  active: boolean;
+  session?: ActiveSimulatorSession;
+  error?: string;
+};
+
+export async function getActiveSimulatorSession(): Promise<ActiveSessionResult> {
+  const bridge = getLanderBridge();
+  if (!bridge || !bridge.getActiveSession) {
+    return { ok: false, active: false, error: "Solo disponible en la aplicación de escritorio." };
+  }
+  try {
+    return await bridge.getActiveSession();
+  } catch (err: any) {
+    return { ok: false, active: false, error: err.message };
+  }
+}
+
+export async function showDesktopNotification(
+  title: string,
+  body: string
+): Promise<{ ok: boolean; error?: string }> {
+  const bridge = getLanderBridge();
+  if (bridge && bridge.showDesktopNotification) {
+    try {
+      return await bridge.showDesktopNotification({ title, body });
+    } catch (err: any) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  // Fallback Web Notification API si está disponible
+  if (typeof window !== "undefined" && "Notification" in window) {
+    if (Notification.permission === "granted") {
+      new Notification(title, { body });
+      return { ok: true };
+    } else if (Notification.permission !== "denied") {
+      const perm = await Notification.requestPermission();
+      if (perm === "granted") {
+        new Notification(title, { body });
+        return { ok: true };
+      }
+    }
+  }
+  return { ok: false, error: "Notificaciones no disponibles." };
+}
