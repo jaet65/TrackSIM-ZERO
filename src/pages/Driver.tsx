@@ -2193,9 +2193,6 @@ export default function Driver({
                         <div className="flex items-center justify-between w-full">
                           <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
                             {SEVERITIES[sev].label}
-                            {isSelected && (
-                              <span className="rounded bg-indigo-600 text-white text-[9px] px-1 py-0.2">Filtro activo</span>
-                            )}
                           </span>
                           <span className={`h-2 w-2 rounded-full ${count > 0 ? SEVERITIES[sev].dot : "bg-slate-300"}`} />
                         </div>
