@@ -1,5 +1,0 @@
-{
-  "json.schemaDownload.trustedDomains": {
-    "https://raw.githubusercontent.com/SchemaStore/schemastore/": true
-  }
-}
