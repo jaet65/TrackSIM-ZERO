@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import { listCertificateRecipients, type CertificateRecipient } from "./db";
 import { getGroup } from "./groups";
-import templateUrl from "../../Material Apoyo/RECONOCIMIENTO 6@.jpg?url";
+import templateUrl from "../assets/RECONOCIMIENTO 6@.jpg?url";
 
 export function filenamePart(value: string): string {
   const clean = Array.from(value.trim(), (char) =>
