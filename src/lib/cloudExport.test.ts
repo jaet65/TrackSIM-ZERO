@@ -76,6 +76,8 @@ import {
   toCloudEvaluationId,
   toFriendlyExportId,
 } from "./cloudExport";
+import { buildDriverDataFromEvals } from "./db";
+import { removeGroupExercises, setGroupExercises } from "./exercises";
 import type { DriverData } from "./db";
 import type { GroupDoc } from "./groups";
 
@@ -271,6 +273,43 @@ describe("cloudExport - Contrato y Conversión de Datos a CLOUD", () => {
     // Cálculo de destreza y eco
     const metrics = calculateDestrezaAndEco([], 0);
     expect(metrics).toEqual({ destrezaPuntos: 0, destrezaMax: 7.0, ecoDrivingPuntos: 0, ecoDrivingMax: 3.0 });
+  });
+
+  it("exporta las notas por ejercicio con la penalización crítica distribuida del resumen ejecutivo", () => {
+    const rawEvals = sampleDriverData.evals.map((evaluation, index) => ({
+      ...evaluation,
+      criticalCount: index === 0 ? 2 : 0,
+    }));
+    setGroupExercises("grp_1001", {
+      "1": ["Curvas y frenado", "Ejercicio pendiente"],
+      "3": ["Incorporación en autopista"],
+    });
+
+    try {
+      const driverData = buildDriverDataFromEvals("juan-perez", rawEvals, { groupId: "grp_1001" });
+      expect(driverData).not.toBeNull();
+      if (!driverData) throw new Error("No se pudo construir el expediente del conductor de prueba.");
+
+      const cloudDoc = buildCloudExportEvaluation(sampleGroup, driverData, "EXP-CRITICAL", 1700020000000);
+      for (const evaluation of driverData.evals) {
+        const cloudExercise = cloudDoc.ejercicios.find((exercise) => exercise.nombre === evaluation.exercise);
+        expect(cloudExercise?.calificacion).toBe(evaluation.score);
+        expect(cloudExercise?.score).toBe(evaluation.score);
+        const simulationNumber = Object.entries(cloudDoc.nombresSimulaciones)
+          .find(([, name]) => name === evaluation.exercise)?.[0];
+        expect(simulationNumber).toBeDefined();
+        if (simulationNumber) {
+          expect(cloudDoc.simulacionesDetalle[`simulacion_${simulationNumber}`]).toBe(evaluation.score);
+        }
+      }
+      expect(cloudDoc.promedioScore).toBe(driverData.overall);
+      expect(driverData.overall).toBe(
+        Math.round((driverData.evals.reduce((total, evaluation) => total + evaluation.score, 0) / 3) * 10) / 10
+      );
+      expect(driverData.evals[0].score).toBeLessThan(rawEvals[0].score);
+    } finally {
+      removeGroupExercises("grp_1001");
+    }
   });
 
   it("3. Maneja fatalidades y salidas de vía según entorno y severidad", () => {

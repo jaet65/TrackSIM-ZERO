@@ -6,7 +6,13 @@ import {
   extractNewSimulatorSessions,
 } from "./streamdbClient";
 import { parseReport, type ParsedReport } from "./parse";
-import { notifyEvaluationsUpdated, saveEvaluation, type EvaluationDoc } from "./db";
+import {
+  driverData,
+  driverSlug,
+  notifyEvaluationsUpdated,
+  saveEvaluation,
+  type EvaluationDoc,
+} from "./db";
 import { getDb, safeGetDocs } from "./firebase";
 import { collection, query, where } from "firebase/firestore";
 import { loadCatalog } from "./catalogStore";
@@ -22,7 +28,8 @@ export interface PendingAuditItem {
   exercise: string;
   phase: number;
   fileName: string;
-  score: number;
+  score?: number;
+  scoreError?: string;
   errorCount: number;
   criticalCount: number;
   accidents: string[];
@@ -87,6 +94,7 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
 
   const isPollingRef = useRef(false);
   const queueRef = useRef(queue);
+  const queueRescoreGroupRef = useRef<string | null>(null);
   const onUncatalogedErrorsRef = useRef(onUncatalogedErrors);
   useEffect(() => {
     queueRef.current = queue;
@@ -114,6 +122,62 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
   useEffect(() => {
     checkGroup();
   }, []);
+
+  useEffect(() => {
+    if (!activeGroup || queueRescoreGroupRef.current === activeGroup.id) return;
+    queueRescoreGroupRef.current = activeGroup.id;
+
+    const queuedItems = queue.filter((item) => item.savedDocId?.startsWith(`${activeGroup.id}_f`));
+    if (!queuedItems.length) return;
+
+    let cancelled = false;
+    let completed = false;
+    void (async () => {
+      const driverIds = [...new Set(queuedItems.map((item) => driverSlug(item.driver)))];
+      const driverScores = new Map<string, Awaited<ReturnType<typeof driverData>>>();
+      const scoringErrors = new Map<string, string>();
+
+      for (const driverId of driverIds) {
+        try {
+          driverScores.set(driverId, await driverData(driverId, { groupId: activeGroup.id }));
+        } catch (scoreError) {
+          const message = scoreError instanceof Error ? scoreError.message : String(scoreError);
+          console.error(`No se pudieron recalcular las notas de la cola de auditoría para ${driverId}:`, scoreError);
+          scoringErrors.set(driverId, message);
+        }
+      }
+
+      if (cancelled) return;
+      completed = true;
+      const queuedIds = new Set(queuedItems.map((item) => item.id));
+      const rescoredQueue = queueRef.current.map((item) => {
+        if (!queuedIds.has(item.id)) return item;
+        const driverId = driverSlug(item.driver);
+        const evaluation = driverScores.get(driverId)?.evals.find(
+          (candidate) =>
+            candidate.docId === item.savedDocId ||
+            (candidate.fileName === item.fileName && candidate.phase === item.phase)
+        );
+        return evaluation
+          ? { ...item, score: evaluation.score, scoreError: undefined }
+          : {
+              ...item,
+              score: undefined,
+              scoreError: scoringErrors.get(driverId) ||
+                "La evaluación se guardó, pero no se pudo resolver su calificación penalizada.",
+            };
+      });
+      setQueue(rescoredQueue);
+      savePendingQueue(rescoredQueue);
+    })();
+
+    return () => {
+      cancelled = true;
+      if (!completed && queueRescoreGroupRef.current === activeGroup.id) {
+        queueRescoreGroupRef.current = null;
+      }
+    };
+  }, [activeGroup, queue]);
 
   const toggleAutoSync = async () => {
     const next = !enabled;
@@ -311,11 +375,58 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
           }
 
           if (newItems.length > 0) {
+            const driverScores = new Map<string, Awaited<ReturnType<typeof driverData>>>();
+            const scoringErrors = new Map<string, string>();
+            const driverIds = [...new Set(newItems.map((item) => driverSlug(item.driver)))];
+
+            for (const driverId of driverIds) {
+              try {
+                driverScores.set(driverId, await driverData(driverId, { groupId: currentGroup.id }));
+              } catch (scoreError) {
+                const message = scoreError instanceof Error ? scoreError.message : String(scoreError);
+                console.error(`No se pudieron recalcular las notas penalizadas de ${driverId}:`, scoreError);
+                scoringErrors.set(driverId, message);
+              }
+            }
+
+            const scoredItems = newItems.map((item) => {
+              const driverId = driverSlug(item.driver);
+              const scoredEvaluation = driverScores.get(driverId)?.evals.find(
+                (evaluation) =>
+                  evaluation.docId === item.savedDocId ||
+                  (evaluation.fileName === item.fileName && evaluation.phase === item.phase)
+              );
+              return scoredEvaluation
+                ? { ...item, score: scoredEvaluation.score, scoreError: undefined }
+                : {
+                    ...item,
+                    score: undefined,
+                    scoreError: scoringErrors.get(driverId) ||
+                      "La evaluación se guardó, pero no se pudo resolver su calificación penalizada.",
+                  };
+            });
+
             playChime();
-            const updated = [...queueRef.current, ...newItems];
+            const updated = [...queueRef.current, ...scoredItems].map((item) => {
+              const driverId = driverSlug(item.driver);
+              if (!driverScores.has(driverId)) return item;
+              const scoredEvaluation = driverScores.get(driverId)?.evals.find(
+                (evaluation) =>
+                  evaluation.docId === item.savedDocId ||
+                  (evaluation.fileName === item.fileName && evaluation.phase === item.phase)
+              );
+              return scoredEvaluation
+                ? { ...item, score: scoredEvaluation.score, scoreError: undefined }
+                : {
+                    ...item,
+                    score: undefined,
+                    scoreError: scoringErrors.get(driverId) ||
+                      "La evaluación se guardó, pero no se pudo resolver su calificación penalizada.",
+                  };
+            });
             setQueue(updated);
             savePendingQueue(updated);
-            const latest = newItems[newItems.length - 1];
+            const latest = updated[updated.length - 1];
             setRecentNotification(latest);
             if (onNewSessionAudited) onNewSessionAudited(latest);
             // Notificar a la aplicación para refrescar vistas en tiempo real (Home, Driver, etc.)

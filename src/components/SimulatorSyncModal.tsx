@@ -8,7 +8,14 @@ import {
   type StreamDBStatus,
 } from "../lib/streamdbClient";
 import { parseReport } from "../lib/parse";
-import { beginEvaluationBatch, endEvaluationBatch, notifyEvaluationsUpdated, saveEvaluation } from "../lib/db";
+import {
+  beginEvaluationBatch,
+  driverData,
+  driverSlug,
+  endEvaluationBatch,
+  notifyEvaluationsUpdated,
+  saveEvaluation,
+} from "../lib/db";
 import { loadCatalog } from "../lib/catalogStore";
 import { loadExercises, phaseForExercise } from "../lib/exercises";
 import { getActiveGroupId, getGroup, type GroupDoc } from "../lib/groups";
@@ -157,6 +164,7 @@ export default function SimulatorSyncModal({
       let duplicate = 0;
       let failed = 0;
       const logsBySession = new Map<number, string>();
+      const savedEvaluations: Array<{ index: number; driverId: string; fileName: string; phase: number; driver: string; exercise: string }> = [];
       const pendingSessions: Array<{ index: number; session: (typeof sessions)[number]; csv: string; phase: number }> = [];
       const uncatalogedErrors = new Set<string>();
 
@@ -225,7 +233,14 @@ export default function SimulatorSyncModal({
 
           if (saveStatus === "saved") {
             saved++;
-            logsBySession.set(index, `✅ [Fase ${phase}] ${report.driver} - ${report.exercise} (Calif: ${report.score})`);
+            savedEvaluations.push({
+              index,
+              driverId: driverSlug(report.driver),
+              fileName: session.filename,
+              phase,
+              driver: report.driver,
+              exercise: report.exercise,
+            });
           } else {
             duplicate++;
             logsBySession.set(index, `ℹ️ ${session.filename} ya estaba registrado en Firestore.`);
@@ -234,6 +249,30 @@ export default function SimulatorSyncModal({
           failed++;
           logsBySession.set(index, `❌ Error procesando ${session.filename}: ${(procErr as Error).message}`);
         }
+      }
+
+      const scoresByDriver = new Map<string, Awaited<ReturnType<typeof driverData>>>();
+      const scoringErrors = new Map<string, string>();
+      for (const driverId of new Set(savedEvaluations.map((evaluation) => evaluation.driverId))) {
+        try {
+          scoresByDriver.set(driverId, await driverData(driverId, { groupId: activeGroup.id }));
+        } catch (scoreError) {
+          const message = scoreError instanceof Error ? scoreError.message : String(scoreError);
+          console.error(`No se pudieron recalcular las notas penalizadas de ${driverId}:`, scoreError);
+          scoringErrors.set(driverId, message);
+        }
+      }
+
+      for (const saved of savedEvaluations) {
+        const score = scoresByDriver.get(saved.driverId)?.evals.find(
+          (evaluation) => evaluation.fileName === saved.fileName && evaluation.phase === saved.phase
+        )?.score;
+        logsBySession.set(
+          saved.index,
+          score === undefined
+            ? `✅ [Fase ${saved.phase}] ${saved.driver} - ${saved.exercise} (Calificación penalizada no disponible${scoringErrors.has(saved.driverId) ? `: ${scoringErrors.get(saved.driverId)}` : ""})`
+            : `✅ [Fase ${saved.phase}] ${saved.driver} - ${saved.exercise} (Calif: ${score.toFixed(1)})`
+        );
       }
 
       const logs = [...logsBySession.entries()].sort(([indexA], [indexB]) => indexA - indexB).map(([, message]) => message);

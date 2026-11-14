@@ -4,7 +4,7 @@ import type { PendingAuditItem } from "../lib/useAutoSync";
 import type { Mark } from "../lib/parse";
 import { classify, getCatalog, SEVERITIES, SEVERITY_ORDER, type Severity } from "../lib/catalog";
 import { resolveExerciseEnvironment } from "../lib/exercises";
-import { dictamen, updateEvaluationMarks, deleteEvaluation } from "../lib/db";
+import { dictamen, driverData, driverSlug, updateEvaluationMarks, deleteEvaluation } from "../lib/db";
 import { analyzePacing, computeGroupBenchmarks, type ExerciseBenchmark } from "../lib/pacingBenchmark";
 import { useAuth } from "./AuthProvider";
 import { useEscapeKey } from "../lib/useEscapeKey";
@@ -148,7 +148,7 @@ export default function AuditQueueModal({
   }, [currentItem, queueBenchmarks]);
 
   const liveScore = useMemo(() => {
-    if (!currentItem) return 0;
+    if (!currentItem || currentItem.score === undefined) return null;
     let s = currentItem.score;
     // Si la penalización de ritmo calculada no estaba descontada aún del score:
     if (livePacing?.isPacingDeficit && livePacing.penaltyDeduction > 0 && !currentItem.pacing?.isPacingDeficit) {
@@ -158,6 +158,16 @@ export default function AuditQueueModal({
   }, [currentItem, livePacing]);
 
   if (!isOpen || !currentItem || total === 0) return null;
+
+  const getPenalizedQueueScore = async (item: PendingAuditItem): Promise<number> => {
+    if (!activeGroupId || !item.savedDocId) {
+      throw new Error("No se pudo identificar la evaluación guardada para recalcular su calificación.");
+    }
+    const data = await driverData(driverSlug(item.driver), { groupId: activeGroupId });
+    const evaluation = data?.evals.find((candidate) => candidate.docId === item.savedDocId);
+    if (!evaluation) throw new Error(`No se encontró la calificación penalizada de ${item.exercise}.`);
+    return evaluation.score;
+  };
 
   const handleToggleIgnore = async (markIndex: number) => {
     if (!currentItem || isSaving) return;
@@ -185,7 +195,7 @@ export default function AuditQueueModal({
         docId,
         phase: currentItem.phase,
         fileName: currentItem.fileName,
-        driverId: "",
+        driverId: driverSlug(currentItem.driver),
         driverName: currentItem.driver,
         lesson: currentItem.report.lesson,
         unit: currentItem.report.unit,
@@ -196,7 +206,7 @@ export default function AuditQueueModal({
         date: currentItem.date,
         durationSec: currentItem.report.durationSec,
         errorCount: currentItem.errorCount,
-        score: currentItem.score,
+        score: currentItem.score ?? 0,
         marks: nextMarks,
         telemetry: currentItem.report.telemetry,
         createdAt: currentItem.timestamp,
@@ -204,6 +214,7 @@ export default function AuditQueueModal({
       };
 
       const updated = await updateEvaluationMarks(evalViewStub, nextMarks, activeGroupId);
+      const penalizedScore = await getPenalizedQueueScore(currentItem);
 
       // Recalcular accidentes críticos según el entorno del ejercicio
       const newAccidents: string[] = [];
@@ -218,7 +229,8 @@ export default function AuditQueueModal({
         onUpdateItem(currentItem.id, (prev) => ({
           ...prev,
           report: { ...prev.report, marks: nextMarks },
-          score: updated.score,
+          score: penalizedScore,
+          scoreError: undefined,
           errorCount: updated.errorCount,
           accidents: newAccidents,
           criticalCount: newAccidents.length,
@@ -246,7 +258,7 @@ export default function AuditQueueModal({
         docId,
         phase: currentItem.phase,
         fileName: currentItem.fileName,
-        driverId: "",
+        driverId: driverSlug(currentItem.driver),
         driverName: currentItem.driver,
         lesson: currentItem.report.lesson,
         unit: currentItem.report.unit,
@@ -257,7 +269,7 @@ export default function AuditQueueModal({
         date: currentItem.date,
         durationSec: currentItem.report.durationSec,
         errorCount: currentItem.errorCount,
-        score: currentItem.score,
+        score: currentItem.score ?? 0,
         marks,
         telemetry: currentItem.report.telemetry,
         createdAt: currentItem.timestamp,
@@ -265,6 +277,7 @@ export default function AuditQueueModal({
       };
 
       const updated = await updateEvaluationMarks(evalViewStub, marks, activeGroupId);
+      const penalizedScore = await getPenalizedQueueScore(currentItem);
 
       const newAccidents: string[] = [];
       for (const m of marks) {
@@ -278,7 +291,8 @@ export default function AuditQueueModal({
         onUpdateItem(currentItem.id, (prev) => ({
           ...prev,
           report: { ...prev.report, marks },
-          score: updated.score,
+          score: penalizedScore,
+          scoreError: undefined,
           errorCount: updated.errorCount,
           accidents: newAccidents,
           criticalCount: newAccidents.length,
@@ -342,7 +356,7 @@ export default function AuditQueueModal({
         docId,
         phase: currentItem.phase,
         fileName: currentItem.fileName,
-        driverId: "",
+        driverId: driverSlug(currentItem.driver),
         driverName: currentItem.driver,
         lesson: currentItem.report.lesson,
         unit: currentItem.report.unit,
@@ -353,7 +367,7 @@ export default function AuditQueueModal({
         date: currentItem.date,
         durationSec: currentItem.report.durationSec,
         errorCount: currentItem.errorCount,
-        score: currentItem.score,
+        score: currentItem.score ?? 0,
         marks,
         telemetry: currentItem.report.telemetry,
         createdAt: currentItem.timestamp,
@@ -361,6 +375,7 @@ export default function AuditQueueModal({
       };
 
       const updated = await updateEvaluationMarks(evalViewStub, marks, activeGroupId);
+      const penalizedScore = await getPenalizedQueueScore(currentItem);
 
       const newAccidents: string[] = [];
       for (const m of marks) {
@@ -374,7 +389,8 @@ export default function AuditQueueModal({
         onUpdateItem(currentItem.id, (prev) => ({
           ...prev,
           report: { ...prev.report, marks },
-          score: updated.score,
+          score: penalizedScore,
+          scoreError: undefined,
           errorCount: updated.errorCount,
           accidents: newAccidents,
           criticalCount: newAccidents.length,
@@ -504,10 +520,14 @@ export default function AuditQueueModal({
             </span>
             {queue.map((item, idx) => {
               const isSelected = idx === selectedIndex;
-              const v = dictamen(item.score, item.criticalCount);
+              const v = item.score === undefined
+                ? { label: "PENDIENTE", color: "bg-slate-400" }
+                : dictamen(item.score, item.criticalCount);
               const isApto = v.label === "APTO";
               const isObservaciones = v.label === "APTO CON OBSERVACIONES";
-              const dotColor = isApto
+              const dotColor = item.score === undefined
+                ? "bg-slate-400"
+                : isApto
                 ? "bg-emerald-500"
                 : isObservaciones
                 ? "bg-amber-500"
@@ -526,7 +546,7 @@ export default function AuditQueueModal({
                   <span className={`h-2 w-2 rounded-full ${dotColor}`} />
                   <span className="font-semibold truncate max-w-[120px]">{item.driver}</span>
                   <span className={`text-[10px] px-1 rounded ${isSelected ? "bg-indigo-700" : "bg-slate-100"}`}>
-                    {item.score.toFixed(1)} pts
+                    {item.score !== undefined ? `${item.score.toFixed(1)} pts` : "—"}
                   </span>
                 </button>
               );
@@ -547,6 +567,16 @@ export default function AuditQueueModal({
 
               {/* Tarjeta de Calificación */}
               {(() => {
+                if (liveScore === null) {
+                  return (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-center text-amber-900">
+                      <div className="text-xs font-semibold uppercase tracking-wider">Calificación no disponible</div>
+                      <p className="mt-1 text-xs">
+                        {currentItem.scoreError || "No se pudo recalcular con las penalizaciones del conductor."}
+                      </p>
+                    </div>
+                  );
+                }
                 const v = dictamen(liveScore, liveCriticalCount);
                 const isNoApto = v.label === "NO APTO";
                 const isApto = v.label === "APTO";

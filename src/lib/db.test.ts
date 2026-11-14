@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   adjustScoreForCritical,
   buildCertificateRecipients,
+  buildDriverDataFromEvals,
   dictamen,
   distributeCriticalPenalty,
   driverSlug,
@@ -9,7 +10,7 @@ import {
   type EvaluationDoc,
 } from "./db";
 import { computeGroupBenchmarks } from "./pacingBenchmark";
-import { removeGroupExercises, setGroupExercises } from "./exercises";
+import { exerciseKey, removeGroupExercises, setGroupExercises } from "./exercises";
 
 const evaluation = (overrides: Partial<EvaluationDoc> = {}): EvaluationDoc => ({
   phase: 1,
@@ -55,6 +56,85 @@ describe("evaluation helpers", () => {
       adjustScoreForCritical(8, 2)
     );
     expect(distributeCriticalPenalty([8, 8, 8], 3, 1)).toEqual([8, 8, 8]);
+  });
+
+  it.each([
+    [[9, 8], 3, 2],
+    [[10, 7, 5], 4, 3],
+    [[8.4, 6.7, 5.2], 3, 4],
+    [[10, 9], 2, 7],
+  ])("keeps rounded exercise grades equal to the penalized overall average", (scores, expected, criticalErrors) => {
+    const rawAverage = Math.round((scores.reduce((total, score) => total + score, 0) / expected) * 10) / 10;
+    const adjustedScores = distributeCriticalPenalty(scores, expected, criticalErrors);
+    const adjustedAverage = Math.round((adjustedScores.reduce((total, score) => total + score, 0) / expected) * 10) / 10;
+
+    expect(adjustedAverage).toBe(adjustScoreForCritical(rawAverage, criticalErrors));
+  });
+
+  it("uses penalized exercise grades consistently for the driver, phases, missing work, and overall average", () => {
+    const groupId = "scoring-consistency-group";
+    setGroupExercises(
+      groupId,
+      {
+        "1": ["Ejercicio A", "Ejercicio B"],
+        "2": ["Ejercicio C", "No evaluado"],
+      },
+      {},
+      {},
+      {},
+      { [exerciseKey("No evaluado")]: true }
+    );
+
+    try {
+      const evaluations = [
+        withCurrentScore(evaluation({
+          groupId,
+          phase: 1,
+          exercise: "Ejercicio A",
+          unit: "Ejercicio A",
+          fileName: "ejercicio-a.rep",
+          frozen: true,
+          frozenScore: 9,
+          frozenCriticalCount: 2,
+        })),
+        withCurrentScore(evaluation({
+          groupId,
+          phase: 2,
+          exercise: "Ejercicio C",
+          unit: "Ejercicio C",
+          fileName: "ejercicio-c.rep",
+          frozen: true,
+          frozenScore: 7,
+          frozenCriticalCount: 0,
+        })),
+      ];
+      const data = buildDriverDataFromEvals("ana-perez", evaluations, { groupId });
+
+      expect(data).not.toBeNull();
+      if (!data) throw new Error("No se pudo construir el expediente para la prueba.");
+
+      const exerciseA = data.evals.find((item) => item.exercise === "Ejercicio A");
+      const exerciseC = data.evals.find((item) => item.exercise === "Ejercicio C");
+      expect(exerciseA).toBeDefined();
+      expect(exerciseC).toBeDefined();
+      if (!exerciseA || !exerciseC) throw new Error("Faltan ejercicios evaluados en la prueba.");
+
+      const phaseOne = data.phases.find((phase) => phase.phase === 1);
+      const phaseTwo = data.phases.find((phase) => phase.phase === 2);
+      expect(phaseOne?.countedEvals?.find((item) => item.exercise === "Ejercicio A")?.score).toBe(exerciseA.score);
+      expect(phaseTwo?.countedEvals?.find((item) => item.exercise === "Ejercicio C")?.score).toBe(exerciseC.score);
+      expect(phaseOne?.avgScore).toBe(Math.round((exerciseA.score / 2) * 10) / 10);
+      expect(phaseTwo?.avgScore).toBe(Math.round(exerciseC.score * 10) / 10);
+      expect(data.expectedExercises).toBe(4);
+      expect(data.overall).toBe(
+        Math.round(((exerciseA.score + exerciseC.score) / 3) * 10) / 10
+      );
+      expect(data.overall).toBe(3.1);
+      expect(exerciseA.score).toBeLessThan(9);
+      expect(exerciseC.score).toBeLessThan(7);
+    } finally {
+      removeGroupExercises(groupId);
+    }
   });
 
   it("recalculates current scores and detects legacy slippery-road marks", () => {

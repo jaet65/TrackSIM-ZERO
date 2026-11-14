@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { decodeCsv, parseReport } from "../lib/parse";
-import { beginEvaluationBatch, endEvaluationBatch, notifyEvaluationsUpdated, saveEvaluation } from "../lib/db";
+import {
+  driverData,
+  driverSlug,
+  endEvaluationBatch,
+  notifyEvaluationsUpdated,
+  saveEvaluation,
+} from "../lib/db";
 import { loadCatalog } from "../lib/catalogStore";
 import { loadExercises, phaseForExercise } from "../lib/exercises";
 import {
@@ -32,6 +38,7 @@ type Result = {
   date?: string;
   errors?: number;
   score?: number;
+  scoreError?: string;
   message?: string;
   uncataloged?: string[];
 };
@@ -301,9 +308,41 @@ export default function UploadForm({
       });
     }
 
-    if (savedAny) notifyEvaluationsUpdated();
+    const resultRows = out.filter((result): result is Result => Boolean(result));
+    if (savedAny) {
+      const savedResults = resultRows.filter((result) => result.status === "saved" && result.driver);
+      const driverIds = [...new Set(savedResults.map((result) => driverSlug(result.driver!)))];
+      const driverScores = new Map<string, Awaited<ReturnType<typeof driverData>>>();
+      const scoringErrors = new Map<string, string>();
+
+      for (const driverId of driverIds) {
+        try {
+          driverScores.set(driverId, await driverData(driverId, { groupId: activeGroup.id }));
+        } catch (scoreError) {
+          const message = scoreError instanceof Error ? scoreError.message : String(scoreError);
+          console.error(`No se pudieron recalcular las notas penalizadas de ${driverId}:`, scoreError);
+          scoringErrors.set(driverId, message);
+        }
+      }
+
+      for (const result of savedResults) {
+        const driverId = driverSlug(result.driver || "");
+        const scoredEvaluation = driverScores.get(driverId)?.evals.find(
+          (evaluation) => evaluation.fileName === result.file && evaluation.phase === result.phase
+        );
+        if (scoredEvaluation) {
+          result.score = scoredEvaluation.score;
+          result.scoreError = undefined;
+        } else {
+          result.score = undefined;
+          result.scoreError = scoringErrors.get(driverId) ||
+            "La evaluación se guardó, pero no se pudo resolver su calificación penalizada.";
+        }
+      }
+      notifyEvaluationsUpdated();
+    }
     if (pendingReports.length > 0) endEvaluationBatch();
-    setResults(out.filter((result): result is Result => Boolean(result)));
+    setResults(resultRows);
     setShowResultsModal(true);
     form.reset();
     setFileCount(0);
@@ -961,7 +1000,14 @@ export default function UploadForm({
                         {r.status === "saved" && (
                           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            Fase {r.phase} · {r.driver} (Calif: {r.score}, {r.errors} errores)
+                            Fase {r.phase} · {r.driver} (
+                            {r.score !== undefined ? `Calif: ${r.score.toFixed(1)}` : "Calificación no disponible"},
+                            {" "}{r.errors} errores)
+                          </span>
+                        )}
+                        {r.status === "saved" && r.scoreError && (
+                          <span className="mt-1 block text-[10px] text-rose-600" title={r.scoreError}>
+                            No se pudo recalcular la calificación con las penalizaciones del conductor.
                           </span>
                         )}
                         {r.status === "duplicate" && (
