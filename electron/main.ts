@@ -705,7 +705,6 @@ ipcMain.handle("lander:getActiveSession", async () => {
 // Enviar notificación nativa de escritorio de Windows
 ipcMain.handle("notify:showDesktop", async (_, { title, body }) => {
   try {
-    app.setAppUserModelId("com.tracksim.zero");
     if (Notification.isSupported()) {
       const pubIcon = path.join(__dirname, "../public/favicon.png");
       const distIcon = path.join(__dirname, "../dist/favicon.png");
@@ -1401,9 +1400,6 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
-    // Configuración requerida por Windows para mostrar Notificaciones de Escritorio (Action Center / Toast)
-    app.setAppUserModelId("com.tracksim.zero");
-
     if (await applyPendingUpdateOnStartup()) return;
     createWindow();
 
