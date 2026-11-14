@@ -238,7 +238,9 @@ export async function closeAndFreezeGroup(
         frozenErrorCount: computed.errorCount,
         frozenCriticalCount: computed.criticalCount,
         frozenErrorScore: computed.errorScore,
-        frozenTelemetryScore: computed.telemetryScore,
+        ...(computed.telemetryScore !== undefined
+          ? { frozenTelemetryScore: computed.telemetryScore }
+          : {}),
         // Guardamos también las marcas con la severidad resuelta congelada
         frozenMarks: computed.marks,
       });

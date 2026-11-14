@@ -79,6 +79,15 @@ import {
 import type { DriverData } from "./db";
 import type { GroupDoc } from "./groups";
 
+function containsUndefined(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (Array.isArray(value)) return value.some(containsUndefined);
+  if (value !== null && typeof value === "object") {
+    return Object.values(value).some(containsUndefined);
+  }
+  return false;
+}
+
 describe("cloudExport - Contrato y Conversión de Datos a CLOUD", () => {
   const sampleGroup: GroupDoc = {
     id: "grp_1001",
@@ -230,6 +239,9 @@ describe("cloudExport - Contrato y Conversión de Datos a CLOUD", () => {
     expect(missingEx?.estado).toBe("No Realizado");
     expect(missingEx?.noRealizado).toBe(true);
     expect(missingEx?.calificacion).toBeUndefined();
+    expect(missingEx).not.toHaveProperty("calificacion");
+    expect(missingEx).not.toHaveProperty("score");
+    expect(containsUndefined(cloudDoc)).toBe(false);
 
     // Procedencia
     expect(cloudDoc.origen).toBe("TrackSIM-ZERO-V2");

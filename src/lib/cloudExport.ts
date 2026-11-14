@@ -397,8 +397,6 @@ export function buildCloudExportEvaluation(
         instructor: null,
         tiempo: null,
         distancia: null,
-        calificacion: undefined,
-        score: undefined,
         colisiones: 0,
         infracciones: 0,
         estado: "No Realizado",
@@ -780,4 +778,3 @@ export async function deleteCloudExport(exportOrGroupId: string): Promise<void> 
     }
   }
 }
-
