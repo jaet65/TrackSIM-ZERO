@@ -1092,6 +1092,10 @@ export async function updateEvaluationMarks(
     }),
     2000
   );
+  invalidateEvaluationsMemoryCache();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("tracksim:evaluations-updated"));
+  }
 
   return updatedView;
 }
