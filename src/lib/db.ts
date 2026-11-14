@@ -185,6 +185,7 @@ export type PhaseSummary = {
 
 export type DriverOverallSummary = {
   driverId: string;
+  groupId?: string;
   driver: string;
   phasesEvaluated: number;
   expectedPhases: number;
@@ -731,18 +732,23 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
   const allDocs = await fetchEvaluations(undefined, undefined, dateFilter);
   const driverMap = new Map<string, EvaluationView[]>();
   for (const doc of allDocs) {
-    const list = driverMap.get(doc.driverId) || [];
+    const key = `${doc.groupId || ""}::${doc.driverId}`;
+    const list = driverMap.get(key) || [];
     list.push(doc);
-    driverMap.set(doc.driverId, list);
+    driverMap.set(key, list);
   }
 
   const results: DriverOverallSummary[] = [];
 
-  for (const [driverId, docs] of driverMap.entries()) {
-    const pSummaries = summarizeDriverPhases(driverId, docs[0].driverName, docs, dateFilter?.groupId);
+  for (const docs of driverMap.values()) {
+    const driverId = docs[0].driverId;
+    const groupId = docs[0].groupId;
+    const summaryGroupId = dateFilter?.groupId || groupId;
+    const pSummaries = summarizeDriverPhases(driverId, docs[0].driverName, docs, summaryGroupId);
     if (!pSummaries.length) {
       results.push({
         driverId,
+        groupId,
         driver: docs[0].driverName,
         phasesEvaluated: 0,
         expectedPhases: 0,
@@ -759,12 +765,12 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
 
     const expectedExercises = pSummaries.reduce((acc, p) => acc + p.expected, 0);
     const evaluatedExpectedExercises = pSummaries.reduce((acc, p) => {
-      const exMap = getExercises(dateFilter?.groupId || docs[0]?.groupId);
+      const exMap = getExercises(summaryGroupId);
       const pList = p.phase === 0 ? Object.values(exMap).flat() : exMap[String(p.phase)] ?? [];
       if (pList.length > 0) {
-        return acc + pList.filter((name) => !isExerciseUnevaluated(name, dateFilter?.groupId || docs[0]?.groupId)).length;
+        return acc + pList.filter((name) => !isExerciseUnevaluated(name, summaryGroupId)).length;
       }
-      const evalCount = (p.countedEvals ?? []).filter((e) => !isExerciseUnevaluated(e.exercise || e.unit, dateFilter?.groupId || docs[0]?.groupId)).length;
+      const evalCount = (p.countedEvals ?? []).filter((e) => !isExerciseUnevaluated(e.exercise || e.unit, summaryGroupId)).length;
       return acc + evalCount;
     }, 0);
     const totalExercises = pSummaries.reduce((acc, p) => acc + p.exercises, 0);
@@ -792,6 +798,7 @@ export async function overallSummaries(dateFilter?: DateFilter): Promise<DriverO
 
     results.push({
       driverId,
+      groupId,
       driver: docs[0].driverName,
       phasesEvaluated,
       expectedPhases,

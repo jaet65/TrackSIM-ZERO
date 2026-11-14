@@ -31,6 +31,7 @@ import type { ReportExerciseSummary } from "../lib/db";
 
 export type DisplayRow = {
   driverId: string;
+  groupId?: string;
   driver: string;
   badgeText: string;
   exercisesText: string;
@@ -138,6 +139,7 @@ export default function Home() {
 
   // Modal interactivo de expediente de conductor
   const [activeDriverId, setActiveDriverId] = useState<string | null>(null);
+  const [activeDriverGroupId, setActiveDriverGroupId] = useState<string | null>(null);
 
   // Última evaluación registrada
   const [latestEval, setLatestEval] = useState<EvaluationView | null>(null);
@@ -204,6 +206,7 @@ export default function Home() {
           setRows(
             data.map((d) => ({
               driverId: d.driverId,
+              groupId: d.groupId,
               driver: d.driver,
               badgeText: `${d.phasesEvaluated} de ${d.expectedPhases} fases`,
               exercisesText: `${d.totalExercises}/${d.expectedExercises} ejercicio(s)`,
@@ -356,6 +359,42 @@ export default function Home() {
     return sorted;
   }, [rows, driverSearchQuery, sortField, sortDirection]);
 
+  const groupedGlobalRows = useMemo(() => {
+    if (!sortedRows) return [];
+
+    const groups = new Map<string, DisplayRow[]>();
+    for (const row of sortedRows) {
+      const groupKey = row.groupId || "";
+      const groupRows = groups.get(groupKey) || [];
+      groupRows.push(row);
+      groups.set(groupKey, groupRows);
+    }
+
+    return [...groups.entries()]
+      .map(([groupId, groupRows]) => ({
+        groupId,
+        groupName: allGroups.find((group) => group.id === groupId)?.name || (groupId ? "Grupo archivado" : "Sin grupo"),
+        rows: groupRows,
+      }))
+      .sort((a, b) => a.groupName.localeCompare(b.groupName, "es", { sensitivity: "base" }));
+  }, [sortedRows, allGroups]);
+
+  const showGroupSections = !selectedGroupId && selectedPhase === null;
+  const tableItems = showGroupSections
+    ? groupedGlobalRows.flatMap(({ groupId, groupName, rows: groupRows }) => [
+        { type: "group" as const, key: `group:${groupId || "unassigned"}`, groupName, count: groupRows.length },
+        ...groupRows.map((row) => ({
+          type: "driver" as const,
+          key: `driver:${groupId}:${row.driverId}`,
+          row,
+        })),
+      ])
+    : (sortedRows || []).map((row) => ({
+        type: "driver" as const,
+        key: `driver:${row.groupId || selectedGroupId}:${row.driverId}`,
+        row,
+      }));
+
   // Actualizar URL params y persistir cuando cambian filtros
   const updateUrl = (newPhase: number | null, start: string, end: string, newGroup: string) => {
     const next: Record<string, string> = {};
@@ -504,23 +543,36 @@ export default function Home() {
   };
 
   // Navegación entre conductores en el modal
+  const openDriver = (driverId: string, groupId?: string) => {
+    setActiveDriverId(driverId);
+    setActiveDriverGroupId(groupId ?? selectedGroupId);
+  };
+
+  const navigableRows = showGroupSections
+    ? groupedGlobalRows.flatMap((group) => group.rows)
+    : sortedRows || [];
+
   const activeDriverIndex = useMemo(() => {
-    if (!activeDriverId || !sortedRows) return -1;
-    return sortedRows.findIndex((r) => r.driverId === activeDriverId);
-  }, [activeDriverId, sortedRows]);
+    if (!activeDriverId) return -1;
+    return navigableRows.findIndex(
+      (row) => row.driverId === activeDriverId && (row.groupId ?? selectedGroupId) === (activeDriverGroupId ?? selectedGroupId)
+    );
+  }, [activeDriverId, activeDriverGroupId, selectedGroupId, navigableRows]);
 
   const hasPrevDriver = activeDriverIndex > 0;
-  const hasNextDriver = activeDriverIndex >= 0 && sortedRows ? activeDriverIndex < sortedRows.length - 1 : false;
+  const hasNextDriver = activeDriverIndex >= 0 && activeDriverIndex < navigableRows.length - 1;
 
   const handlePrevDriver = () => {
-    if (hasPrevDriver && sortedRows) {
-      setActiveDriverId(sortedRows[activeDriverIndex - 1].driverId);
+    if (hasPrevDriver) {
+      const row = navigableRows[activeDriverIndex - 1];
+      openDriver(row.driverId, row.groupId);
     }
   };
 
   const handleNextDriver = () => {
-    if (hasNextDriver && sortedRows) {
-      setActiveDriverId(sortedRows[activeDriverIndex + 1].driverId);
+    if (hasNextDriver) {
+      const row = navigableRows[activeDriverIndex + 1];
+      openDriver(row.driverId, row.groupId);
     }
   };
 
@@ -812,7 +864,7 @@ export default function Home() {
 
               <button
                 type="button"
-                onClick={() => setActiveDriverId(latestEval.driverId)}
+                onClick={() => openDriver(latestEval.driverId, latestEval.groupId)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300 transition shadow-2xs cursor-pointer"
                 title="Abrir expediente del conductor"
               >
@@ -1009,10 +1061,27 @@ export default function Home() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {sortedRows?.map((r) => (
+                {tableItems.map((item) => {
+                  if (item.type === "group") {
+                    return (
+                      <tr key={item.key} className="border-y border-slate-200 bg-slate-50/90">
+                        <td colSpan={7} className="px-4 py-2.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-bold text-slate-800">{item.groupName}</span>
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                              {item.count} {item.count === 1 ? "conductor" : "conductores"}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  const r = item.row;
+                  return (
                   <tr
-                    key={r.driverId}
-                    onClick={() => setActiveDriverId(r.driverId)}
+                    key={item.key}
+                    onClick={() => openDriver(r.driverId, r.groupId)}
                     className="hover:bg-slate-50/60 transition group cursor-pointer"
                   >
                     <td className="px-4 py-3.5">
@@ -1020,7 +1089,7 @@ export default function Home() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setActiveDriverId(r.driverId);
+                          openDriver(r.driverId, r.groupId);
                         }}
                         className="text-left font-bold text-slate-900 group-hover:text-indigo-600 transition cursor-pointer"
                       >
@@ -1079,7 +1148,8 @@ export default function Home() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1091,7 +1161,7 @@ export default function Home() {
         <DriverModal
           isOpen={!!activeDriverId}
           driverId={activeDriverId}
-          groupId={selectedGroupId}
+          groupId={activeDriverGroupId ?? selectedGroupId}
           startDate={startDate}
           endDate={endDate}
           onClose={() => setActiveDriverId(null)}
