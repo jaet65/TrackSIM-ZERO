@@ -12,6 +12,8 @@ import { createDownloadCoordinator, installAfterDownload, isValidInstallerSize }
 const GITHUB_OWNER = "jaet65";
 const GITHUB_REPO = "TrackSIM-ZERO";
 
+app.setName("TrackSIM PRO");
+
 // Ruta del archivo de configuración (config.json en el userData de la app o local)
 function getConfigPath() {
   const userData = app.getPath("userData");

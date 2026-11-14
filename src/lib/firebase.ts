@@ -22,7 +22,7 @@ import {
 // Config pública del proyecto web (no es un secreto); se puede sobreescribir con variables VITE_*.
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? "AIzaSyC_LiPl1CgHd37e0wEfuAb-HxymQIWVAUg",
-  authDomain: "tracksim-zero.firebaseapp.com",
+  authDomain: "tracksim-zero.web.app",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? "tracksim-zero",
   storageBucket: "tracksim-zero.firebasestorage.app",
   messagingSenderId: "120711426085",

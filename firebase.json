@@ -23,8 +23,11 @@
   "auth": {
     "providers": {
       "googleSignIn": {
-        "oAuthBrandDisplayName": "tracksim-zero",
-        "supportEmail": "support@tracksim-zero.firebaseapp.com"
+        "oAuthBrandDisplayName": "TrackSIM PRO",
+        "supportEmail": "magraz@corporativomaf.com",
+        "authorizedRedirectUris": [
+          "https://tracksim-zero.web.app/__/auth/handler"
+        ]
       }
     }
   }

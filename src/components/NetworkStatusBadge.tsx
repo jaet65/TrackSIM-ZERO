@@ -23,7 +23,7 @@ export default function NetworkStatusBadge() {
           <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
         </span>
         <span>
-          Modo Offline
+          Offline
           {status.pendingWrites > 0 ? ` · ${status.pendingWrites} en cola` : " · Caché activa"}
         </span>
       </div>
@@ -49,7 +49,7 @@ export default function NetworkStatusBadge() {
         className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50/80 px-2.5 py-1 text-[11px] font-medium text-amber-700"
       >
         <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-        <span className="hidden md:inline">Red lenta · Caché activa</span>
+        <span className="hidden md:inline">Slow · Caché activa</span>
       </div>
     );
   }
@@ -60,7 +60,7 @@ export default function NetworkStatusBadge() {
       className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-2.5 py-1 text-[11px] font-medium text-emerald-700"
     >
       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-      <span>Sincronizado</span>
+      <span>Online</span>
     </div>
   );
 }

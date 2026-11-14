@@ -46,6 +46,7 @@ function formatSeconds(sec: number): string {
 
 export default function SimulatorLiveBadge() {
   const isElectron = isElectronApp();
+  const [isDatabaseConnected, setIsDatabaseConnected] = useState<boolean | null>(null);
   const [activeSession, setActiveSession] = useState<ActiveSimulatorSession | null>(null);
   const [lastFinishedSession, setLastFinishedSession] = useState<ActiveSimulatorSession | null>(null);
   const [elapsed, setElapsed] = useState<number>(0);
@@ -83,8 +84,15 @@ export default function SimulatorLiveBadge() {
       try {
         const res = await getActiveSimulatorSession();
         if (!isMounted) return;
+        setIsDatabaseConnected(res.ok);
 
-        if (res.ok && res.active && res.session) {
+        if (!res.ok) {
+          setActiveSession(null);
+          prevSessionIdRef.current = null;
+          return;
+        }
+
+        if (res.active && res.session) {
           const current = res.session;
           setActiveSession(current);
           setElapsed(current.elapsedSeconds);
@@ -103,7 +111,12 @@ export default function SimulatorLiveBadge() {
           setActiveSession(null);
           prevSessionIdRef.current = null;
         }
-      } catch {}
+      } catch {
+        if (!isMounted) return;
+        setIsDatabaseConnected(false);
+        setActiveSession(null);
+        prevSessionIdRef.current = null;
+      }
     };
 
     poll();
@@ -168,6 +181,7 @@ export default function SimulatorLiveBadge() {
   const targetSeconds = targetMinutes * 60;
   const progressPercent = Math.min(100, Math.round((elapsed / Math.max(1, targetSeconds)) * 100));
   const isTimeOver = elapsed >= targetSeconds;
+  const isLanderOffline = isDatabaseConnected === false;
 
   return (
     <>
@@ -197,9 +211,11 @@ export default function SimulatorLiveBadge() {
             ? isTimeOver
               ? "border-amber-400 bg-amber-50 text-amber-900 shadow-xs"
               : "border-emerald-400 bg-emerald-50 text-emerald-900 shadow-xs"
-            : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+            : isLanderOffline
+              ? "border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100"
+              : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
         }`}
-        title="Clic para ver monitor en vivo y configurar timer de ejercicio"
+        title={isLanderOffline ? "Sin acceso a la BD de Lander" : "Clic para ver monitor en vivo y configurar timer de ejercicio"}
       >
         {activeSession ? (
           <>
@@ -222,8 +238,8 @@ export default function SimulatorLiveBadge() {
           </>
         ) : (
           <>
-            <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-            <span>Simulador en espera</span>
+            <span className={`h-1.5 w-1.5 rounded-full ${isLanderOffline ? "bg-rose-600" : "bg-slate-400"}`} />
+            <span>{isLanderOffline ? "Simulador Offline" : "Simulador en espera"}</span>
           </>
         )}
       </button>
@@ -249,11 +265,11 @@ export default function SimulatorLiveBadge() {
                         <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500" />
                       </>
                     ) : (
-                      <span className="h-3 w-3 rounded-full bg-slate-300" />
+                      <span className={`h-3 w-3 rounded-full ${isLanderOffline ? "bg-rose-500" : "bg-slate-300"}`} />
                     )}
                   </span>
                   <h3 className="text-base font-bold text-slate-900">
-                    {activeSession ? "Simulación en Vivo" : "Simulador en Espera"}
+                    {activeSession ? "Simulación en Vivo" : isLanderOffline ? "Simulador Offline" : "Simulador en Espera"}
                   </h3>
                 </div>
                 <button
