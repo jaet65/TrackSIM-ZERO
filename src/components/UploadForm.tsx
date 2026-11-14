@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { decodeCsv, parseReport } from "../lib/parse";
-import { saveEvaluation } from "../lib/db";
+import { beginEvaluationBatch, endEvaluationBatch, notifyEvaluationsUpdated, saveEvaluation } from "../lib/db";
 import { loadCatalog } from "../lib/catalogStore";
 import { loadExercises, phaseForExercise } from "../lib/exercises";
 import {
@@ -17,6 +17,7 @@ import ConfigureExercisesModal from "./ConfigureExercisesModal";
 import BackupRestoreModal from "./BackupRestoreModal";
 import { isElectronApp } from "../lib/streamdbClient";
 import { useEscapeKey } from "../lib/useEscapeKey";
+import { useAutoSyncContext } from "./AutoSyncContext";
 
 const GITHUB_OWNER = "jaet65";
 const GITHUB_REPO = "TrackSIM-ZERO";
@@ -44,11 +45,13 @@ export default function UploadForm({
 }) {
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{
+    stage: "Analizando" | "Clasificando" | "Guardando";
     current: number;
     total: number;
     percent: number;
   } | null>(null);
   const { user } = useAuth();
+  const autoSync = useAutoSyncContext();
   const [results, setResults] = useState<Result[]>([]);
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [fileCount, setFileCount] = useState<number>(0);
@@ -220,8 +223,11 @@ export default function UploadForm({
     }
 
     setBusy(true);
-    setUploadProgress({ current: 0, total: files.length, percent: 0 });
-    const out: Result[] = [];
+    setUploadProgress({ stage: "Analizando", current: 0, total: files.length, percent: 0 });
+    const out: Array<Result | undefined> = Array(files.length);
+    const pendingReports: Array<{ index: number; file: File; csv: string; phase: number }> = [];
+    const uncatalogedErrors = new Set<string>();
+    let savedAny = false;
 
     try {
       await Promise.all([
@@ -233,22 +239,48 @@ export default function UploadForm({
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       try {
-        const report = parseReport(decodeCsv(await f.arrayBuffer()), activeGroup.id);
+        const csv = decodeCsv(await f.arrayBuffer());
+        const report = parseReport(csv, activeGroup.id);
         const phase = phaseForExercise(report.exercise, activeGroup.id);
         if (!phase) throw new Error(`La unidad «${report.exercise}» no está en el catálogo de ejercicios del grupo «${activeGroup.name}».`);
+        report.uncataloged.forEach((description) => uncatalogedErrors.add(description));
+        pendingReports.push({ index: i, file: f, csv, phase });
+      } catch (err) {
+        out[i] = { file: f.name, status: "error", message: (err as Error).message };
+      }
+      const completed = i + 1;
+      setUploadProgress({
+        stage: "Analizando",
+        current: completed,
+        total: files.length,
+        percent: Math.round((completed / files.length) * 40),
+      });
+    }
 
+    if (uncatalogedErrors.size > 0) {
+      setUploadProgress({ stage: "Clasificando", current: files.length, total: files.length, percent: 40 });
+      await autoSync?.requestCatalogReview(activeGroup.id, activeGroup.name, [...uncatalogedErrors]);
+      await loadCatalog(true, activeGroup.id);
+    }
+
+    for (let i = 0; i < pendingReports.length; i++) {
+      const { index, file, csv, phase } = pendingReports[i];
+      try {
+        const report = parseReport(csv, activeGroup.id);
         const status = await saveEvaluation(
           phase,
-          f.name,
+          file.name,
           report,
           {
             name: user?.displayName || user?.email || "",
             email: user?.email ?? "",
           },
-          activeGroup.id
+          activeGroup.id,
+          { notify: false }
         );
-        out.push({
-          file: f.name,
+        if (status === "saved") savedAny = true;
+        out[index] = {
+          file: file.name,
           phase,
           status,
           driver: report.driver,
@@ -257,18 +289,21 @@ export default function UploadForm({
           errors: report.errorCount,
           score: report.score,
           uncataloged: report.uncataloged,
-        });
+        };
       } catch (err) {
-        out.push({ file: f.name, status: "error", message: (err as Error).message });
+        out[index] = { file: file.name, status: "error", message: (err as Error).message };
       }
-      const completed = i + 1;
       setUploadProgress({
-        current: completed,
+        stage: "Guardando",
+        current: files.length - pendingReports.length + i + 1,
         total: files.length,
-        percent: Math.round((completed / files.length) * 100),
+        percent: 40 + Math.round(((i + 1) / Math.max(1, pendingReports.length)) * 60),
       });
     }
-    setResults(out);
+
+    if (savedAny) notifyEvaluationsUpdated();
+    if (pendingReports.length > 0) endEvaluationBatch();
+    setResults(out.filter((result): result is Result => Boolean(result)));
     setShowResultsModal(true);
     form.reset();
     setFileCount(0);
@@ -569,7 +604,7 @@ export default function UploadForm({
                 <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
                 <span>
                   {uploadProgress
-                    ? `${uploadProgress.percent}%`
+                    ? `${uploadProgress.stage} ${uploadProgress.percent}% · ${uploadProgress.current}/${uploadProgress.total}`
                     : "Procesando..."}
                 </span>
               </>

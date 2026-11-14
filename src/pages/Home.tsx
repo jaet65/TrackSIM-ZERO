@@ -257,11 +257,26 @@ export default function Home() {
       endDate: endDate || undefined,
       groupId: selectedGroupId || undefined,
     };
-    const unsubscribe = subscribeToLatestEvaluation((latest) => {
-      setLatestEval(latest);
-    }, filter);
+    let unsubscribe: (() => void) | null = null;
+    const subscribe = () => {
+      if (unsubscribe) return;
+      unsubscribe = subscribeToLatestEvaluation((latest) => {
+        setLatestEval(latest);
+      }, filter);
+    };
+    const pauseSubscription = () => {
+      unsubscribe?.();
+      unsubscribe = null;
+    };
+    const resumeSubscription = () => subscribe();
+
+    window.addEventListener("tracksim:evaluations-batch-start", pauseSubscription);
+    window.addEventListener("tracksim:evaluations-batch-end", resumeSubscription);
+    subscribe();
     return () => {
-      unsubscribe();
+      window.removeEventListener("tracksim:evaluations-batch-start", pauseSubscription);
+      window.removeEventListener("tracksim:evaluations-batch-end", resumeSubscription);
+      pauseSubscription();
     };
   }, [selectedGroupId, startDate, endDate]);
 

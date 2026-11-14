@@ -257,7 +257,8 @@ export async function safeGetDoc<T = DocumentData>(
  */
 export async function safeGetDocs<T = DocumentData>(
   q: Query<T>,
-  timeoutMs = 2500
+  timeoutMs = 2500,
+  options: { revalidate?: boolean } = {}
 ): Promise<QuerySnapshot<T>> {
   const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
 
@@ -272,7 +273,9 @@ export async function safeGetDocs<T = DocumentData>(
     const cached = await getDocsFromCache(q);
     if (!cached.empty) {
       // Revalidación silenciosa en segundo plano para refrescar caché local
-      getDocsFromServer(q).then((fresh) => notifyIfQueryChanged(cached, fresh)).catch(() => {});
+      if (options.revalidate !== false) {
+        getDocsFromServer(q).then((fresh) => notifyIfQueryChanged(cached, fresh)).catch(() => {});
+      }
       return cached;
     }
   } catch {}
@@ -299,8 +302,9 @@ export async function safeGetDocs<T = DocumentData>(
     markDegradedConnection();
     try {
       return await getDocsFromCache(q);
-    } catch {
-      return await netPromise;
+    } catch (cacheError) {
+      netPromise.catch(() => {});
+      throw cacheError;
     }
   } catch (err) {
     if (timer) clearTimeout(timer);

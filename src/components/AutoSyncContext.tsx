@@ -1,9 +1,19 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useRef, useState } from "react";
 import { useAutoSync, type PendingAuditItem } from "../lib/useAutoSync";
 import { useAuth } from "./AuthProvider";
 import type { GroupDoc } from "../lib/groups";
 import AuditQueueModal from "./AuditQueueModal";
 import { useEscapeKey } from "../lib/useEscapeKey";
+import { loadCatalog, saveCatalog } from "../lib/catalogStore";
+import { classify, normalize, SEVERITIES, SEVERITY_ORDER, type Severity } from "../lib/catalog";
+
+type UncatalogedReview = {
+  id: number;
+  groupId: string;
+  groupName: string;
+  errors: string[];
+  resolve: () => void;
+};
 
 interface AutoSyncContextValue {
   enabled: boolean;
@@ -17,15 +27,92 @@ interface AutoSyncContextValue {
   clearQueue: () => void;
   isElectron: boolean;
   openAuditModal: (index?: number) => void;
+  requestCatalogReview: (groupId: string, groupName: string, errors: string[]) => Promise<void>;
 }
 
 const AutoSyncContext = createContext<AutoSyncContextValue | null>(null);
 
 export function AutoSyncProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const [catalogReview, setCatalogReview] = useState<UncatalogedReview | null>(null);
+  const [selectedCatalogErrors, setSelectedCatalogErrors] = useState<string[]>([]);
+  const [catalogSeverities, setCatalogSeverities] = useState<Record<string, Severity>>({});
+  const [isSavingCatalog, setIsSavingCatalog] = useState(false);
+  const [catalogReviewError, setCatalogReviewError] = useState("");
+  const catalogReviewRef = useRef<UncatalogedReview | null>(null);
+  const catalogReviewQueueRef = useRef<UncatalogedReview[]>([]);
+  const catalogReviewIdRef = useRef(0);
+
+  const showCatalogReview = (request: UncatalogedReview | null) => {
+    catalogReviewRef.current = request;
+    setCatalogReview(request);
+    setSelectedCatalogErrors(request?.errors ?? []);
+    setCatalogSeverities(Object.fromEntries((request?.errors ?? []).map((error) => [error, "MODERADO"])));
+    setCatalogReviewError("");
+  };
+
+  const requestCatalogReview = (groupId: string, groupName: string, errors: string[]) => {
+    const uncataloged = [...new Set(errors)].filter((description) => !classify(description, undefined, groupId).cataloged);
+    if (uncataloged.length === 0) return Promise.resolve();
+
+    return new Promise<void>((resolve) => {
+      const request: UncatalogedReview = {
+        id: ++catalogReviewIdRef.current,
+        groupId,
+        groupName,
+        errors: uncataloged,
+        resolve,
+      };
+      if (catalogReviewRef.current) {
+        catalogReviewQueueRef.current.push(request);
+      } else {
+        showCatalogReview(request);
+      }
+    });
+  };
+
+  const finishCatalogReview = () => {
+    catalogReviewRef.current?.resolve();
+    showCatalogReview(catalogReviewQueueRef.current.shift() ?? null);
+  };
+
+  const continueWithoutCataloging = () => {
+    if (!isSavingCatalog) finishCatalogReview();
+  };
+
+  const addCatalogEntriesAndContinue = async () => {
+    if (!catalogReview || isSavingCatalog) return;
+    const selected = catalogReview.errors.filter((error) => selectedCatalogErrors.includes(error));
+    if (selected.length === 0) {
+      finishCatalogReview();
+      return;
+    }
+
+    setIsSavingCatalog(true);
+    setCatalogReviewError("");
+    try {
+      const config = await loadCatalog(true, catalogReview.groupId);
+      const existing = new Set(config.entries.map((entry) => normalize(entry.name)));
+      const entries = selected
+        .filter((description) => !existing.has(normalize(description)))
+        .map((name) => ({ name, severity: catalogSeverities[name] || "MODERADO" }));
+      if (entries.length > 0) {
+        await saveCatalog({ ...config, entries: [...config.entries, ...entries] }, user?.email || "", catalogReview.groupId);
+      }
+      finishCatalogReview();
+    } catch (error) {
+      setCatalogReviewError(error instanceof Error ? error.message : "No se pudo actualizar el catálogo.");
+    } finally {
+      setIsSavingCatalog(false);
+    }
+  };
+
+  useEscapeKey(Boolean(catalogReview) && !isSavingCatalog, continueWithoutCataloging);
+
   const autoSync = useAutoSync({
     userEmail: user?.email || "",
     userName: user?.displayName || user?.email || "",
+    onUncatalogedErrors: requestCatalogReview,
   });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -68,6 +155,7 @@ export function AutoSyncProvider({ children }: { children: React.ReactNode }) {
     clearQueue: autoSync.clearQueue,
     isElectron: autoSync.isElectron,
     openAuditModal,
+    requestCatalogReview,
   };
 
   return (
@@ -173,6 +261,65 @@ export function AutoSyncProvider({ children }: { children: React.ReactNode }) {
                 </button>
               </div>
             </div>
+          </section>
+        </div>
+      )}
+      {catalogReview && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+          onClick={continueWithoutCataloging}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="uncataloged-errors-title"
+            onClick={(event) => event.stopPropagation()}
+            className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+          >
+            <header className="border-b border-slate-200 px-6 py-5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Revisión del catálogo</p>
+              <h2 id="uncataloged-errors-title" className="mt-1 text-lg font-bold text-slate-900">Incidencias nuevas detectadas</h2>
+              <p className="mt-1 text-sm leading-5 text-slate-600">
+                Estas incidencias no están en el catálogo de {catalogReview.groupName}. Selecciona cuáles agregar y asigna su severidad; las omitidas conservarán la clasificación predeterminada.
+              </p>
+            </header>
+
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+              {catalogReview.errors.map((error) => (
+                <div key={error} className="grid grid-cols-[auto_minmax(0,1fr)_140px] items-center gap-3 rounded-lg border border-slate-200 p-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedCatalogErrors.includes(error)}
+                    disabled={isSavingCatalog}
+                    onChange={(event) => setSelectedCatalogErrors((previous) => event.target.checked ? [...previous, error] : previous.filter((item) => item !== error))}
+                    aria-label={`Agregar ${error} al catálogo`}
+                    className="h-4 w-4 accent-indigo-600"
+                  />
+                  <span className="min-w-0 text-sm font-medium text-slate-800">{error}</span>
+                  <select
+                    value={catalogSeverities[error] || "MODERADO"}
+                    disabled={!selectedCatalogErrors.includes(error) || isSavingCatalog}
+                    onChange={(event) => setCatalogSeverities((previous) => ({ ...previous, [error]: event.target.value as Severity }))}
+                    aria-label={`Severidad para ${error}`}
+                    className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    {SEVERITY_ORDER.map((severity) => (
+                      <option key={severity} value={severity}>{SEVERITIES[severity].label}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+              {catalogReviewError && <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{catalogReviewError}</p>}
+            </div>
+
+            <footer className="flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4">
+              <button type="button" onClick={continueWithoutCataloging} disabled={isSavingCatalog} className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50">
+                Continuar sin agregar
+              </button>
+              <button type="button" onClick={addCatalogEntriesAndContinue} disabled={isSavingCatalog} className="rounded-lg bg-indigo-700 px-3.5 py-2 text-sm font-semibold text-white hover:bg-indigo-800 disabled:opacity-50">
+                {isSavingCatalog ? "Guardando…" : `Agregar seleccionadas (${selectedCatalogErrors.length})`}
+              </button>
+            </footer>
           </section>
         </div>
       )}

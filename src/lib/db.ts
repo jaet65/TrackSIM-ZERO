@@ -78,6 +78,24 @@ function evaluationId(phase: number, fileName: string, groupId?: string) {
 }
 
 export type Instructor = { name: string; email: string };
+export type SaveEvaluationOptions = { notify?: boolean };
+
+let evaluationBatchDepth = 0;
+
+export function beginEvaluationBatch() {
+  evaluationBatchDepth++;
+  if (evaluationBatchDepth === 1 && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("tracksim:evaluations-batch-start"));
+  }
+}
+
+export function endEvaluationBatch() {
+  if (evaluationBatchDepth === 0) return;
+  evaluationBatchDepth--;
+  if (evaluationBatchDepth === 0 && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("tracksim:evaluations-batch-end"));
+  }
+}
 
 export async function saveEvaluation(
   phase: number,
@@ -85,6 +103,7 @@ export async function saveEvaluation(
   r: ParsedReport,
   instructor: Instructor,
   groupId?: string,
+  options: SaveEvaluationOptions = {},
 ): Promise<"saved" | "duplicate"> {
   // 1. Verificación por nombre de archivo / ID
   const legacyRef = doc(evaluations(), evaluationId(phase, fileName));
@@ -108,7 +127,7 @@ export async function saveEvaluation(
       ? query(evaluations(), where("groupId", "==", groupId), where("driverId", "==", dSlug), where("date", "==", r.date))
       : query(evaluations(), where("driverId", "==", dSlug), where("date", "==", r.date));
     
-    const duplicateSnap = await safeGetDocs(duplicateContentQ);
+    const duplicateSnap = await safeGetDocs(duplicateContentQ, 2500, { revalidate: options.notify !== false });
     const isSameExercise = duplicateSnap.docs.some((d) => {
       const data = d.data() as EvaluationDoc;
       return exerciseKey(data.exercise || data.unit) === exKeyVal;
@@ -158,10 +177,8 @@ export async function saveEvaluation(
   }
 
   await fastWrite(setDoc(ref, data), 2000);
-  invalidateEvaluationsMemoryCache();
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("tracksim:evaluations-updated"));
-  }
+  if (options.notify === false) invalidateEvaluationsMemoryCache();
+  else notifyEvaluationsUpdated();
   return "saved";
 }
 
@@ -527,6 +544,13 @@ let inMemoryEvaluationsCache: { key: string; docs: EvaluationView[]; timestamp: 
 
 export function invalidateEvaluationsMemoryCache() {
   inMemoryEvaluationsCache = null;
+}
+
+export function notifyEvaluationsUpdated() {
+  invalidateEvaluationsMemoryCache();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("tracksim:evaluations-updated"));
+  }
 }
 
 if (typeof window !== "undefined") {

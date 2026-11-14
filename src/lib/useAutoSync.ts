@@ -6,7 +6,7 @@ import {
   extractNewSimulatorSessions,
 } from "./streamdbClient";
 import { parseReport, type ParsedReport } from "./parse";
-import { saveEvaluation, type EvaluationDoc } from "./db";
+import { notifyEvaluationsUpdated, saveEvaluation, type EvaluationDoc } from "./db";
 import { getDb, safeGetDocs } from "./firebase";
 import { collection, query, where } from "firebase/firestore";
 import { loadCatalog } from "./catalogStore";
@@ -72,10 +72,11 @@ export interface UseAutoSyncOptions {
   userName?: string;
   pollIntervalMs?: number; // default 10000 (10s)
   onNewSessionAudited?: (item: PendingAuditItem) => void;
+  onUncatalogedErrors?: (groupId: string, groupName: string, errors: string[]) => Promise<void>;
 }
 
 export function useAutoSync(options: UseAutoSyncOptions = {}) {
-  const { userEmail = "", userName = "", pollIntervalMs = 10000, onNewSessionAudited } = options;
+  const { userEmail = "", userName = "", pollIntervalMs = 10000, onNewSessionAudited, onUncatalogedErrors } = options;
   const [enabled, setEnabled] = useState<boolean>(() => isAutoSyncActive());
   const [isPolling, setIsPolling] = useState(false);
   const [queue, setQueue] = useState<PendingAuditItem[]>(() => loadPendingQueue());
@@ -86,9 +87,13 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
 
   const isPollingRef = useRef(false);
   const queueRef = useRef(queue);
+  const onUncatalogedErrorsRef = useRef(onUncatalogedErrors);
   useEffect(() => {
     queueRef.current = queue;
   }, [queue]);
+  useEffect(() => {
+    onUncatalogedErrorsRef.current = onUncatalogedErrors;
+  }, [onUncatalogedErrors]);
 
   // Actualizar estado del grupo activo
   const checkGroup = async () => {
@@ -225,6 +230,7 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
 
           let highestId = lastId;
           const newItems: PendingAuditItem[] = [];
+          const reviewedUncataloged = new Set<string>();
 
           for (const s of res.sessions) {
             if (s.id > highestId) highestId = s.id;
@@ -232,7 +238,14 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
 
             try {
               const activeGrpId = currentGroup.id;
-              const report = parseReport(s.csv, activeGrpId);
+              let report = parseReport(s.csv, activeGrpId);
+              const uncatalogedToReview = report.uncataloged.filter((description) => !reviewedUncataloged.has(description));
+              if (uncatalogedToReview.length > 0) {
+                uncatalogedToReview.forEach((description) => reviewedUncataloged.add(description));
+                await onUncatalogedErrorsRef.current?.(activeGrpId, currentGroup.name, uncatalogedToReview);
+                await loadCatalog(true, activeGrpId);
+                report = parseReport(s.csv, activeGrpId);
+              }
               const phase = phaseForExercise(report.exercise, activeGrpId) || 1;
 
               await saveEvaluation(
@@ -243,7 +256,8 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
                   name: userName || "Auto-Sync Lander",
                   email: userEmail,
                 },
-                activeGrpId
+                activeGrpId,
+                { notify: false }
               );
 
               // Identificar accidentes críticos detectados según el entorno del ejercicio configurado
@@ -305,7 +319,7 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
             setRecentNotification(latest);
             if (onNewSessionAudited) onNewSessionAudited(latest);
             // Notificar a la aplicación para refrescar vistas en tiempo real (Home, Driver, etc.)
-            window.dispatchEvent(new CustomEvent("tracksim:evaluations-updated"));
+            notifyEvaluationsUpdated();
           }
         }
       } catch (err) {

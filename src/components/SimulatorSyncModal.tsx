@@ -8,12 +8,13 @@ import {
   type StreamDBStatus,
 } from "../lib/streamdbClient";
 import { parseReport } from "../lib/parse";
-import { saveEvaluation } from "../lib/db";
+import { beginEvaluationBatch, endEvaluationBatch, notifyEvaluationsUpdated, saveEvaluation } from "../lib/db";
 import { loadCatalog } from "../lib/catalogStore";
 import { loadExercises, phaseForExercise } from "../lib/exercises";
 import { getActiveGroupId, getGroup, type GroupDoc } from "../lib/groups";
 import { useAuth } from "./AuthProvider";
 import { useEscapeKey } from "../lib/useEscapeKey";
+import { useAutoSyncContext } from "./AutoSyncContext";
 
 export default function SimulatorSyncModal({
   isOpen,
@@ -25,6 +26,7 @@ export default function SimulatorSyncModal({
   onSyncComplete: () => void;
 }) {
   const { user } = useAuth();
+  const autoSync = useAutoSyncContext();
   const today = formatLocalDateInput(new Date());
 
   const [status, setStatus] = useState<StreamDBStatus | null>(null);
@@ -154,7 +156,9 @@ export default function SimulatorSyncModal({
       let saved = 0;
       let duplicate = 0;
       let failed = 0;
-      const logs: string[] = [];
+      const logsBySession = new Map<number, string>();
+      const pendingSessions: Array<{ index: number; session: (typeof sessions)[number]; csv: string; phase: number }> = [];
+      const uncatalogedErrors = new Set<string>();
 
       for (let i = 0; i < sessions.length; i++) {
         const s = sessions[i];
@@ -166,7 +170,7 @@ export default function SimulatorSyncModal({
 
         if (s.error || !s.csv) {
           failed++;
-          logs.push(`❌ Sesión #${s.id} (${s.driver}): Error de exportación - ${s.error}`);
+          logsBySession.set(i, `❌ Sesión #${s.id} (${s.driver}): Error de exportación - ${s.error}`);
           continue;
         }
 
@@ -176,34 +180,65 @@ export default function SimulatorSyncModal({
           const phase = phaseForExercise(report.exercise, activeGrpId);
           if (!phase) {
             failed++;
-            logs.push(`⚠️ Sesión #${s.id} (${report.driver}): Ejercicio «${report.exercise}» no catalogado en el grupo «${activeGroup.name}».`);
+            logsBySession.set(i, `⚠️ Sesión #${s.id} (${report.driver}): Ejercicio «${report.exercise}» no catalogado en el grupo «${activeGroup.name}».`);
             continue;
           }
+          report.uncataloged.forEach((description) => uncatalogedErrors.add(description));
+          pendingSessions.push({ index: i, session: s, csv: s.csv, phase });
+        } catch (procErr) {
+          failed++;
+          logsBySession.set(i, `❌ Error procesando ${s.filename}: ${(procErr as Error).message}`);
+        }
+      }
 
+      if (uncatalogedErrors.size > 0) {
+        setProgress({ current: sessions.length, total: sessions.length, detail: "Revisando incidencias sin catalogar…" });
+        const activeGrpId = activeGroup.id || getActiveGroupId();
+        if (activeGrpId) {
+          await autoSync?.requestCatalogReview(activeGrpId, activeGroup.name, [...uncatalogedErrors]);
+          await loadCatalog(true, activeGrpId);
+        }
+      }
+
+      if (pendingSessions.length > 0) beginEvaluationBatch();
+      for (let i = 0; i < pendingSessions.length; i++) {
+        const { index, session, csv, phase } = pendingSessions[i];
+        setProgress({
+          current: i + 1,
+          total: pendingSessions.length,
+          detail: `Guardando (${i + 1}/${pendingSessions.length}): ${session.driver || `Sesión ${session.id}`}`,
+        });
+        try {
+          const activeGrpId = activeGroup.id || getActiveGroupId() || undefined;
+          const report = parseReport(csv, activeGrpId);
           const saveStatus = await saveEvaluation(
             phase,
-            s.filename,
+            session.filename,
             report,
             {
               name: user?.displayName || user?.email || "Sincronizador Lander",
               email: user?.email || "",
             },
-            activeGrpId
+            activeGrpId,
+            { notify: false }
           );
 
           if (saveStatus === "saved") {
             saved++;
-            logs.push(`✅ [Fase ${phase}] ${report.driver} - ${report.exercise} (Calif: ${report.score})`);
+            logsBySession.set(index, `✅ [Fase ${phase}] ${report.driver} - ${report.exercise} (Calif: ${report.score})`);
           } else {
             duplicate++;
-            logs.push(`ℹ️ ${s.filename} ya estaba registrado en Firestore.`);
+            logsBySession.set(index, `ℹ️ ${session.filename} ya estaba registrado en Firestore.`);
           }
         } catch (procErr) {
           failed++;
-          logs.push(`❌ Error procesando ${s.filename}: ${(procErr as Error).message}`);
+          logsBySession.set(index, `❌ Error procesando ${session.filename}: ${(procErr as Error).message}`);
         }
       }
 
+      const logs = [...logsBySession.entries()].sort(([indexA], [indexB]) => indexA - indexB).map(([, message]) => message);
+      if (saved > 0) notifyEvaluationsUpdated();
+      if (pendingSessions.length > 0) endEvaluationBatch();
       setSyncSummary({ saved, duplicate, failed });
       setSyncLogs(logs);
       onSyncComplete();
