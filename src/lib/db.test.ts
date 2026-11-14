@@ -3,6 +3,7 @@ import {
   adjustScoreForCritical,
   buildCertificateRecipients,
   dictamen,
+  distributeCriticalPenalty,
   driverSlug,
   withCurrentScore,
   type EvaluationDoc,
@@ -45,6 +46,15 @@ describe("evaluation helpers", () => {
     // A partir de la 7ª falta crítica se va automáticamente a 0:
     expect(adjustScoreForCritical(10, 7)).toBe(0);
     expect(adjustScoreForCritical(8, 8)).toBe(0);
+  });
+
+  it("distributes accumulated critical penalties across exercise scores", () => {
+    const scores = distributeCriticalPenalty([8, 8, 8], 3, 2);
+
+    expect(scores.reduce((total, score) => total + score, 0) / 3).toBe(
+      adjustScoreForCritical(8, 2)
+    );
+    expect(distributeCriticalPenalty([8, 8, 8], 3, 1)).toEqual([8, 8, 8]);
   });
 
   it("recalculates current scores and detects legacy slippery-road marks", () => {

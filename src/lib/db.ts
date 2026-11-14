@@ -242,6 +242,22 @@ export function adjustScoreForCritical(score: number, criticalErrors: number): n
   return score;
 }
 
+export function distributeCriticalPenalty(
+  scores: number[],
+  expectedExercises: number,
+  criticalErrors: number,
+): number[] {
+  const totalScore = scores.reduce((total, score) => total + score, 0);
+  if (expectedExercises <= 0 || totalScore <= 0) return scores;
+
+  const rawAverage = Math.round((totalScore / expectedExercises) * 10) / 10;
+  const adjustedAverage = adjustScoreForCritical(rawAverage, criticalErrors);
+  if (adjustedAverage === rawAverage) return scores;
+
+  const factor = adjustedAverage / rawAverage;
+  return scores.map((score) => score * factor);
+}
+
 // Calificación calculada desde las marcas y telemetría, o respetando la congelada si el grupo está cerrado
 export type EvaluationView = EvaluationDoc & {
   docId?: string;
@@ -707,48 +723,143 @@ export async function listReportExercises(
   onlyPhase?: number
 ): Promise<ReportExerciseSummary[]> {
   const docs = await fetchEvaluations(undefined, undefined, dateFilter);
+  const driversByGroup = new Map<string, Map<string, EvaluationView[]>>();
+  for (const evaluation of docs) {
+    const groupKey = evaluation.groupId || dateFilter?.groupId || "";
+    let drivers = driversByGroup.get(groupKey);
+    if (!drivers) {
+      drivers = new Map<string, EvaluationView[]>();
+      driversByGroup.set(groupKey, drivers);
+    }
+    const driverEvals = drivers.get(evaluation.driverId) ?? [];
+    driverEvals.push(evaluation);
+    drivers.set(evaluation.driverId, driverEvals);
+  }
+
   const exerciseMap = new Map<
     string,
-    ReportExerciseSummary & { driverIds: Set<string>; scoreTotal: number; evaluationCount: number }
+    ReportExerciseSummary & { scoreTotal: number; evaluationCount: number }
   >();
 
-  for (const evaluation of docs) {
-    const evaluationGroupId = evaluation.groupId || dateFilter?.groupId;
-    const phase = evaluationGroupId && getGroupType(evaluationGroupId) === "curso"
-      ? 0
-      : evaluation.phase;
-    if (onlyPhase !== undefined && phase !== onlyPhase) continue;
-    const name = (evaluation.unit || evaluation.exercise || "").trim();
-    if (!name) continue;
+  for (const [groupKey, driverEvalsMap] of driversByGroup) {
+    const groupId = groupKey || dateFilter?.groupId || null;
+    const exercisesMap = getExercises(groupId);
+    const isCurso = getGroupType(groupId) === "curso";
+    const expectedExercises = isCurso
+      ? Object.values(exercisesMap).flat().map((name) => ({ phase: 0, name }))
+      : Object.entries(exercisesMap).flatMap(([phase, names]) =>
+          names.map((name) => ({ phase: Number(phase), name }))
+        );
+    const groupDrivers = [...driverEvalsMap.entries()];
+    const reportExercises = expectedExercises.length > 0
+      ? expectedExercises
+      : [...new Map(groupDrivers.flatMap(([, driverEvals]) => {
+          const phases = summarizeDriverPhases(
+            driverEvals[0].driverId,
+            driverEvals[0].driverName,
+            driverEvals,
+            groupId,
+            onlyPhase,
+          );
+          return phases.flatMap((phase) => (phase.countedEvals ?? []).map((evaluation) => ({
+            phase: isCurso ? 0 : phase.phase,
+            name: evaluation.exercise || evaluation.unit,
+          })));
+        }).map((exercise) => [`${exercise.phase}:${exerciseKey(exercise.name)}`, exercise] as const)).values()];
+    const exerciseRows = new Map<string, {
+      phase: number;
+      name: string;
+      description?: string;
+      isUnevaluated: boolean;
+      scoreTotal: number;
+    }>();
 
-    const key = `${phase}:${exerciseKey(name)}`;
-    const uneval = isExerciseUnevaluated(name, evaluationGroupId);
-    let exercise = exerciseMap.get(key);
-    if (!exercise) {
-      exercise = {
-        phase,
-        name,
-        description: getExerciseDescription(name, evaluationGroupId),
-        drivers: 0,
-        driverIds: new Set<string>(),
-        avgScore: 0,
-        scoreTotal: 0,
-        evaluationCount: 0,
-        isUnevaluated: uneval,
-      };
-      exerciseMap.set(key, exercise);
+    for (const expected of reportExercises) {
+      if (onlyPhase !== undefined && expected.phase !== onlyPhase) continue;
+      const key = `${expected.phase}:${exerciseKey(expected.name)}`;
+      if (!exerciseRows.has(key)) {
+        exerciseRows.set(key, {
+          ...expected,
+          description: getExerciseDescription(expected.name, groupId),
+          isUnevaluated: isExerciseUnevaluated(expected.name, groupId),
+          scoreTotal: 0,
+        });
+      }
     }
-    exercise.driverIds.add(evaluation.driverId);
-    if (!uneval) {
-      exercise.scoreTotal += evaluation.score;
-      exercise.evaluationCount++;
+
+    for (const [, driverEvals] of groupDrivers) {
+      const phases = summarizeDriverPhases(
+        driverEvals[0].driverId,
+        driverEvals[0].driverName,
+        driverEvals,
+        groupId,
+        onlyPhase,
+      );
+      const countedEvals = phases.flatMap((phase) => phase.countedEvals ?? []);
+      const criticalErrors = phases.reduce((total, phase) => total + phase.criticalErrors, 0);
+      const evaluatedExpected = phases.reduce((total, phase) => {
+        const configured = phase.phase === 0
+          ? Object.values(exercisesMap).flat()
+          : exercisesMap[String(phase.phase)] ?? [];
+        return total + (configured.length > 0
+          ? configured.filter((name) => !isExerciseUnevaluated(name, groupId)).length
+          : (phase.countedEvals ?? []).filter(
+              (evaluation) => !isExerciseUnevaluated(evaluation.exercise || evaluation.unit, groupId)
+            ).length);
+      }, 0);
+      const adjustedScores = distributeCriticalPenalty(
+        phases.flatMap((phase) => (phase.countedEvals ?? [])
+          .filter((evaluation) => !isExerciseUnevaluated(evaluation.exercise || evaluation.unit, groupId))
+          .map((evaluation) => evaluation.score)),
+        evaluatedExpected,
+        criticalErrors,
+      );
+      const scoreByEvaluation = new Map<EvaluationView, number>();
+      let adjustedScoreIndex = 0;
+      for (const evaluation of countedEvals) {
+        if (isExerciseUnevaluated(evaluation.exercise || evaluation.unit, groupId)) continue;
+        scoreByEvaluation.set(evaluation, adjustedScores[adjustedScoreIndex] ?? evaluation.score);
+        adjustedScoreIndex++;
+      }
+
+      const unmatched = [...countedEvals];
+      for (const row of exerciseRows.values()) {
+        if (row.isUnevaluated) continue;
+        const index = unmatched.findIndex((evaluation) =>
+          evaluation.phase === row.phase &&
+          (exerciseKey(evaluation.exercise || evaluation.unit) === exerciseKey(row.name) ||
+            areExercisesEquivalent(evaluation.exercise || evaluation.unit, row.name))
+        );
+        if (index < 0) continue;
+        const [evaluation] = unmatched.splice(index, 1);
+        row.scoreTotal += scoreByEvaluation.get(evaluation) ?? evaluation.score;
+      }
+    }
+
+    for (const row of exerciseRows.values()) {
+      const key = `${row.phase}:${exerciseKey(row.name)}`;
+      const existing = exerciseMap.get(key);
+      if (existing) {
+        existing.scoreTotal += row.scoreTotal;
+        existing.drivers += groupDrivers.length;
+      } else {
+        exerciseMap.set(key, {
+          phase: row.phase,
+          name: row.name,
+          description: row.description,
+          drivers: groupDrivers.length,
+          avgScore: 0,
+          isUnevaluated: row.isUnevaluated,
+          scoreTotal: row.scoreTotal,
+          evaluationCount: groupDrivers.length,
+        });
+      }
     }
   }
 
   return [...exerciseMap.values()]
-    .map(({ driverIds, scoreTotal, evaluationCount, ...exercise }) => ({
+    .map(({ scoreTotal, evaluationCount, ...exercise }) => ({
       ...exercise,
-      drivers: driverIds.size,
       avgScore: evaluationCount > 0 ? Math.round((scoreTotal / evaluationCount) * 10) / 10 : 0,
     }))
     .sort((a, b) => a.phase - b.phase || a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
