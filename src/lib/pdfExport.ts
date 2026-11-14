@@ -84,6 +84,10 @@ function drawFooter(doc: jsPDF, pageNum: number, totalPages: number, folio?: str
 // -------------------------------------------------------------
 // 1. REPORTE GLOBAL (Tabla de conductores con filtros activos)
 // -------------------------------------------------------------
+export function sortGlobalReportRowsByScore<T extends { avgScore: number }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => b.avgScore - a.avgScore);
+}
+
 export function generateGlobalReportPdf(
   rows: DisplayRow[],
   filterSubtitle: string,
@@ -279,7 +283,7 @@ export function generateGlobalReportPdf(
   // -------------------------------------------------------------
   const rowHeight = 8.5;
 
-  rows.forEach((r, idx) => {
+  sortGlobalReportRowsByScore(rows).forEach((r, idx) => {
     if (y > 272) {
       doc.addPage();
       y = drawHeader(doc, "Reporte Global de Evaluaciones (Cont.)", filterSubtitle);
@@ -2000,6 +2004,15 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
 // -------------------------------------------------------------
 // 3. DESCARGA DIRECTA DEL EXPEDIENTE INDIVIDUAL EN PDF
 // -------------------------------------------------------------
+export function driverPdfFilenamePart(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s-]/gi, "")
+    .trim()
+    .replace(/\s+/g, "_");
+}
+
 export async function downloadDriverPdf(driverId: string, driverName: string, filter?: DateFilter): Promise<void> {
   const bytes = await generateDriverReportPdf(driverId, filter);
   if (!bytes) return;
@@ -2008,7 +2021,7 @@ export async function downloadDriverPdf(driverId: string, driverName: string, fi
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  const cleanName = driverName.replace(/[^\w\s-]/gi, "").trim().replace(/\s+/g, "_");
+  const cleanName = driverPdfFilenamePart(driverName);
   a.download = `${cleanName}_expediente.pdf`;
   document.body.appendChild(a);
   a.click();
@@ -2057,7 +2070,7 @@ export async function downloadBulkReportsZip(
     try {
       const driverPdfBytes = await generateDriverReportPdf(row.driverId, filter);
       if (driverPdfBytes && expedientesFolder) {
-        const cleanName = row.driver.replace(/[^\w\s-]/gi, "").trim().replace(/\s+/g, "_");
+        const cleanName = driverPdfFilenamePart(row.driver);
         expedientesFolder.file(`${cleanName}_expediente.pdf`, driverPdfBytes);
       }
     } catch (err) {

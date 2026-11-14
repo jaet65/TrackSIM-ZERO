@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DriverModal from "../components/DriverModal";
 import { useAuth } from "../components/AuthProvider";
-import { overallSummaries, type DriverOverallSummary } from "../lib/db";
+import {
+  listReportExercises,
+  overallSummaries,
+  type DriverOverallSummary,
+} from "../lib/db";
 import {
   listGroups,
   retryCloudExport,
   type GroupDoc,
 } from "../lib/groups";
+import { downloadBulkReportsZip } from "../lib/pdfExport";
 
 export default function History() {
   const { user } = useAuth();
@@ -18,6 +23,8 @@ export default function History() {
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [loadingDrivers, setLoadingDrivers] = useState(false);
   const [retryingGroupId, setRetryingGroupId] = useState<string | null>(null);
+  const [exportingGroupId, setExportingGroupId] = useState<string | null>(null);
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -126,6 +133,64 @@ export default function History() {
     }
   };
 
+  const handleExportZip = async (group: GroupDoc) => {
+    if (exportingGroupId) return;
+    setExportingGroupId(group.id);
+    setExportProgress(null);
+    setError("");
+    setSuccess("");
+    try {
+      const filter = { groupId: group.id, includeClosed: true };
+      const summaries = await overallSummaries(filter);
+      const rows = summaries.map((driver) => ({
+        driverId: driver.driverId,
+        groupId: driver.groupId,
+        driver: driver.driver,
+        badgeText: `${driver.phasesEvaluated} de ${driver.expectedPhases} fases`,
+        exercisesText: `${driver.totalExercises}/${driver.expectedExercises} ejercicio(s)`,
+        progressValue: driver.totalExercises,
+        isIncomplete: driver.totalExercises < driver.expectedExercises,
+        errors: driver.totalErrors,
+        criticalErrors: driver.criticalErrors,
+        avgScore: driver.avgScore,
+        verdict: driver.verdict,
+        color: driver.color,
+        lastDate: driver.lastDate,
+        lastCreatedAt: driver.lastCreatedAt,
+      }));
+      if (rows.length === 0) {
+        setError(`El grupo «${group.name}» no tiene evaluaciones para exportar.`);
+        return;
+      }
+
+      const total = rows.length;
+      const promedio = Math.round(
+        (rows.reduce((sum, row) => sum + row.avgScore, 0) / total) * 10,
+      ) / 10;
+      const aptos = rows.filter(
+        (row) => row.verdict.toUpperCase().includes("APTO") && !row.verdict.toUpperCase().includes("NO"),
+      ).length;
+      const noAptos = rows.filter((row) => row.verdict.toUpperCase().includes("NO APTO")).length;
+      const exercises = await listReportExercises(filter);
+
+      await downloadBulkReportsZip(
+        rows,
+        `Grupo: ${group.name} · Promedio General (Todas las fases) · Histórico completo`,
+        { total, promedio, aptos, noAptos },
+        (current, totalRows) => setExportProgress({ current, total: totalRows }),
+        filter,
+        group.name,
+        exercises,
+      );
+      setSuccess(`ZIP de expedientes de «${group.name}» descargado.`);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "No se pudo generar el ZIP de expedientes.");
+    } finally {
+      setExportingGroupId(null);
+      setExportProgress(null);
+    }
+  };
+
   return (
     <main className="w-full space-y-6 px-4 py-8 sm:px-8 xl:px-12">
       <header>
@@ -206,6 +271,17 @@ export default function History() {
                           className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
                         >
                           {selectedGroupId === group.id ? "Ocultar conductores" : "Ver conductores"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={exportingGroupId !== null}
+                          onClick={() => void handleExportZip(group)}
+                          className="rounded-lg border border-indigo-200 bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Descargar reporte global, resumen ejecutivo, expedientes y diplomas del grupo"
+                        >
+                          {exportingGroupId === group.id
+                            ? `Generando ZIP${exportProgress ? ` (${exportProgress.current}/${exportProgress.total})` : "…"}`
+                            : "Descargar ZIP"}
                         </button>
                         {group.cloudExportStatus !== "pending" && (
                           <button
