@@ -545,6 +545,7 @@ export type DateFilter = {
   startDate?: string; // YYYY-MM-DD
   endDate?: string;   // YYYY-MM-DD
   groupId?: string | null;
+  includeClosed?: boolean;
 };
 
 function matchesDateRange(dateStr: string, filter?: DateFilter): boolean {
@@ -579,19 +580,21 @@ if (typeof window !== "undefined") {
 }
 
 async function fetchEvaluations(field?: "phase" | "driverId", value?: number | string, filter?: DateFilter) {
-  await Promise.all([
+  const [, , groups] = await Promise.all([
     loadCatalog(false, filter?.groupId),
     loadExercises(false, filter?.groupId),
     listGroups(),
   ]);
+  const closedGroupIds = new Set(groups.filter((group) => group.status === "closed").map((group) => group.id));
 
   // Si no se pide un campo específico, podemos usar/poblar la caché en memoria por groupId
   const cacheKey = `g:${filter?.groupId || "ALL"}`;
-  if (!field && inMemoryEvaluationsCache && inMemoryEvaluationsCache.key === cacheKey && (Date.now() - inMemoryEvaluationsCache.timestamp < 30000)) {
+  if (!filter?.includeClosed && !field && inMemoryEvaluationsCache && inMemoryEvaluationsCache.key === cacheKey && (Date.now() - inMemoryEvaluationsCache.timestamp < 30000)) {
     const cached = inMemoryEvaluationsCache.docs;
     return cached.filter((d) => {
       if (!matchesDateRange(d.date, filter)) return false;
       if (filter?.groupId && d.groupId !== filter.groupId) return false;
+      if (!filter?.includeClosed && !filter?.groupId && d.groupId && closedGroupIds.has(d.groupId)) return false;
       return true;
     });
   }
@@ -647,7 +650,7 @@ async function fetchEvaluations(field?: "phase" | "driverId", value?: number | s
     return withCurrentScore(doc, filter?.groupId, id, groupBenchmarks);
   });
 
-  if (!field) {
+  if (!field && !filter?.includeClosed) {
     inMemoryEvaluationsCache = { key: cacheKey, docs, timestamp: Date.now() };
   }
   
@@ -656,6 +659,8 @@ async function fetchEvaluations(field?: "phase" | "driverId", value?: number | s
     // Si se especifica un filtro de grupo:
     if (filter?.groupId) {
       if (d.groupId !== filter.groupId) return false;
+    } else if (!filter?.includeClosed && d.groupId && closedGroupIds.has(d.groupId)) {
+      return false;
     }
     return true;
   });
@@ -1096,9 +1101,16 @@ export async function driverData(driverId: string, filter?: DateFilter): Promise
 
   // Si ya tenemos en memoria las evaluaciones del grupo (cargadas por Home), extraer directamente de RAM en 0 ms
   if (inMemoryEvaluationsCache && inMemoryEvaluationsCache.key === cacheKey) {
+    const closedGroupIds = targetGroupId
+      ? new Set<string>()
+      : new Set((await listGroups()).filter((group) => group.status === "closed").map((group) => group.id));
     const allGroupDocs = inMemoryEvaluationsCache.docs;
     const rawEvals = allGroupDocs
-      .filter((d) => d.driverId === driverId && matchesDateRange(d.date, filter))
+      .filter((d) =>
+        d.driverId === driverId &&
+        matchesDateRange(d.date, filter) &&
+        (!!targetGroupId || !d.groupId || !closedGroupIds.has(d.groupId))
+      )
       .sort((a, b) => a.phase - b.phase || a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
 
     if (rawEvals.length) {

@@ -120,6 +120,21 @@ export default function ProtectedLayout() {
               {isSidebarExpanded && <span>Grupos</span>}
             </NavLink>
             <NavLink
+              to="/historial"
+              title="Historial"
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${isSidebarExpanded ? "" : "justify-center"} ${isActive
+                  ? "border border-indigo-200/60 bg-indigo-50 text-indigo-700 shadow-sm"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                }`
+              }
+            >
+              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m5-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              </svg>
+              {isSidebarExpanded && <span>Historial</span>}
+            </NavLink>
+            <NavLink
               to="/ejercicios"
               title="Ejercicios"
               className={({ isActive }) =>
@@ -130,7 +145,7 @@ export default function ProtectedLayout() {
               }
             >
               <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m5-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4h16v4H4zM5 8v12h14V8M9 12h6m-6 4h6" />
               </svg>
               {isSidebarExpanded && <span>Ejercicios</span>}
             </NavLink>

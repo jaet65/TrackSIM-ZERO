@@ -94,6 +94,7 @@ export default function Home() {
     return getActiveGroupId() || "";
   });
   const [allGroups, setAllGroups] = useState<GroupDoc[]>([]);
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
 
   // Filtro de fechas (Desde / Hasta)
   const [startDate, setStartDate] = useState(
@@ -151,25 +152,45 @@ export default function Home() {
     listGroups()
       .then((list) => {
         setAllGroups(list);
-        setSelectedGroupId((prev) => {
-          if (prev && !list.some((g) => g.id === prev)) {
-            const fallback = getActiveGroupId() && list.some((g) => g.id === getActiveGroupId())
-              ? getActiveGroupId()!
-              : "";
-            saveHomePreferences({ groupId: fallback });
-            return fallback;
-          }
-          return prev;
-        });
+        setGroupsLoaded(true);
       })
       .catch(() => { });
   }, []);
 
-  // Sincronizar el estado del filtro con el param de la URL
+  // Mantener siempre seleccionado un grupo abierto para la evaluación.
+  useEffect(() => {
+    if (!groupsLoaded) return;
+    const openGroups = allGroups.filter((group) => group.status !== "closed");
+    const requestedGroupId = params.get("grupo");
+    const selectedFromUrl = requestedGroupId && requestedGroupId !== "ALL"
+      ? requestedGroupId
+      : "";
+    const nextGroupId =
+      openGroups.find((group) => group.id === selectedFromUrl)?.id ??
+      openGroups.find((group) => group.id === selectedGroupId)?.id ??
+      openGroups.find((group) => group.id === getActiveGroupId())?.id ??
+      openGroups[0]?.id ??
+      "";
+
+    setActiveGroupId(nextGroupId || null);
+    setSelectedGroupId((current) => current === nextGroupId ? current : nextGroupId);
+    saveHomePreferences({ groupId: nextGroupId });
+
+    if (params.get("grupo") !== nextGroupId) {
+      setParams((current) => {
+        const next = new URLSearchParams(current);
+        if (nextGroupId) next.set("grupo", nextGroupId);
+        else next.delete("grupo");
+        return next;
+      }, { replace: true });
+    }
+  }, [allGroups, groupsLoaded, params, selectedGroupId, setParams]);
+
+  // Sincronizar la fase y las fechas desde la URL; el grupo se valida arriba.
   useEffect(() => {
     const fromUrl = params.get("grupo");
-    if (fromUrl !== null) {
-      setSelectedGroupId(fromUrl === "ALL" ? "" : fromUrl);
+    if (fromUrl && fromUrl !== "ALL") {
+      setSelectedGroupId(fromUrl);
     }
   }, [params]);
 
@@ -186,6 +207,17 @@ export default function Home() {
   };
 
   const load = useCallback(() => {
+    if (
+      !groupsLoaded ||
+      !selectedGroupId ||
+      !allGroups.some((group) => group.id === selectedGroupId && group.status !== "closed")
+    ) {
+      setAvailablePhases([]);
+      setRows([]);
+      setLatestEval(null);
+      setError("");
+      return;
+    }
     const filter: DateFilter = {
       startDate: startDate || undefined,
       endDate: endDate || undefined,
@@ -246,12 +278,20 @@ export default function Home() {
         })
         .catch((e: Error) => setError(e.message));
     }
-  }, [selectedPhase, startDate, endDate, selectedGroupId]);
+  }, [allGroups, groupsLoaded, selectedPhase, startDate, endDate, selectedGroupId]);
 
   useEffect(load, [load]);
 
   // Suscripción en tiempo real a la última evaluación para que se actualice de inmediato en pantalla
   useEffect(() => {
+    if (
+      !groupsLoaded ||
+      !selectedGroupId ||
+      !allGroups.some((group) => group.id === selectedGroupId && group.status !== "closed")
+    ) {
+      setLatestEval(null);
+      return;
+    }
     const filter: DateFilter = {
       startDate: startDate || undefined,
       endDate: endDate || undefined,
@@ -278,7 +318,7 @@ export default function Home() {
       window.removeEventListener("tracksim:evaluations-batch-end", resumeSubscription);
       pauseSubscription();
     };
-  }, [selectedGroupId, startDate, endDate]);
+  }, [allGroups, groupsLoaded, selectedGroupId, startDate, endDate]);
 
   // Actualizar la lista en tiempo real cuando AutoSync ingiere una nueva sesión o se audita
   useEffect(() => {
@@ -422,19 +462,15 @@ export default function Home() {
     if (newPhase !== null) next.fase = String(newPhase);
     if (start) next.desde = start;
     if (end) next.hasta = end;
-    if (newGroup) {
-      next.grupo = newGroup;
-    } else if (getActiveGroupId()) {
-      // Si hay un grupo activo pero el usuario eligió explícitamente "Todos los Grupos"
-      next.grupo = "ALL";
-    }
+    const selectedGroup = newGroup || selectedGroupId || getActiveGroupId() || "";
+    if (selectedGroup) next.grupo = selectedGroup;
     setParams(next);
 
     saveHomePreferences({
       selectedPhase: newPhase,
       startDate: start,
       endDate: end,
-      groupId: newGroup,
+      groupId: selectedGroup,
     });
   };
 
@@ -472,7 +508,7 @@ export default function Home() {
       const phaseTitle = selectedPhase === null
         ? "Promedio General (Todas las fases)"
         : `Fase ${selectedPhase}: ${getPhaseName(selectedPhase, selectedGroupId || null)}`;
-      const groupTitle = currentGroupObj ? `Grupo: ${currentGroupObj.name}` : "Todos los grupos";
+      const groupTitle = currentGroupObj ? `Grupo: ${currentGroupObj.name}` : "Sin grupo activo";
       const dateSubtitle = hasDateFilter
         ? (startDate && endDate ? `${startDate} al ${endDate}` : startDate ? `Desde ${startDate}` : `Hasta ${endDate}`)
         : "Histórico completo";
@@ -492,7 +528,7 @@ export default function Home() {
           setExportProgress({ current, total, name });
         },
         dateFilter,
-        currentGroupObj?.name || "Todos los Grupos",
+        currentGroupObj?.name || "Sin grupo activo",
         reportExercises
       );
     } catch (err: any) {
@@ -517,7 +553,7 @@ export default function Home() {
     const phaseTitle = selectedPhase === null
       ? "Promedio General (Todas las fases)"
       : `Fase ${selectedPhase}: ${getPhaseName(selectedPhase, selectedGroupId || null)}`;
-    const groupTitle = currentGroupObj ? currentGroupObj.name : "Todos los Grupos";
+    const groupTitle = currentGroupObj ? currentGroupObj.name : "Sin grupo activo";
     const dateSubtitle = hasDateFilter
       ? (startDate && endDate ? `${startDate} al ${endDate}` : startDate ? `Desde ${startDate}` : `Hasta ${endDate}`)
       : "Histórico completo";
@@ -637,16 +673,20 @@ export default function Home() {
               value={selectedGroupId}
               onChange={(e) => {
                 const val = e.target.value;
+                if (!val) return;
                 setSelectedGroupId(val);
-                setActiveGroupId(val || null);
+                setActiveGroupId(val);
                 updateUrl(selectedPhase, startDate, endDate, val);
               }}
+              disabled={!allGroups.some((group) => group.status !== "closed")}
               className="rounded-lg border border-slate-300 bg-slate-50/50 px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-2xs focus:border-indigo-600 focus:bg-white focus:outline-none transition cursor-pointer"
             >
-              <option value="">🌐 Todos los Grupos</option>
-              {allGroups.map((g) => (
+              {!allGroups.some((group) => group.status !== "closed") && (
+                <option value="">Crea un grupo para comenzar</option>
+              )}
+              {allGroups.filter((group) => group.status !== "closed").map((g) => (
                 <option key={g.id} value={g.id}>
-                  {g.status === "closed" ? "🔒" : "🟢"} {g.name}
+                  🟢 {g.name}
                 </option>
               ))}
             </select>
@@ -733,19 +773,25 @@ export default function Home() {
       </div>
 
       {/* Carga de Archivos */}
-      <UploadForm
-        selectedGroupId={selectedGroupId}
-        onDone={() => {
-          listGroups().then(setAllGroups).catch(() => { });
-          const activeId = getActiveGroupId();
-          if (activeId && activeId !== selectedGroupId) {
-            setSelectedGroupId(activeId);
-            updateUrl(selectedPhase, startDate, endDate, activeId);
-          } else {
-            load();
-          }
-        }}
-      />
+      {selectedGroupId ? (
+        <UploadForm
+          selectedGroupId={selectedGroupId}
+          onDone={() => {
+            listGroups().then(setAllGroups).catch(() => { });
+            const activeId = getActiveGroupId();
+            if (activeId && activeId !== selectedGroupId) {
+              setSelectedGroupId(activeId);
+              updateUrl(selectedPhase, startDate, endDate, activeId);
+            } else {
+              load();
+            }
+          }}
+        />
+      ) : (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+          No hay grupos abiertos disponibles. Crea un grupo en la sección <strong>Grupos</strong> para comenzar a evaluar y cargar conductores.
+        </div>
+      )}
 
       {/* Tarjetas de métricas rápidas compactas */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">

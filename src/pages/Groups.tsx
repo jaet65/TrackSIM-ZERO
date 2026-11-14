@@ -62,14 +62,14 @@ export default function Groups() {
     try {
       const list = await listGroups();
       setGroups(list);
-      // Validar si el activeGroupId sigue existiendo
+      // Si el grupo activo se cerró o eliminó, seleccionar otro grupo abierto.
+      const openGroups = list.filter((group) => group.status === "open");
       const currentActive = getActiveGroupId();
-      if (currentActive && !list.some((g) => g.id === currentActive)) {
-        setActiveGroupId(null);
-        setActiveId(null);
-      } else {
-        setActiveId(currentActive);
-      }
+      const nextActive = openGroups.find((group) => group.id === currentActive)?.id
+        ?? openGroups[0]?.id
+        ?? null;
+      setActiveGroupId(nextActive);
+      setActiveId(nextActive);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -81,14 +81,10 @@ export default function Groups() {
     loadData();
   }, []);
 
-  const handleSelectActive = (groupId: string | null) => {
+  const handleSelectActive = (groupId: string) => {
     setActiveGroupId(groupId);
     setActiveId(groupId);
-    setSuccess(
-      groupId
-        ? "Grupo activo seleccionado. Las nuevas evaluaciones y sincronizaciones se asignarán a este grupo."
-        : "Sin grupo activo asignado por defecto."
-    );
+    setSuccess("Grupo activo seleccionado. Las nuevas evaluaciones y sincronizaciones se asignarán a este grupo.");
     setTimeout(() => setSuccess(""), 4000);
   };
 
@@ -276,10 +272,15 @@ export default function Groups() {
           <div className="flex items-center gap-3">
             <select
               value={activeGroupId || ""}
-              onChange={(e) => handleSelectActive(e.target.value || null)}
+              disabled={groups.every((group) => group.status !== "open")}
+              onChange={(e) => {
+                if (e.target.value) handleSelectActive(e.target.value);
+              }}
               className="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-xs focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             >
-              <option value="">-- Sin Grupo Asignado (General) --</option>
+              {groups.every((group) => group.status !== "open") && (
+                <option value="">Crea un grupo para comenzar</option>
+              )}
               {groups
                 .filter((g) => g.status === "open")
                 .map((g) => (
@@ -288,14 +289,6 @@ export default function Groups() {
                   </option>
                 ))}
             </select>
-            {activeGroupId && (
-              <button
-                onClick={() => handleSelectActive(null)}
-                className="text-xs text-slate-500 hover:text-slate-800 underline"
-              >
-                Desactivar
-              </button>
-            )}
           </div>
         </div>
       </div>
