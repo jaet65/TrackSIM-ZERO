@@ -271,8 +271,14 @@ export default function Home() {
       load();
     };
     window.addEventListener("tracksim:evaluations-updated", handleSyncUpdate);
+    const handleFirestoreRefresh = () => {
+      load();
+      listGroups().then(setAllGroups).catch(() => {});
+    };
+    window.addEventListener("tracksim:firestore-data-refreshed", handleFirestoreRefresh);
     return () => {
       window.removeEventListener("tracksim:evaluations-updated", handleSyncUpdate);
+      window.removeEventListener("tracksim:firestore-data-refreshed", handleFirestoreRefresh);
     };
   }, [load]);
 

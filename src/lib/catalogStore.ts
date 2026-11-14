@@ -16,6 +16,12 @@ const groupRef = (groupId: string) => doc(firestore, "groups", groupId);
 let loading: Promise<CatalogConfig> | null = null;
 let savingPromise: Promise<void> = Promise.resolve();
 
+if (typeof window !== "undefined") {
+  window.addEventListener("tracksim:firestore-data-refreshed", () => {
+    loading = null;
+  });
+}
+
 export function waitForCatalogSaves(): Promise<void> {
   return savingPromise;
 }

@@ -135,6 +135,12 @@ let currentCursoUnevaluated: UnevaluatedExercisesMap = {};
 let loading: Promise<ExerciseConfig> | null = null;
 let savingPromise: Promise<void> = Promise.resolve();
 
+if (typeof window !== "undefined") {
+  window.addEventListener("tracksim:firestore-data-refreshed", () => {
+    loading = null;
+  });
+}
+
 export function waitForExerciseSaves(): Promise<void> {
   return savingPromise;
 }

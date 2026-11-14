@@ -112,8 +112,10 @@ export default function Driver({
       }).catch(() => {});
     };
     window.addEventListener("tracksim:evaluations-updated", handleSyncUpdate);
+    window.addEventListener("tracksim:firestore-data-refreshed", handleSyncUpdate);
     return () => {
       window.removeEventListener("tracksim:evaluations-updated", handleSyncUpdate);
+      window.removeEventListener("tracksim:firestore-data-refreshed", handleSyncUpdate);
     };
   }, [id, dateFilter]);
 

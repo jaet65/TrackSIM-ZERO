@@ -8,8 +8,10 @@ import {
   persistentSingleTabManager,
   getDoc,
   getDocFromCache,
+  getDocFromServer,
   getDocs,
   getDocsFromCache,
+  getDocsFromServer,
   onSnapshotsInSync,
   type Firestore,
   type DocumentReference,
@@ -95,6 +97,35 @@ export function subscribeNetworkStatus(listener: (state: NetworkStatus) => void)
   };
 }
 
+function dispatchFirestoreDataRefreshed() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("tracksim:firestore-data-refreshed"));
+  }
+}
+
+function docDataChanged<T>(cached: DocumentSnapshot<T>, fresh: DocumentSnapshot<T>): boolean {
+  return cached.exists() !== fresh.exists() || JSON.stringify(cached.data()) !== JSON.stringify(fresh.data());
+}
+
+function queryDataChanged<T>(cached: QuerySnapshot<T>, fresh: QuerySnapshot<T>): boolean {
+  if (cached.size !== fresh.size) return true;
+  const cachedDocs = new Map(cached.docs.map((snapshot) => [snapshot.id, JSON.stringify(snapshot.data())]));
+  return fresh.docs.some((snapshot) => cachedDocs.get(snapshot.id) !== JSON.stringify(snapshot.data()));
+}
+
+function notifyIfDocChanged<T>(cached: DocumentSnapshot<T>, fresh: DocumentSnapshot<T>) {
+  if (fresh.metadata.fromCache) return;
+  markHealthyConnection();
+  if (docDataChanged(cached, fresh)) dispatchFirestoreDataRefreshed();
+}
+
+function notifyIfQueryChanged<T>(cached: QuerySnapshot<T>, fresh: QuerySnapshot<T>) {
+  if (!fresh.metadata.fromCache) {
+    markHealthyConnection();
+    if (queryDataChanged(cached, fresh)) dispatchFirestoreDataRefreshed();
+  }
+}
+
 let degradedResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 function markDegradedConnection() {
@@ -123,7 +154,9 @@ if (typeof window !== "undefined") {
   window.addEventListener("online", () => {
     networkState.online = true;
     notifyNetworkListeners();
+    dispatchFirestoreDataRefreshed();
   });
+  window.addEventListener("focus", dispatchFirestoreDataRefreshed);
   window.addEventListener("offline", () => {
     networkState.online = false;
     notifyNetworkListeners();
@@ -172,6 +205,8 @@ export async function safeGetDoc<T = DocumentData>(
     if (winner !== "TIMEOUT") {
       if (!winner.metadata.fromCache) {
         markHealthyConnection();
+      } else if (typeof navigator === "undefined" || navigator.onLine) {
+        getDocFromServer(ref).then((fresh) => notifyIfDocChanged(winner, fresh)).catch(() => {});
       }
       return winner;
     }
@@ -179,7 +214,9 @@ export async function safeGetDoc<T = DocumentData>(
     // Timeout por conexión lenta: intentar leer de la caché local IndexedDB
     markDegradedConnection();
     try {
-      return await getDocFromCache(ref);
+      const cached = await getDocFromCache(ref);
+      netPromise.then((fresh) => notifyIfDocChanged(cached, fresh)).catch(() => {});
+      return cached;
     } catch {
       // Si el documento nunca ha estado en caché (p. ej. verificando si un ID nuevo ya existe),
       // devolver un objeto compatible con DocumentSnapshot indicando exists() = false
@@ -235,13 +272,7 @@ export async function safeGetDocs<T = DocumentData>(
     const cached = await getDocsFromCache(q);
     if (!cached.empty) {
       // Revalidación silenciosa en segundo plano para refrescar caché local
-      getDocs(q)
-        .then((fresh) => {
-          if (!fresh.metadata.fromCache) {
-            markHealthyConnection();
-          }
-        })
-        .catch(() => {});
+      getDocsFromServer(q).then((fresh) => notifyIfQueryChanged(cached, fresh)).catch(() => {});
       return cached;
     }
   } catch {}

@@ -533,6 +533,9 @@ if (typeof window !== "undefined") {
   window.addEventListener("tracksim:evaluations-updated", () => {
     invalidateEvaluationsMemoryCache();
   });
+  window.addEventListener("tracksim:firestore-data-refreshed", () => {
+    invalidateEvaluationsMemoryCache();
+  });
 }
 
 async function fetchEvaluations(field?: "phase" | "driverId", value?: number | string, filter?: DateFilter) {
