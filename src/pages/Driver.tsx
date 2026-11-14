@@ -19,6 +19,18 @@ type BreakdownItem = Data["breakdown"][number];
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
+function countIncidentEdits(marks: Mark[] = []) {
+  return marks.reduce(
+    (counts, mark) => {
+      if (mark.type !== "ERROR") return counts;
+      if (mark.ignored) counts.ignored++;
+      if (mark.manual) counts.manual++;
+      return counts;
+    },
+    { ignored: 0, manual: 0 },
+  );
+}
+
 type SortField = "time" | "description" | "severity";
 type SortDirection = "asc" | "desc";
 
@@ -434,6 +446,20 @@ export default function Driver({
 
   const { name, evals, missingExercises = [], phases, overall, completedExercises, expectedExercises, criticalErrors, verdict, color } = data;
   const phasesWithActivity = phases.filter((p) => p.exercises > 0).length;
+  const incidenceEdits = evals.reduce(
+    (summary, evaluation) => {
+      const counts = countIncidentEdits(evaluation.marks);
+      summary.ignored += counts.ignored;
+      summary.manual += counts.manual;
+      if (counts.ignored + counts.manual > 0) summary.evaluations++;
+      return summary;
+    },
+    { ignored: 0, manual: 0, evaluations: 0 },
+  );
+  const incidenceEditDetails = [
+    incidenceEdits.ignored > 0 && `${incidenceEdits.ignored} falso(s) positivo(s) anulado(s)`,
+    incidenceEdits.manual > 0 && `${incidenceEdits.manual} error(es) agregado(s) manualmente`,
+  ].filter(Boolean).join(" · ");
 
   // Combinar ejercicios evaluados y ejercicios no realizados ordenados por fase
   const allExerciseRows = [
@@ -509,7 +535,17 @@ export default function Driver({
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500">Expediente de Desempeño y Telemetría</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-slate-500">Expediente de Desempeño y Telemetría</p>
+                  {incidenceEdits.evaluations > 0 && (
+                    <span
+                      className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800"
+                      title={`${incidenceEditDetails} en ${incidenceEdits.evaluations} ejercicio(s).`}
+                    >
+                      Incidencias editadas
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -724,6 +760,11 @@ export default function Driver({
                   allExerciseRows.map((row) => {
                     if (row.type === "done") {
                       const isUneval = isExerciseUnevaluated(row.eval.exercise || row.eval.unit, row.eval.groupId || groupParam || null);
+                      const editCounts = countIncidentEdits(row.eval.marks);
+                      const editDetails = [
+                        editCounts.ignored > 0 && `${editCounts.ignored} falso(s) positivo(s) anulado(s)`,
+                        editCounts.manual > 0 && `${editCounts.manual} error(es) agregado(s) manualmente`,
+                      ].filter(Boolean).join(" · ");
                       return (
                         <tr
                           key={`${row.eval.phase}-${row.eval.fileName}`}
@@ -740,6 +781,14 @@ export default function Driver({
                               <span className="text-indigo-600 group-hover:text-indigo-700 underline decoration-indigo-200 group-hover:decoration-indigo-500 underline-offset-2 transition">
                                 {row.eval.exercise}
                               </span>
+                              {editCounts.ignored + editCounts.manual > 0 && (
+                                <span
+                                  className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800"
+                                  title={editDetails}
+                                >
+                                  Editado
+                                </span>
+                              )}
                               {isUneval && (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-800" title="Ejercicio de concientización: no afecta el promedio ni la calificación">
                                   🛡️ No evaluado

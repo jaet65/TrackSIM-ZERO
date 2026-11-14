@@ -62,11 +62,11 @@ const evaluation: EvaluationView = {
   telemetry: { pctGreenZone: 75, distanceMeters: 1000, coastDistanceMeters: 350 },
 };
 
-function renderReport(groupEvals: EvaluationView[]) {
-  state.selectedEval = evaluation;
+function renderReport(groupEvals: EvaluationView[], driverEval = evaluation) {
+  state.selectedEval = driverEval;
   state.data = {
     name: "Conductor",
-    evals: [evaluation],
+    evals: [driverEval],
     missingExercises: [],
     phases: [],
     breakdown: [],
@@ -95,5 +95,23 @@ describe("driver exercise report", () => {
     expect(html).toContain("Operador");
     expect(html).not.toContain("Media del Grupo");
     expect(html).not.toContain('fill="rgba(191, 219, 254, 0.12)"');
+    expect(html).not.toContain("Incidencias editadas");
+    expect(html).not.toContain(">Editado</span>");
+  });
+
+  it("identifies driver records with ignored false positives or manually added errors", () => {
+    const editedEvaluation: EvaluationView = {
+      ...evaluation,
+      marks: [
+        { time: "0:00:10", type: "ERROR", description: "Falso positivo", ignored: true },
+        { time: "0:00:20", type: "ERROR", description: "Error manual", manual: true },
+      ],
+    };
+
+    const html = renderReport([], editedEvaluation);
+
+    expect(html).toContain("Incidencias editadas");
+    expect(html).toContain(">Editado</span>");
+    expect(html).toContain("1 falso(s) positivo(s) anulado(s) · 1 error(es) agregado(s) manualmente");
   });
 });
