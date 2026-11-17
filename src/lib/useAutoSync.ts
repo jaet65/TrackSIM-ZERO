@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import {
   isElectronApp,
   checkStreamDBStatus,
@@ -104,7 +104,7 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
   }, [onUncatalogedErrors]);
 
   // Actualizar estado del grupo activo
-  const checkGroup = async () => {
+  const checkGroup = useCallback(async () => {
     const grpId = getActiveGroupId();
     if (grpId) {
       try {
@@ -117,11 +117,11 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
     }
     setActiveGroup(null);
     return null;
-  };
+  }, []);
 
   useEffect(() => {
     checkGroup();
-  }, []);
+  }, [checkGroup]);
 
   useEffect(() => {
     if (!activeGroup || queueRescoreGroupRef.current === activeGroup.id) return;
@@ -225,7 +225,7 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
   };
 
   // Sonido de notificación suave al terminar un ejercicio
-  const playChime = () => {
+  const playChime = useCallback(() => {
     try {
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const osc = ctx.createOscillator();
@@ -240,7 +240,7 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.45);
     } catch {}
-  };
+  }, []);
 
   useEffect(() => {
     if (!enabled || !isElectronApp()) return;
@@ -449,7 +449,7 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
       isCancelled = true;
       if (timer) clearInterval(timer);
     };
-  }, [enabled, pollIntervalMs, userName, userEmail, onNewSessionAudited]);
+  }, [enabled, pollIntervalMs, userName, userEmail, onNewSessionAudited, checkGroup, playChime]);
 
   return {
     enabled,

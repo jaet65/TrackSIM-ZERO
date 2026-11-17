@@ -132,6 +132,7 @@ export default function Driver({
   }, [id, dateFilter]);
 
   // Al cambiar de ejercicio seleccionado, reiniciar al orden por defecto cronológico y filtro de gravedad
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Este efecto depende intencionalmente de la identidad de la evaluación.
   useEffect(() => {
     setSortField("time");
     setSortDirection("asc");

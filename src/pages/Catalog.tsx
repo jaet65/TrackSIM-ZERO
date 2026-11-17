@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   DEFAULT_CONFIG,
@@ -27,6 +27,7 @@ export default function Catalog() {
     if (fromUrl !== null) return fromUrl;
     return getActiveGroupId() || "";
   });
+  const initialSelectedGroupIdRef = useRef(selectedGroupId);
 
   const [saved, setSaved] = useState<CatalogConfig | null>(null);
   const [draft, setDraft] = useState<CatalogConfig | null>(null);
@@ -53,13 +54,12 @@ export default function Catalog() {
       .then((list) => {
         setGroups(list);
         // Si el grupo inicial (de localStorage) no existe en la lista, volver a plantilla global
-        if (selectedGroupId && !list.some((g) => g.id === selectedGroupId)) {
+        const initialSelectedGroupId = initialSelectedGroupIdRef.current;
+        if (initialSelectedGroupId && !list.some((g) => g.id === initialSelectedGroupId)) {
           setSelectedGroupId("");
         }
       })
       .catch(() => {});
-    // Solo al montar: valida el grupo inicial una única vez
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

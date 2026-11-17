@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import { decodeCsv, parseReport } from "../lib/parse";
 import {
   driverData,
@@ -92,7 +92,7 @@ export default function UploadForm({
   useEscapeKey(showDesktopModal, () => setShowDesktopModal(false));
   useEscapeKey(showResultsModal, () => setShowResultsModal(false));
 
-  const refreshActiveGroup = async (explicitGroupId?: string) => {
+  const refreshActiveGroup = useCallback(async (explicitGroupId?: string) => {
     setLoadingGroup(true);
     const grpId = explicitGroupId !== undefined ? explicitGroupId : getActiveGroupId();
     if (grpId) {
@@ -110,11 +110,11 @@ export default function UploadForm({
       setActiveGroup(null);
     }
     setLoadingGroup(false);
-  };
+  }, []);
 
   useEffect(() => {
     refreshActiveGroup(selectedGroupId);
-  }, [selectedGroupId]);
+  }, [selectedGroupId, refreshActiveGroup]);
 
   const handleLaunchDesktopApp = () => {
     let appLaunched = false;

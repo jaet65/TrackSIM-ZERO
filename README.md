@@ -41,7 +41,7 @@ npm run electron:dev   # aplicación de escritorio con recarga en vivo
 ## Calidad de código
 
 ```bash
-npm run lint        # oxlint
+npm run lint        # Biome
 npm test            # vitest (una sola ejecución)
 npm run test:watch  # vitest en modo watch
 ```

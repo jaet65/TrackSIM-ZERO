@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   listGroups,
@@ -56,7 +56,7 @@ export default function Groups() {
   useEscapeKey(!!deletingGroup && !deleting, () => setDeletingGroup(null));
   const [confirmDeleteText, setConfirmDeleteText] = useState("");
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -75,11 +75,11 @@ export default function Groups() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const handleSelectActive = (groupId: string) => {
     setActiveGroupId(groupId);

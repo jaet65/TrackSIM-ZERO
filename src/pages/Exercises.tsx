@@ -45,6 +45,7 @@ export default function Exercises() {
     if (fromUrl !== null) return fromUrl;
     return getActiveGroupId() || "";
   });
+  const initialSelectedGroupIdRef = useRef(selectedGroupId);
 
   const [cfg, setCfg] = useState<ExerciseConfig | null>(null);
   const [envs, setEnvs] = useState<ExerciseEnvironmentsMap>({});
@@ -128,13 +129,12 @@ export default function Exercises() {
     listGroups()
       .then((list) => {
         setGroups(list);
-        if (selectedGroupId && !list.some((g) => g.id === selectedGroupId)) {
+        const initialSelectedGroupId = initialSelectedGroupIdRef.current;
+        if (initialSelectedGroupId && !list.some((g) => g.id === initialSelectedGroupId)) {
           setSelectedGroupId("");
         }
       })
       .catch(() => { });
-    // Solo al montar: valida el grupo inicial una única vez
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

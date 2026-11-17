@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "lint": "oxlint",
+    "lint": "biome lint",
     "test": "vitest run",
     "test:watch": "vitest",
     "build:electron": "vite build --config vite.electron.config.ts && node -e \"require('fs').copyFileSync('electron/preload.cjs', 'dist-electron/preload.cjs')\"",
@@ -68,6 +68,7 @@
     "pg": "^8.23.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
     "@tailwindcss/vite": "^4.3.3",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
@@ -79,7 +80,6 @@
     "firebase": "^13.1.0",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.2",
-    "oxlint": "^1.90.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-router-dom": "^7.18.4",

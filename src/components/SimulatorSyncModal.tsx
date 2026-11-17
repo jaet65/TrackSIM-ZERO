@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { formatLocalDateInput } from "../lib/date";
 import {
   checkStreamDBStatus,
@@ -65,6 +65,20 @@ export default function SimulatorSyncModal({
   // Grupo Activo
   const [activeGroup, setActiveGroup] = useState<GroupDoc | null>(null);
 
+  const refreshStatus = useCallback(async () => {
+    setCheckingStatus(true);
+    setCountResult(null);
+    setCountError("");
+    const st = await checkStreamDBStatus();
+    setStatus(st);
+    if (st.config) {
+      setDbHost(st.config.host || "");
+      setDbPort(st.config.port || "5496");
+      setDbUser(st.config.user || "administrator");
+    }
+    setCheckingStatus(false);
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
       refreshStatus();
@@ -78,21 +92,7 @@ export default function SimulatorSyncModal({
         setActiveGroup(null);
       }
     }
-  }, [isOpen]);
-
-  async function refreshStatus() {
-    setCheckingStatus(true);
-    setCountResult(null);
-    setCountError("");
-    const st = await checkStreamDBStatus();
-    setStatus(st);
-    if (st.config) {
-      setDbHost(st.config.host || "");
-      setDbPort(st.config.port || "5496");
-      setDbUser(st.config.user || "administrator");
-    }
-    setCheckingStatus(false);
-  }
+  }, [isOpen, refreshStatus]);
 
   async function handleSaveConfig(e: React.FormEvent) {
     e.preventDefault();

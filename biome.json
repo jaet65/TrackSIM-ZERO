@@ -1,0 +1,45 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": ["**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx"]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "domains": {
+      "astro": "none",
+      "drizzle": "none",
+      "next": "none",
+      "playwright": "none",
+      "project": "none",
+      "qwik": "none",
+      "react": "none",
+      "reactNative": "none",
+      "solid": "none",
+      "svelte": "none",
+      "tailwind": "none",
+      "tanstackQuery": "none",
+      "test": "none",
+      "turborepo": "none",
+      "types": "none",
+      "vue": "none"
+    },
+    "rules": {
+      "preset": "none",
+      "correctness": {
+        "noUndeclaredVariables": "error",
+        "noUnreachable": "error",
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error",
+        "useExhaustiveDependencies": "warn"
+      }
+    }
+  }
+}
