@@ -15,7 +15,7 @@ const recipient: CertificateRecipient = {
   score: 5.4,
   lastEvaluationDate: "2026-11-09",
 };
-const template = readFileSync(new URL("../../Material Apoyo/RECONOCIMIENTO 6@.jpg", import.meta.url));
+const template = readFileSync(new URL("../assets/RECONOCIMIENTO 6@.jpg", import.meta.url));
 
 function pdfText(bytes: ArrayBuffer) {
   return Buffer.from(bytes).toString("latin1");
@@ -28,16 +28,18 @@ afterEach(() => {
 
 describe("diplomas", () => {
   it("generates a diploma with the requested data even for a low score", () => {
-    const text = pdfText(generateCertificatePdf(recipient, "Grupo Norte", "Conducción segura", template));
+    const bytes = generateCertificatePdf(recipient, "Grupo Norte", "Conducción segura", template);
+    const text = pdfText(bytes);
     expect(text).toContain("Ana P");
     expect(text).toContain("Curso:");
     expect(text).toContain("Grupo: Grupo Norte");
     expect(text).toContain("5.4 / 10");
     expect(text).toContain("2026-11-09");
     expect(text).toContain("/Subtype /Image");
-    expect(text.includes("/Width 3300")).toBe(true);
-    expect(text.includes("/Height 2534")).toBe(true);
+    expect(text.includes("/Width 2400")).toBe(true);
+    expect(text.includes("/Height 1843")).toBe(true);
     expect(text).toContain("/DCTDecode");
+    expect(bytes.byteLength).toBeLessThan(450 * 1024);
   });
 
   it("omits an unspecified course and reports an unavailable date", () => {

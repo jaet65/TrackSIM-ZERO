@@ -605,9 +605,12 @@ export default function Home() {
     setActiveDriverGroupId(groupId ?? selectedGroupId);
   };
 
-  const navigableRows = showGroupSections
-    ? groupedGlobalRows.flatMap((group) => group.rows)
-    : sortedRows || [];
+  const navigableRows = useMemo(
+    () => showGroupSections
+      ? groupedGlobalRows.flatMap((group) => group.rows)
+      : sortedRows || [],
+    [showGroupSections, groupedGlobalRows, sortedRows]
+  );
 
   const activeDriverIndex = useMemo(() => {
     if (!activeDriverId) return -1;

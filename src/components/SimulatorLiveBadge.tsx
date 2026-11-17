@@ -64,7 +64,6 @@ export default function SimulatorLiveBadge() {
 
   const prevSessionIdRef = useRef<number | null>(null);
   const activeSessionRef = useRef<ActiveSimulatorSession | null>(null);
-  activeSessionRef.current = activeSession;
 
   // Guardar preferencia de minutos
   const updateTargetMinutes = (mins: number) => {
@@ -88,6 +87,7 @@ export default function SimulatorLiveBadge() {
 
         if (!res.ok) {
           setActiveSession(null);
+          activeSessionRef.current = null;
           prevSessionIdRef.current = null;
           return;
         }
@@ -95,6 +95,7 @@ export default function SimulatorLiveBadge() {
         if (res.active && res.session) {
           const current = res.session;
           setActiveSession(current);
+          activeSessionRef.current = current;
           setElapsed(current.elapsedSeconds);
 
           // Si cambió de sesión (nuevo conductor o nuevo ejercicio), resetear alertas de timer
@@ -109,12 +110,14 @@ export default function SimulatorLiveBadge() {
             setLastFinishedSession(activeSessionRef.current);
           }
           setActiveSession(null);
+          activeSessionRef.current = null;
           prevSessionIdRef.current = null;
         }
       } catch {
         if (!isMounted) return;
         setIsDatabaseConnected(false);
         setActiveSession(null);
+        activeSessionRef.current = null;
         prevSessionIdRef.current = null;
       }
     };

@@ -93,7 +93,7 @@ export function generateGlobalReportPdf(
   filterSubtitle: string,
   _metrics?: { total: number; promedio: number; aptos: number; noAptos: number }
 ): Uint8Array {
-  const doc = new jsPDF({ format: "a4", unit: "mm" });
+  const doc = new jsPDF({ format: "a4", unit: "mm", compress: true });
   let y = drawHeader(doc, "Reporte Global de Evaluaciones", filterSubtitle);
 
   // Cálculos detallados y enriquecidos sobre las filas reales
@@ -456,7 +456,7 @@ export function generateExecutiveSummaryPdf(
   metrics?: { total: number; promedio: number; aptos: number; noAptos: number },
   exercises: ReportExerciseSummary[] = []
 ): Uint8Array {
-  const doc = new jsPDF({ format: "a4", unit: "mm" });
+  const doc = new jsPDF({ format: "a4", unit: "mm", compress: true });
   let y = 14;
 
   try {
@@ -1045,7 +1045,7 @@ export async function generateDriverReportPdf(driverId: string, filter?: DateFil
   // Generar folio único y determinista (hash de identidad del expediente)
   const folio = generateDeterministicFolio(driverId, data);
 
-  const doc = new jsPDF({ format: "a4", unit: "mm" });
+  const doc = new jsPDF({ format: "a4", unit: "mm", compress: true });
   let y = 14;
 
   // Header con Logo Oficial TrackSIM y Avatar
@@ -2094,7 +2094,7 @@ export async function downloadBulkReportsZip(
 
   // 4. Empaquetar y descargar ZIP
   if (onProgress) onProgress(rows.length, rows.length, "Comprimiendo archivo ZIP...");
-  const content = await zip.generateAsync({ type: "blob" });
+  const content = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
 
   const url = URL.createObjectURL(content);
   const a = document.createElement("a");
